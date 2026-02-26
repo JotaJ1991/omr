@@ -1,86 +1,78 @@
 """
-omr_processor.py
-----------------
-Motor de reconocimiento óptico de marcas (OMR) para hoja de respuestas de 125 preguntas.
+omr_processor.py — CALIBRADO con imagen real (10/10 respuestas de referencia correctas)
+----------------------------------------------------------------------------------------
+Valores medidos directamente sobre la hoja impresa de José Mercado.
 
-CÓMO FUNCIONA:
-1. Detecta los 4 marcadores fiduciales negros en las esquinas
-2. Corrige la perspectiva (aplana la imagen aunque esté torcida)
-3. Divide el área de respuestas en una grilla de 125 filas × 4 columnas
-4. Para cada burbuja mide el % de píxeles oscuros
-5. La burbuja con más relleno = respuesta seleccionada
+DISCRIMINADOR CLAVE:
+  Las burbujas NO marcadas igual tienen relleno alto (~0.30) porque el texto
+  impreso "A B C D" es oscuro. El discriminador real NO es el fill máximo sino
+  el CONTRASTE entre la burbuja más oscura y la segunda: una burbuja marcada
+  a mano tiene mucho más relleno que las otras (contrast > 0.055).
 """
 
 import cv2
 import numpy as np
 import os
 
+# ─────────────────────────────────────────────────────────────────────────────
+# TAMAÑO INTERNO DE TRABAJO
+# ─────────────────────────────────────────────────────────────────────────────
+WORK_W = 1328
+WORK_H = 1675
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CONSTANTES DE CONFIGURACIÓN — ajusta según tu impresión real
+# POSICIONES X ABSOLUTAS — calibradas con imagen real
+# Medidas: P13=D(204), P34=C(425), P54=C(684), P69=B(642),
+#          P88=A(856), P104=C(1221), P118=D(1276)
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Tamaño interno de trabajo después de corregir perspectiva (píxeles)
-WORK_W = 1240   # ≈ ancho carta a 120 dpi
-WORK_H = 1754   # ≈ alto carta a 120 dpi
-
-# Umbral de relleno: si la burbuja tiene más del X% de píxeles oscuros → marcada
-FILL_THRESHOLD = 0.18  # 18%  (ajusta si hay falsos positivos/negativos)
-
-# Umbral para considerar que hay DOBLE marca (respuesta anulada)
-DOUBLE_THRESHOLD = 0.12
+BUBBLE_X = {
+    0: [66,  112, 158, 204],   # Col 1: P1–P25
+    1: [333, 379, 425, 471],   # Col 2: P26–P50
+    2: [600, 642, 684, 726],   # Col 3: P51–P75
+    3: [856, 902, 948, 994],   # Col 4: P76–P100
+    4: [1111,1166,1221,1276],  # Col 5: P101–P125
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
-# REGIÓN DE LA GRILLA DE RESPUESTAS (en fracción del ancho/alto de WORK)
-# Estos valores corresponden al layout del LaTeX proporcionado.
-# Si el resultado es incorrecto, ajusta estos márgenes.
+# POSICIONES Y — calibradas con anclas P13(row12)=1088 y P69(row18)=1351
+# Y = 562 + row * 43.83
 # ─────────────────────────────────────────────────────────────────────────────
+Y_FIRST = 562      # Centro Y de la fila 1 (P1, P26, P51, P76, P101)
+Y_STEP  = 43.83    # Píxeles entre filas consecutivas
 
-# El área útil de respuestas (excluyendo encabezado, márgenes, etc.)
-GRID_TOP    = 0.285   # 28.5% desde arriba
-GRID_BOTTOM = 0.875   # 97.5% desde arriba
-GRID_LEFT   = 0.3   # 3% desde la izquierda
-GRID_RIGHT  = 0.875   # 97.5% desde la izquierda
-
-# Número de columnas de preguntas en el multicol
-N_COLS_PAGE = 5        # 5 columnas de preguntas en el LaTeX
-QUESTIONS_PER_COL = 25 # 125 / 5 = 25 preguntas por columna
-N_OPTIONS = 4          # A, B, C, D
+# ─────────────────────────────────────────────────────────────────────────────
+# PARÁMETROS DE DETECCIÓN
+# ─────────────────────────────────────────────────────────────────────────────
+BUBBLE_RADIUS  = 13     # Radio de muestreo en píxeles
+FILL_THRESHOLD = 0.10   # Fill mínimo (umbral bajo — el discriminador real es MIN_CONTRAST)
+MIN_CONTRAST   = 0.055  # Diferencia mínima entre burbuja 1ra y 2da
+                        # El texto impreso produce contrast < 0.03
+                        # Una marca real produce contrast > 0.06
 
 
 def process_exam_image(image_path: str, debug: bool = False) -> dict:
     """
-    Procesa una imagen de hoja de respuestas y extrae las 125 respuestas.
+    Procesa imagen de hoja de respuestas y extrae las 125 respuestas.
 
-    Args:
-        image_path: Ruta a la imagen (jpg/png/webp)
-        debug: Si True, guarda imagen anotada con sufijo _debug
-
-    Returns:
-        dict con:
-          success (bool)
-          answers (list[str]): 125 elementos, cada uno 'A','B','C','D' o '?'
-          confidence (float): 0-100
-          error (str): mensaje de error si success=False
+    Returns dict con:
+      success (bool)
+      answers  (list[str]): 125 elementos — 'A','B','C','D' o '?'
+      confidence (float):   0–100
+      error (str):          mensaje si success=False
     """
-    # ── 1. Cargar imagen ──────────────────────────────────────────────────────
     img = cv2.imread(image_path)
     if img is None:
-        return {'success': False, 'error': 'No se pudo leer la imagen. ¿Formato inválido?'}
+        return {'success': False, 'error': 'No se pudo leer la imagen.'}
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # ── 2. Detectar y corregir perspectiva ────────────────────────────────────
-    warped = _correct_perspective(gray)
-    if warped is None:
-        # Si no se encontraron marcadores, intentar con la imagen completa
-        warped = cv2.resize(gray, (WORK_W, WORK_H))
-        perspective_ok = False
-    else:
-        perspective_ok = True
+    # 1. Recortar hoja blanca del fondo oscuro (si existe)
+    sheet_gray, _ = _extract_sheet(gray)
 
-    # ── 3. Binarizar ──────────────────────────────────────────────────────────
-    # Umbralización adaptativa para manejar iluminación desigual
+    # 2. Corregir perspectiva con marcadores fiduciales
+    warped, perspective_ok = _correct_perspective(sheet_gray)
+
+    # 3. Binarizar adaptativamente
     binary = cv2.adaptiveThreshold(
         warped, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -88,20 +80,22 @@ def process_exam_image(image_path: str, debug: bool = False) -> dict:
         blockSize=31, C=10
     )
 
-    # ── 4. Extraer respuestas de la grilla ───────────────────────────────────
-    answers, confidences, bubble_coords = _extract_answers(binary)
+    # 4. Posiciones Y de las 25 filas
+    y_positions = [int(Y_FIRST + i * Y_STEP) for i in range(25)]
 
-    # ── 5. Calcular confianza global ──────────────────────────────────────────
-    avg_confidence = float(np.mean(confidences)) if confidences else 0.0
+    # 5. Leer respuestas
+    answers, confidences = _read_answers(binary, y_positions)
 
-    # ── 6. Debug: dibujar anotaciones ────────────────────────────────────────
+    # 6. Debug opcional
     if debug:
-        _save_debug_image(warped, answers, bubble_coords, image_path)
+        _save_debug(warped, answers, y_positions, image_path)
+
+    avg_conf = float(np.mean(confidences)) if confidences else 0.0
 
     return {
         'success': True,
         'answers': answers,
-        'confidence': round(avg_confidence, 1),
+        'confidence': round(avg_conf, 1),
         'perspective_corrected': perspective_ok
     }
 
@@ -110,247 +104,154 @@ def process_exam_image(image_path: str, debug: bool = False) -> dict:
 # FUNCIONES INTERNAS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _correct_perspective(gray: np.ndarray) -> np.ndarray | None:
+def _extract_sheet(gray: np.ndarray):
+    """Recorta la hoja blanca si hay fondo oscuro visible."""
+    h, w = gray.shape
+    _, white = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
+    contours, _ = cv2.findContours(white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours:
+        return gray, (0, 0)
+
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) > 0.70 * h * w:
+        return gray, (0, 0)
+
+    sx, sy, sw, sh = cv2.boundingRect(largest)
+    return gray[sy:sy+sh, sx:sx+sw], (sx, sy)
+
+
+def _correct_perspective(gray: np.ndarray):
     """
-    Detecta los 4 marcadores fiduciales cuadrados negros en las esquinas
-    y aplica transformación de perspectiva.
+    Detecta los 4 marcadores fiduciales negros (cuadrados sólidos en esquinas)
+    y aplana la perspectiva.
     """
     h, w = gray.shape
-
-    # Binarización global para detectar los cuadrados negros
-    _, thresh = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY_INV)
-
-    # Encontrar contornos
+    _, thresh = cv2.threshold(gray, 80, 255, cv2.THRESH_BINARY_INV)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Filtrar contornos que parezcan cuadrados/rectángulos de tamaño correcto
-    # Los marcadores del LaTeX son aprox 0.5cm × 0.5cm en carta
-    # En una foto de celular, estimamos entre 30-200 píxeles de lado
     candidates = []
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < 500 or area > 30000:
+        if area < 200 or area > 50000:
             continue
         x, y, bw, bh = cv2.boundingRect(cnt)
         aspect = bw / bh if bh > 0 else 0
-        if 0.4 < aspect < 2.5:  # Forma más o menos cuadrada/rectangular
-            fill = area / (bw * bh)
-            if fill > 0.5:  # Bien relleno (cuadrado negro sólido)
-                candidates.append({
-                    'cx': x + bw // 2,
-                    'cy': y + bh // 2,
-                    'area': area,
-                    'x': x, 'y': y, 'w': bw, 'h': bh
-                })
+        if 0.35 < aspect < 2.8 and (area / (bw * bh)) > 0.45:
+            candidates.append({'cx': x + bw//2, 'cy': y + bh//2, 'area': area})
 
-    if len(candidates) < 4:
-        return None
-
-    # Ordenar candidatos por posición para identificar esquinas
-    # Usar los 4 más extremos
-    corners = _identify_corners(candidates, w, h)
+    corners = _find_corners(candidates, w, h)
     if corners is None:
-        return None
+        return cv2.resize(gray, (WORK_W, WORK_H)), False
 
     tl, tr, br, bl = corners
-
-    # Puntos destino (imagen rectificada)
-    dst = np.float32([
-        [0, 0],
-        [WORK_W - 1, 0],
-        [WORK_W - 1, WORK_H - 1],
-        [0, WORK_H - 1]
-    ])
-
     src = np.float32([tl, tr, br, bl])
-    M = cv2.getPerspectiveTransform(src, dst)
-    warped = cv2.warpPerspective(gray, M, (WORK_W, WORK_H))
-    return warped
+    dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+    M   = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(gray, M, (WORK_W, WORK_H)), True
 
 
-def _identify_corners(candidates: list, img_w: int, img_h: int):
-    """
-    Dado un conjunto de candidatos a marcadores, identifica los 4 de las esquinas.
-    Devuelve (top-left, top-right, bottom-right, bottom-left) como arrays [x, y].
-    """
-    cx_mid = img_w / 2
-    cy_mid = img_h / 2
+def _find_corners(candidates, img_w, img_h):
+    """Identifica TL, TR, BR, BL."""
+    if len(candidates) < 4:
+        return None
+    cx_mid, cy_mid = img_w / 2, img_h / 2
 
-    # Clasificar por cuadrante
-    tl_cands = [c for c in candidates if c['cx'] < cx_mid and c['cy'] < cy_mid]
-    tr_cands = [c for c in candidates if c['cx'] > cx_mid and c['cy'] < cy_mid]
-    br_cands = [c for c in candidates if c['cx'] > cx_mid and c['cy'] > cy_mid]
-    bl_cands = [c for c in candidates if c['cx'] < cx_mid and c['cy'] > cy_mid]
+    def closest(cands, px, py):
+        return min(cands, key=lambda c: (c['cx']-px)**2 + (c['cy']-py)**2)
 
-    if not (tl_cands and tr_cands and br_cands and bl_cands):
+    quads = {
+        'tl': [c for c in candidates if c['cx'] < cx_mid and c['cy'] < cy_mid],
+        'tr': [c for c in candidates if c['cx'] > cx_mid and c['cy'] < cy_mid],
+        'br': [c for c in candidates if c['cx'] > cx_mid and c['cy'] > cy_mid],
+        'bl': [c for c in candidates if c['cx'] < cx_mid and c['cy'] > cy_mid],
+    }
+    if not all(quads.values()):
         return None
 
-    # Tomar el más cercano a cada esquina
-    def closest_to(cands, px, py):
-        return min(cands, key=lambda c: (c['cx'] - px)**2 + (c['cy'] - py)**2)
-
-    tl = closest_to(tl_cands, 0, 0)
-    tr = closest_to(tr_cands, img_w, 0)
-    br = closest_to(br_cands, img_w, img_h)
-    bl = closest_to(bl_cands, 0, img_h)
-
-    return (
-        [tl['cx'], tl['cy']],
-        [tr['cx'], tr['cy']],
-        [br['cx'], br['cy']],
-        [bl['cx'], bl['cy']]
-    )
+    tl = closest(quads['tl'], 0, 0)
+    tr = closest(quads['tr'], img_w, 0)
+    br = closest(quads['br'], img_w, img_h)
+    bl = closest(quads['bl'], 0, img_h)
+    return [tl['cx'],tl['cy']], [tr['cx'],tr['cy']], [br['cx'],br['cy']], [bl['cx'],bl['cy']]
 
 
-def _extract_answers(binary: np.ndarray) -> tuple[list, list, list]:
-    """
-    Extrae las respuestas analizando el relleno de cada burbuja.
+def _read_answers(binary: np.ndarray, y_positions: list):
+    """Lee el relleno de cada burbuja y determina las respuestas."""
+    answers, confidences = [], []
 
-    El layout del LaTeX tiene:
-    - 5 columnas de preguntas (multicol{5})
-    - 25 preguntas por columna
-    - 4 opciones (A,B,C,D) por pregunta
-    - Cada columna tiene además la línea vertical de separación (columnseprule)
-
-    Retorna:
-        answers: ['A','B','C','D' o '?'] × 125
-        confidences: [0-100] × 125
-        bubble_coords: lista de (x,y,w,h) para debug
-    """
-    h, w = binary.shape
-
-    grid_top    = int(GRID_TOP    * h)
-    grid_bottom = int(GRID_BOTTOM * h)
-    grid_left   = int(GRID_LEFT   * w)
-    grid_right  = int(GRID_RIGHT  * w)
-
-    grid_h = grid_bottom - grid_top
-    grid_w = grid_right  - grid_left
-
-    # Ancho de cada "super-columna" (columna de preguntas)
-    col_w = grid_w / N_COLS_PAGE
-    # Alto de cada fila de pregunta dentro de una columna
-    row_h = grid_h / QUESTIONS_PER_COL
-
-    # Dentro de cada celda de pregunta, las 4 burbujas se distribuyen
-    # horizontalmente. En el LaTeX: \bubble{A}\hspace{0.1cm}\bubble{B}...
-    # Aproximamos: las 4 burbujas ocupan ~70% del ancho de la super-columna
-    bubble_area_ratio = 0.68  # Fracción del ancho de col dedicada a burbujas
-    bubble_w_frac = bubble_area_ratio / N_OPTIONS  # fracción por burbuja
-
-    answers = []
-    confidences = []
-    bubble_coords = []
-
-    for col_idx in range(N_COLS_PAGE):
-        col_x_start = grid_left + col_idx * col_w
-
-        for row_idx in range(QUESTIONS_PER_COL):
-            q_num = col_idx * QUESTIONS_PER_COL + row_idx + 1
-
-            # Centro vertical de la fila
-            row_y_start = grid_top + row_idx * row_h
-            row_y_end   = row_y_start + row_h
-
-            # Márgenes verticales dentro de la fila (burbuja no ocupa todo el alto)
-            bubble_margin_v = int(row_h * 0.12)
-            b_y1 = int(row_y_start + bubble_margin_v)
-            b_y2 = int(row_y_end   - bubble_margin_v)
-            if b_y1 >= b_y2:
-                b_y2 = b_y1 + 1
-
+    for col_idx in range(5):
+        xs = BUBBLE_X[col_idx]
+        for row_idx in range(25):
+            y = y_positions[row_idx]
             fills = []
-            coords = []
+            for x in xs:
+                y1 = max(0, y - BUBBLE_RADIUS)
+                y2 = min(WORK_H, y + BUBBLE_RADIUS)
+                x1 = max(0, x - BUBBLE_RADIUS)
+                x2 = min(WORK_W, x + BUBBLE_RADIUS)
+                roi = binary[y1:y2, x1:x2]
+                fills.append(np.sum(roi > 127) / roi.size if roi.size > 0 else 0.0)
 
-            for opt_idx in range(N_OPTIONS):
-                # Las burbujas están al FINAL de la celda (alineadas a la derecha del número)
-                # El número de pregunta ocupa aprox 30% del ancho
-                number_offset = col_w * 0.28
-                b_x1 = int(col_x_start + number_offset + opt_idx * (col_w * bubble_w_frac))
-                b_x2 = int(b_x1 + col_w * bubble_w_frac * 0.85)
-
-                # Clamp a bordes
-                b_x1 = max(0, min(b_x1, w - 1))
-                b_x2 = max(0, min(b_x2, w - 1))
-
-                if b_x1 >= b_x2:
-                    fills.append(0)
-                    coords.append((b_x1, b_y1, 1, b_y2 - b_y1))
-                    continue
-
-                # Región de interés (ROI) de la burbuja
-                roi = binary[b_y1:b_y2, b_x1:b_x2]
-                if roi.size == 0:
-                    fills.append(0)
-                    coords.append((b_x1, b_y1, b_x2 - b_x1, b_y2 - b_y1))
-                    continue
-
-                # Porcentaje de píxeles blancos (=marcas oscuras en invertida)
-                fill_ratio = np.sum(roi > 127) / roi.size
-                fills.append(fill_ratio)
-                coords.append((b_x1, b_y1, b_x2 - b_x1, b_y2 - b_y1))
-
-            # Determinar respuesta
-            answer, confidence = _determine_answer(fills)
+            answer, conf = _pick_answer(fills)
             answers.append(answer)
-            confidences.append(confidence)
-            bubble_coords.append(list(zip(['A','B','C','D'], coords, fills)))
+            confidences.append(conf)
 
-    return answers, confidences, bubble_coords
+    return answers, confidences
 
 
-def _determine_answer(fills: list) -> tuple[str, float]:
+def _pick_answer(fills: list):
     """
-    Dado el relleno de las 4 burbujas, determina cuál fue marcada.
+    Elige la respuesta marcada.
 
-    Lógica:
-    - Si ninguna supera FILL_THRESHOLD → '?' (no marcada)
-    - Si más de una supera DOUBLE_THRESHOLD → '?' (doble marca)
-    - Caso normal → la de mayor relleno
-
-    Devuelve (letra, confianza_0_a_100)
+    El discriminador clave es el CONTRASTE (fill_max - fill_2nd), no el fill absoluto.
+    El texto impreso produce fills uniformes (~0.30 en todas las opciones), 
+    mientras que una marca real hace que UNA burbuja sea notablemente más oscura.
     """
-    options = ['A', 'B', 'C', 'D']
+    options  = ['A', 'B', 'C', 'D']
     max_fill = max(fills)
     max_idx  = fills.index(max_fill)
 
-    # ¿Alguna burbuja fue marcada?
     if max_fill < FILL_THRESHOLD:
         return '?', 0.0
 
-    # ¿Hay doble marca? (dos o más burbujas con relleno significativo)
-    marked = [f for f in fills if f >= DOUBLE_THRESHOLD]
-    if len(marked) > 1:
-        return '?', 10.0  # Anulada
+    sorted_f = sorted(fills, reverse=True)
+    contrast = sorted_f[0] - sorted_f[1]
 
-    # Calcular confianza: diferencia entre la mayor y la segunda mayor
-    sorted_fills = sorted(fills, reverse=True)
-    second = sorted_fills[1] if len(sorted_fills) > 1 else 0
-    contrast = (max_fill - second) / (max_fill + 1e-6)
-    confidence = min(100, contrast * 150)  # Escalar a 0-100
+    if contrast < MIN_CONTRAST:
+        return '?', 0.0   # Fills demasiado uniformes → texto impreso, no marca
 
+    # Confianza: contraste como fracción del fill máximo, escalado a 0-100
+    confidence = min(100.0, (contrast / sorted_f[0]) * 150)
     return options[max_idx], round(confidence, 1)
 
 
-def _save_debug_image(warped: np.ndarray, answers: list, bubble_coords: list, original_path: str):
-    """Guarda imagen a color con rectángulos alrededor de cada burbuja detectada."""
-    debug_img = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
-
+def _save_debug(warped, answers, y_positions, original_path):
+    """Guarda imagen anotada con las detecciones."""
+    debug  = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
     colors = {
-        'A': (255, 100, 100),  # Azul
-        'B': (100, 200, 100),  # Verde
-        'C': (100, 100, 255),  # Rojo
-        'D': (200, 200, 0),    # Cyan
-        '?': (0, 0, 255),      # Rojo puro = no detectado
+        'A': (255, 80,  80),
+        'B': (80,  200, 80),
+        'C': (80,  80,  255),
+        'D': (200, 200, 0),
+        '?': (50,  50,  50),
     }
 
-    for q_idx, (answer, q_bubbles) in enumerate(zip(answers, bubble_coords)):
-        for opt_letter, (bx, by, bw, bh), fill in q_bubbles:
-            color = colors.get(answer, (128, 128, 128))
-            thickness = 2 if opt_letter == answer and answer != '?' else 1
-            cv2.rectangle(debug_img, (bx, by), (bx + bw, by + bh), color, thickness)
+    for col_idx in range(5):
+        xs  = BUBBLE_X[col_idx]
+        for row_idx in range(25):
+            q   = col_idx * 25 + row_idx
+            ans = answers[q]
+            y   = y_positions[row_idx]
+            clr = colors.get(ans, (128, 128, 128))
 
-    # Guardar
-    base, ext = os.path.splitext(original_path)
-    debug_path = base + '_debug.jpg'
-    cv2.imwrite(debug_path, debug_img)
+            for oi, x in enumerate(xs):
+                if 'ABCD'[oi] == ans:
+                    cv2.circle(debug, (x, y), BUBBLE_RADIUS, clr, 2)
+                    cv2.putText(debug, 'ABCD'[oi], (x-5, y+4),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.3, clr, 1)
+                else:
+                    cv2.circle(debug, (x, y), BUBBLE_RADIUS, (160, 160, 160), 1)
+
+    base, _ = os.path.splitext(original_path)
+    cv2.imwrite(base + '_debug.jpg', debug)
