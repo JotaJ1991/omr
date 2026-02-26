@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Calificador OMR</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --warning: #d97706;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--primary);
+    color: white;
+    padding: 16px 20px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(37,99,235,.4);
+  }
+  header h1 { font-size: 1.3rem; font-weight: 700; }
+  header p  { font-size: .8rem; opacity: .85; margin-top: 2px; }
+
+  main { max-width: 600px; margin: 0 auto; padding: 16px; }
+
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+
+  .card h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  label { display: block; font-size: .85rem; font-weight: 500; margin-bottom: 5px; color: var(--muted); }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: .95rem;
+    margin-bottom: 12px;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+
+  /* ── Zona de captura de imagen ── */
+  .capture-zone {
+    border: 2.5px dashed var(--border);
+    border-radius: var(--radius);
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    position: relative;
+    overflow: hidden;
+    background: #f8fafc;
+  }
+  .capture-zone:hover  { border-color: var(--primary); background: #eff6ff; }
+  .capture-zone.active { border-color: var(--primary); border-style: solid; }
+
+  .capture-zone img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: calc(var(--radius) - 2px);
+  }
+
+  .capture-zone .placeholder {
+    text-align: center;
+    color: var(--muted);
+    padding: 20px;
+  }
+  .capture-zone .placeholder .icon { font-size: 3rem; margin-bottom: 8px; }
+  .capture-zone .placeholder p    { font-size: .9rem; }
+  .capture-zone .placeholder small { font-size: .75rem; opacity: .7; }
+
+  input[type="file"] { display: none; }
+
+  /* ── Botones ── */
+  .btn-group { display: flex; gap: 10px; margin-top: 14px; }
+
+  button {
+    flex: 1;
+    padding: 13px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .btn-primary  { background: var(--primary); color: white; }
+  .btn-primary:hover:not(:disabled)  { background: var(--primary-dark); }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-camera   { background: #0f172a; color: white; }
+
+  /* ── Estado / Resultados ── */
+  .status {
+    display: none;
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-size: .9rem;
+    font-weight: 500;
+    margin-top: 12px;
+    align-items: center;
+    gap: 10px;
+  }
+  .status.show { display: flex; }
+  .status.loading { background: #eff6ff; color: var(--primary); }
+  .status.success { background: #f0fdf4; color: var(--success); }
+  .status.error   { background: #fef2f2; color: var(--danger); }
+  .status.warning { background: #fffbeb; color: var(--warning); }
+
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Grid de respuestas ── */
+  .answers-grid {
+    display: none;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 12px;
+  }
+  .answers-grid.show { display: flex; }
+
+  .answer-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #f8fafc;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 7px;
+    font-size: .78rem;
+    font-weight: 600;
+    min-width: 52px;
+  }
+  .answer-chip .qnum { color: var(--muted); font-weight: 400; }
+  .answer-chip.A { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
+  .answer-chip.B { border-color: #10b981; color: #065f46; background: #f0fdf4; }
+  .answer-chip.C { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
+  .answer-chip.D { border-color: #ef4444; color: #991b1b; background: #fef2f2; }
+  .answer-chip.unknown { border-color: #cbd5e1; color: #94a3b8; background: #f1f5f9; }
+
+  /* ── Estadísticas rápidas ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .stat-box {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 12px 8px;
+    text-align: center;
+  }
+  .stat-box .val { font-size: 1.5rem; font-weight: 700; }
+  .stat-box .lbl { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+  .tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2.5px solid transparent;
+    margin-bottom: -2px;
+    transition: color .2s;
+  }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Historial ── */
+  .history-item {
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    font-size: .85rem;
+  }
+  .history-item .name { font-weight: 600; }
+  .history-item .meta { color: var(--muted); font-size: .78rem; margin-top: 3px; }
+
+  /* ── Barra de confianza ── */
+  .confidence-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .confidence-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .5s ease;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📝 Calificador OMR</h1>
+  <p>125 preguntas · Selección múltiple</p>
+</header>
+
+<main>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
+    <div class="tab" onclick="switchTab('results')">📊 Resultados</div>
+    <div class="tab" onclick="switchTab('help')">❓ Ayuda</div>
+  </div>
+
+  <!-- TAB: ESCANEAR -->
+  <div id="tab-scan" class="tab-content active">
+
+    <!-- Datos del estudiante -->
+    <div class="card">
+      <h2>👤 Datos del estudiante</h2>
+      <label for="student-name">Nombre completo</label>
+      <input type="text" id="student-name" placeholder="Ej: María García López">
+      <label for="student-id">ID / Cédula (opcional)</label>
+      <input type="text" id="student-id" placeholder="Ej: 1234567890">
+    </div>
+
+    <!-- Captura de imagen -->
+    <div class="card">
+      <h2>📷 Hoja de respuestas</h2>
+
+      <div class="capture-zone" id="capture-zone" onclick="document.getElementById('file-input').click()">
+        <div class="placeholder" id="placeholder">
+          <div class="icon">📄</div>
+          <p>Toca aquí para tomar foto o seleccionar imagen</p>
+          <small>JPG, PNG o WEBP · Máx. 16MB</small>
+        </div>
+        <img id="preview-img" style="display:none;" alt="Vista previa">
+      </div>
+
+      <input type="file" id="file-input" accept="image/*" capture="environment">
+
+      <div class="btn-group">
+        <button class="btn-camera" onclick="document.getElementById('file-input').click()">
+          📷 Cámara
+        </button>
+        <button class="btn-primary" id="btn-process" onclick="processExam()" disabled>
+          ✅ Procesar
+        </button>
+      </div>
+
+      <!-- Estado del procesamiento -->
+      <div class="status" id="status-box">
+        <div class="spinner" id="spinner"></div>
+        <span id="status-text"></span>
+      </div>
+    </div>
+
+    <!-- Resultados del escaneo -->
+    <div class="card" id="result-card" style="display:none;">
+      <h2>✅ Resultado del escaneo</h2>
+
+      <div class="stats-row" id="stats-row"></div>
+
+      <div style="margin-top:14px;">
+        <label style="margin-bottom:6px;">Confianza de lectura</label>
+        <div class="confidence-bar">
+          <div class="confidence-fill" id="confidence-fill" style="width:0%;"></div>
+        </div>
+        <small id="confidence-text" style="color:var(--muted); font-size:.78rem;"></small>
+      </div>
+
+      <div style="margin-top:14px; margin-bottom:8px; font-weight:600; font-size:.9rem;">
+        Respuestas detectadas
+      </div>
+      <div class="answers-grid show" id="answers-grid"></div>
+
+      <div class="btn-group" style="margin-top:14px;">
+        <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo examen</button>
+        <button class="btn-primary" onclick="openSheets()">📊 Ver en Sheets</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TAB: RESULTADOS -->
+  <div id="tab-results" class="tab-content">
+    <div class="card">
+      <h2>📊 Exámenes guardados</h2>
+      <button class="btn-primary" onclick="loadResults()" style="margin-bottom:14px;">
+        🔄 Cargar desde Google Sheets
+      </button>
+      <div id="results-list">
+        <p style="color:var(--muted); font-size:.85rem; text-align:center; padding:20px;">
+          Toca el botón para cargar los resultados
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: AYUDA -->
+  <div id="tab-help" class="tab-content">
+    <div class="card">
+      <h2>📌 Cómo tomar la foto</h2>
+      <div style="display:flex; flex-direction:column; gap:10px; font-size:.9rem;">
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <span style="font-size:1.5rem;">1️⃣</span>
+          <div><strong>Coloca la hoja sobre superficie plana</strong><br>
+          <span style="color:var(--muted);">Evita arrugas y dobleces</span></div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <span style="font-size:1.5rem;">2️⃣</span>
+          <div><strong>Ilumina bien</strong><br>
+          <span style="color:var(--muted);">Luz natural es ideal. Sin sombras sobre la hoja</span></div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <span style="font-size:1.5rem;">3️⃣</span>
+          <div><strong>Encuadra toda la hoja</strong><br>
+          <span style="color:var(--muted);">Los 4 marcadores negros deben verse completos</span></div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <span style="font-size:1.5rem;">4️⃣</span>
+          <div><strong>Mantén la cámara paralela</strong><br>
+          <span style="color:var(--muted);">Directamente arriba de la hoja. La app corrige ángulos leves automáticamente</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⚙️ Calibración del OMR</h2>
+      <p style="font-size:.85rem; color:var(--muted); margin-bottom:12px;">
+        Si las detecciones son incorrectas, puedes enviar una imagen de prueba para ver las detecciones visuales.
+      </p>
+      <input type="file" id="debug-input" accept="image/*" onchange="debugImage(this)">
+      <button class="btn-secondary" onclick="document.getElementById('debug-input').click()">
+        🔍 Imagen de diagnóstico
+      </button>
+      <div id="debug-result" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>🔗 Google Sheets</h2>
+      <p style="font-size:.85rem; color:var(--muted);">
+        Los datos se guardan automáticamente. Cada examen agrega una fila nueva con:<br><br>
+        <strong>Fecha · Hora · Nombre · ID · P1 … P125 · Total respondidas</strong>
+      </p>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  let currentAnswers = [];
+  let sheetsUrl = '';
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', ['scan','results','help'][i] === tab);
+    });
+    document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+  }
+
+  // ── Previsualización de imagen ────────────────────────────────────────────
+  document.getElementById('file-input').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = document.getElementById('preview-img');
+      img.src = ev.target.result;
+      img.style.display = 'block';
+      document.getElementById('placeholder').style.display = 'none';
+      document.getElementById('capture-zone').classList.add('active');
+      document.getElementById('btn-process').disabled = false;
+      // Ocultar resultado anterior
+      document.getElementById('result-card').style.display = 'none';
+      setStatus('', '');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ── Procesamiento principal ───────────────────────────────────────────────
+  async function processExam() {
+    const fileInput = document.getElementById('file-input');
+    const name = document.getElementById('student-name').value.trim();
+    const id   = document.getElementById('student-id').value.trim();
+
+    if (!fileInput.files[0]) {
+      setStatus('error', 'Por favor selecciona una imagen primero');
+      return;
+    }
+
+    if (!name) {
+      setStatus('warning', 'Se recomienda ingresar el nombre del estudiante');
+    }
+
+    setStatus('loading', 'Analizando hoja de respuestas…');
+    document.getElementById('btn-process').disabled = true;
+
+    const formData = new FormData();
+    formData.append('image', fileInput.files[0]);
+    formData.append('student_name', name || 'Sin nombre');
+    formData.append('exam_id', id);
+
+    try {
+      const resp = await fetch('/process', { method: 'POST', body: formData });
+      const data = await resp.json();
+
+      if (!data.success) {
+        setStatus('error', '❌ ' + data.error);
+        document.getElementById('btn-process').disabled = false;
+        return;
+      }
+
+      // Mostrar resultados
+      currentAnswers = data.answers;
+      sheetsUrl = data.sheets_url || '';
+
+      setStatus('success', `✅ ${data.message}`);
+      renderResults(data);
+
+    } catch (err) {
+      setStatus('error', 'Error de conexión. ¿El servidor está activo?');
+      document.getElementById('btn-process').disabled = false;
+    }
+  }
+
+  function renderResults(data) {
+    // Stats
+    const answered  = data.questions_detected;
+    const unanswered = 125 - answered;
+    const confidence = data.confidence;
+
+    document.getElementById('stats-row').innerHTML = `
+      <div class="stat-box">
+        <div class="val" style="color:var(--success)">${answered}</div>
+        <div class="lbl">Respondidas</div>
+      </div>
+      <div class="stat-box">
+        <div class="val" style="color:var(--warning)">${unanswered}</div>
+        <div class="lbl">Sin marcar</div>
+      </div>
+      <div class="stat-box">
+        <div class="val" style="color:var(--primary)">${Math.round(confidence)}%</div>
+        <div class="lbl">Confianza</div>
+      </div>
+    `;
+
+    // Barra de confianza
+    const fill = document.getElementById('confidence-fill');
+    const color = confidence >= 80 ? '#16a34a' : confidence >= 60 ? '#d97706' : '#dc2626';
+    fill.style.background = color;
+    setTimeout(() => fill.style.width = confidence + '%', 50);
+    document.getElementById('confidence-text').textContent =
+      confidence >= 80 ? 'Alta confianza — resultados confiables' :
+      confidence >= 60 ? 'Confianza media — revisa algunas respuestas' :
+      'Baja confianza — considera retomar la foto';
+
+    // Grid de respuestas
+    const grid = document.getElementById('answers-grid');
+    grid.innerHTML = data.answers.map((ans, i) => `
+      <div class="answer-chip ${ans === '?' ? 'unknown' : ans}">
+        <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
+      </div>
+    `).join('');
+
+    document.getElementById('result-card').style.display = 'block';
+    document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function setStatus(type, msg) {
+    const box = document.getElementById('status-box');
+    const spinner = document.getElementById('spinner');
+    box.className = 'status';
+    if (!type) { box.className = 'status'; return; }
+    box.classList.add('show', type);
+    spinner.style.display = type === 'loading' ? 'block' : 'none';
+    document.getElementById('status-text').textContent = msg;
+  }
+
+  function resetScan() {
+    document.getElementById('file-input').value = '';
+    document.getElementById('preview-img').style.display = 'none';
+    document.getElementById('placeholder').style.display = 'flex';
+    document.getElementById('capture-zone').classList.remove('active');
+    document.getElementById('btn-process').disabled = true;
+    document.getElementById('result-card').style.display = 'none';
+    document.getElementById('student-name').value = '';
+    document.getElementById('student-id').value = '';
+    setStatus('', '');
+  }
+
+  function openSheets() {
+    if (sheetsUrl) window.open(sheetsUrl, '_blank');
+    else alert('URL de Sheets no disponible. Configura SPREADSHEET_ID en el servidor.');
+  }
+
+  // ── Cargar resultados ─────────────────────────────────────────────────────
+  async function loadResults() {
+    const list = document.getElementById('results-list');
+    list.innerHTML = '<p style="text-align:center;padding:20px;">Cargando…</p>';
+    try {
+      const resp = await fetch('/results');
+      const data = await resp.json();
+      if (!data.success || !data.data.length) {
+        list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No hay datos todavía</p>';
+        return;
+      }
+      list.innerHTML = data.data.slice().reverse().slice(0, 50).map(row => `
+        <div class="history-item">
+          <div class="name">${row.Nombre || '—'}</div>
+          <div class="meta">
+            ID: ${row.ID_Estudiante || '—'} &nbsp;·&nbsp;
+            ${row.Fecha || ''} ${row.Hora || ''} &nbsp;·&nbsp;
+            <strong>${row.Total_Respondidas || '?'}</strong>/125 respondidas
+          </div>
+        </div>
+      `).join('');
+    } catch(e) {
+      list.innerHTML = '<p style="color:var(--danger);padding:16px;">Error cargando datos. ¿Está configurado Google Sheets?</p>';
+    }
+  }
+
+  // ── Debug de imagen ───────────────────────────────────────────────────────
+  async function debugImage(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const result = document.getElementById('debug-result');
+    result.innerHTML = '<p style="color:var(--muted)">Procesando…</p>';
+    const fd = new FormData();
+    fd.append('image', file);
+    try {
+      const resp = await fetch('/debug_image', { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (data.debug_image) {
+        result.innerHTML = `<img src="data:image/jpeg;base64,${data.debug_image}"
+          style="width:100%;border-radius:8px;margin-top:8px;" alt="Debug">
+          <p style="color:var(--muted);font-size:.8rem;margin-top:6px;">
+          Verde=burbujas detectadas, Rojo=no detectada</p>`;
+      } else {
+        result.innerHTML = `<p>Respuestas: ${JSON.stringify(data.answers)}</p>`;
+      }
+    } catch(e) {
+      result.innerHTML = '<p style="color:var(--danger)">Error</p>';
+    }
+  }
+</script>
+</body>
+</html>
