@@ -43,9 +43,9 @@ Y_STEP  = 43.83    # Píxeles entre filas consecutivas
 # ─────────────────────────────────────────────────────────────────────────────
 # PARÁMETROS DE DETECCIÓN
 # ─────────────────────────────────────────────────────────────────────────────
-BUBBLE_RADIUS  = 13     # Radio de muestreo en píxeles
-FILL_THRESHOLD = 0.08   # Fill mínimo (umbral bajo — el discriminador real es MIN_CONTRAST)
-MIN_CONTRAST   = 0.045  # Diferencia mínima entre burbuja 1ra y 2da
+BUBBLE_RADIUS  = 15     # Radio de muestreo en píxeles
+FILL_THRESHOLD = 0.07   # Fill mínimo (umbral bajo — el discriminador real es MIN_CONTRAST)
+MIN_CONTRAST   = 0.040  # Diferencia mínima entre burbuja 1ra y 2da
                         # El texto impreso produce contrast < 0.03
                         # Una marca real produce contrast > 0.06
 
