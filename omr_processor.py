@@ -5,7 +5,7 @@ Diseñado para la hoja de respuestas nueva con:
   * Burbujas OMR estilo ICFES (circulos grises, sin letra)
   * Timing marks (rectangulos negros) al inicio de cada fila
   * 4 marcadores fiduciales en las esquinas
-
+casa
 FLUJO:
   1. Detectar la hoja blanca y recortarla del fondo
   2. Detectar los 4 marcadores fiduciales → corregir perspectiva
