@@ -49,9 +49,6 @@ BUBBLE_FX = {
 # X del timing mark por columna (borde izq del rectangulo)
 TIMING_FX = {0: 0.056, 1: 0.236, 2: 0.416, 3: 0.597, 4: 0.777}
 
-# X del timing mark por columna (borde izq del rectangulo)
-TIMING_FX = {0: 0.055, 1: 0.248, 2: 0.442, 3: 0.635, 4: 0.828}
-
 # Zona vertical donde estan las respuestas
 ANSWERS_TOP_F    = 0.28
 ANSWERS_BOTTOM_F = 0.97
