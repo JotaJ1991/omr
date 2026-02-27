@@ -1,0 +1,214 @@
+\documentclass[letterpaper]{article}
+\usepackage[top=1.1cm, bottom=1.0cm, left=1.3cm, right=1.2cm]{geometry}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usepackage{multicol}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\pagestyle{empty}
+
+% ─── BURBUJA OMR ──────────────────────────────────────────────────────────────
+% Círculo gris muy claro — el estudiante lo rellena completamente con lápiz
+\newcommand{\B}{%
+  \tikz[baseline=-2pt]{%
+    \filldraw[fill=black!10, draw=black!50, line width=0.5pt]
+      (0,0) circle (4.2pt);}%
+  \hspace{2.5pt}%
+}
+
+% ─── TIMING MARK ──────────────────────────────────────────────────────────────
+% Rectángulo negro sólido al inicio de cada fila.
+% El algoritmo lo detecta para encontrar la Y exacta de cada pregunta.
+\newcommand{\TM}{%
+  \tikz[baseline=-3pt]{%
+    \fill[black] (0,-4pt) rectangle (6pt,4pt);}%
+  \hspace{3pt}%
+}
+
+% ─── FILA DE PREGUNTA ─────────────────────────────────────────────────────────
+\newcommand{\Q}[1]{%
+  \noindent\TM{\scriptsize\textbf{#1.}}\hspace{1.5pt}\B\B\B\B\par\vspace{1pt}%
+}
+
+% ─── ENCABEZADO A B C D ───────────────────────────────────────────────────────
+\newcommand{\HDR}{%
+  \noindent\hspace{12pt}%
+  {\tiny\textbf{A}}\hspace{5.5pt}%
+  {\tiny\textbf{B}}\hspace{5.5pt}%
+  {\tiny\textbf{C}}\hspace{5.5pt}%
+  {\tiny\textbf{D}}\par\vspace{2pt}%
+}
+
+% ─── BURBUJA PEQUEÑA (para grilla de ID) ──────────────────────────────────────
+\newcommand{\Bs}{%
+  \tikz[baseline=-1.5pt]{%
+    \filldraw[fill=black!10, draw=black!50, line width=0.4pt]
+      (0,0) circle (3.3pt);}%
+}
+
+% ─── COLUMNA DE DÍGITO (para grilla de identificación) ───────────────────────
+% Cada columna muestra el número del dígito y 10 burbujas (0-9)
+\newcommand{\DIG}[1]{%
+  \begin{minipage}[t]{11pt}\centering
+    \vspace{0pt}{\tiny\textbf{#1}}\par\vspace{1pt}
+    \Bs\par\vspace{0.5pt}%  0
+    \Bs\par\vspace{0.5pt}%  1
+    \Bs\par\vspace{0.5pt}%  2
+    \Bs\par\vspace{0.5pt}%  3
+    \Bs\par\vspace{0.5pt}%  4
+    \Bs\par\vspace{0.5pt}%  5
+    \Bs\par\vspace{0.5pt}%  6
+    \Bs\par\vspace{0.5pt}%  7
+    \Bs\par\vspace{0.5pt}%  8
+    \Bs\par%                9
+  \end{minipage}%
+  \hspace{2pt}%
+}
+
+% ─── MARCADOR FIDUCIAL (cuadrado negro sólido) ────────────────────────────────
+% Se colocan en las 4 esquinas de la hoja para corregir perspectiva.
+% Tamaño: 7×7 mm  — offset 8 mm desde el borde
+\newcommand{\fiducial}[2]{% #1=xshift, #2=yshift (con unidades)
+  \begin{tikzpicture}[remember picture, overlay]
+    \fill[black] (current page.#1) ++#2 rectangle ++(7mm,-7mm);
+  \end{tikzpicture}%
+}
+
+\begin{document}
+
+% ═══════════════════════════════════════════════════════════════════════════════
+%  MARCADORES FIDUCIALES — 4 esquinas
+%  Colocados con tikzpicture separados para evitar problemas de overlay
+% ═══════════════════════════════════════════════════════════════════════════════
+\begin{tikzpicture}[remember picture, overlay]
+  % Superior izquierda
+  \fill[black] ($(current page.north west)+(8mm,-8mm)$)
+    rectangle ++(7mm,-7mm);
+  % Superior derecha
+  \fill[black] ($(current page.north east)+(-8mm,-8mm)$)
+    rectangle ++(-7mm,-7mm);
+  % Inferior izquierda
+  \fill[black] ($(current page.south west)+(8mm,8mm)$)
+    rectangle ++(7mm,7mm);
+  % Inferior derecha
+  \fill[black] ($(current page.south east)+(-8mm,8mm)$)
+    rectangle ++(-7mm,7mm);
+\end{tikzpicture}
+
+% ═══════════════════════════════════════════════════════════════════════════════
+%  ENCABEZADO DE LA HOJA
+% ═══════════════════════════════════════════════════════════════════════════════
+\vspace*{8mm}   % espacio para el marcador superior
+
+\noindent
+\begin{minipage}[t]{0.57\linewidth}
+  {\large\textbf{HOJA DE RESPUESTAS}}\\[3pt]
+  {\footnotesize\textbf{Instrucción:} Rellene \textbf{completamente} la burbuja
+  con lápiz. Borre completamente si se equivoca.}\\[7pt]
+  \textbf{Nombre:}\hrulefill\\[5pt]
+  \textbf{Curso:}\underline{\hspace{2.6cm}}\quad
+  \textbf{Fecha:}\underline{\hspace{2.6cm}}
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.40\linewidth}
+  \raggedleft
+  {\footnotesize\textbf{N\'{u}mero de identificaci\'{o}n (10 d\'{i}gitos)}}\\[3pt]
+  {\tiny 0\,1\,2\,3\,4\,5\,6\,7\,8\,9\quad\textit{(marque un d\'{i}gito por columna)}}\\[2pt]
+  \DIG{1}\DIG{2}\DIG{3}\DIG{4}\DIG{5}%
+  \DIG{6}\DIG{7}\DIG{8}\DIG{9}\DIG{10}%
+\end{minipage}
+
+\vspace{4pt}
+\hrule height 0.9pt
+\vspace{2pt}
+
+% ─── Leyenda ──────────────────────────────────────────────────────────────────
+\noindent
+{\footnotesize
+\textbf{Correcto:\,}%
+\tikz[baseline=-2pt]{\filldraw[fill=black!82,draw=black](0,0)circle(4pt);}%
+\qquad
+\textbf{Incorrecto:\,}%
+\tikz[baseline=-2pt]{%
+  \filldraw[fill=black!10,draw=black!50,line width=0.4pt](0,0)circle(4pt);
+  \draw[line width=0.8pt,black!60](-2.8pt,-2.8pt)--(2.8pt,2.8pt);}%
+\hspace{4pt}%
+\tikz[baseline=-2pt]{%
+  \filldraw[fill=black!10,draw=black!50,line width=0.4pt](0,0)circle(4pt);
+  \draw[line width=0.8pt,black!60](-2.8pt,0)--(2.8pt,0);}%
+\hspace{4pt}%
+\tikz[baseline=-2pt]{%
+  \filldraw[fill=black!30,draw=black!50,line width=0.4pt](0,0)circle(4pt);}%
+\,{\tiny marca incompleta}%
+\qquad
+{\tiny\tikz[baseline=-2pt]{\fill[black](0,-3pt)rectangle(5pt,3pt);} = marca de fila (no escriba sobre ella)}%
+}
+
+\vspace{2pt}
+\hrule height 0.5pt
+\vspace{5pt}
+
+% ═══════════════════════════════════════════════════════════════════════════════
+%  BLOQUE DE RESPUESTAS
+%  5 columnas de 25 preguntas = 125 preguntas totales
+%
+%  Cada fila tiene:
+%    [TM] [nro].  ○  ○  ○  ○
+%    ^                   ^
+%    Timing mark         4 burbujas (A B C D)
+%
+%  El algoritmo OMR:
+%   1) Detecta los 4 marcadores fiduciales → corrige perspectiva
+%   2) Detecta la columna de timing marks [TM] → calibra Y de cada fila
+%   3) Lee el relleno de cada burbuja en posición X fija por columna
+%   4) La burbuja con mayor relleno = respuesta seleccionada
+% ═══════════════════════════════════════════════════════════════════════════════
+
+\begin{multicols}{5}
+
+\HDR
+\Q{1}\Q{2}\Q{3}\Q{4}\Q{5}
+\Q{6}\Q{7}\Q{8}\Q{9}\Q{10}
+\Q{11}\Q{12}\Q{13}\Q{14}\Q{15}
+\Q{16}\Q{17}\Q{18}\Q{19}\Q{20}
+\Q{21}\Q{22}\Q{23}\Q{24}\Q{25}
+
+\columnbreak
+\HDR
+\Q{26}\Q{27}\Q{28}\Q{29}\Q{30}
+\Q{31}\Q{32}\Q{33}\Q{34}\Q{35}
+\Q{36}\Q{37}\Q{38}\Q{39}\Q{40}
+\Q{41}\Q{42}\Q{43}\Q{44}\Q{45}
+\Q{46}\Q{47}\Q{48}\Q{49}\Q{50}
+
+\columnbreak
+\HDR
+\Q{51}\Q{52}\Q{53}\Q{54}\Q{55}
+\Q{56}\Q{57}\Q{58}\Q{59}\Q{60}
+\Q{61}\Q{62}\Q{63}\Q{64}\Q{65}
+\Q{66}\Q{67}\Q{68}\Q{69}\Q{70}
+\Q{71}\Q{72}\Q{73}\Q{74}\Q{75}
+
+\columnbreak
+\HDR
+\Q{76}\Q{77}\Q{78}\Q{79}\Q{80}
+\Q{81}\Q{82}\Q{83}\Q{84}\Q{85}
+\Q{86}\Q{87}\Q{88}\Q{89}\Q{90}
+\Q{91}\Q{92}\Q{93}\Q{94}\Q{95}
+\Q{96}\Q{97}\Q{98}\Q{99}\Q{100}
+
+\columnbreak
+\HDR
+\Q{101}\Q{102}\Q{103}\Q{104}\Q{105}
+\Q{106}\Q{107}\Q{108}\Q{109}\Q{110}
+\Q{111}\Q{112}\Q{113}\Q{114}\Q{115}
+\Q{116}\Q{117}\Q{118}\Q{119}\Q{120}
+\Q{121}\Q{122}\Q{123}\Q{124}\Q{125}
+
+\end{multicols}
+
+\end{document}

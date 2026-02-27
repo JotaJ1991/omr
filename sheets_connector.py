@@ -23,7 +23,7 @@ from datetime import datetime
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ID del Google Sheets (lo encuentras en la URL: docs.google.com/spreadsheets/d/ESTE_ID/edit)
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', '15erGbl2O6j7SGORYl2FbOO2wVV_r9vFzE4c304y-PUs')
+SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID', 'TU_ID_DE_SHEETS_AQUÍ')
 
 # Nombre de la hoja dentro del Sheets
 SHEET_NAME = 'Respuestas'
