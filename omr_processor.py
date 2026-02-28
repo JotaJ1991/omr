@@ -59,8 +59,8 @@ ANSWERS_BOTTOM_F = 0.97
 #   vacia  → fill ~0.05  (solo el borde del circulo)
 #   marcada con lapiz → fill ~0.50 o mas
 # ---------------------------------------------------------------------------
-BUBBLE_RADIUS  = 11
-FILL_THRESHOLD = 0.25    # fill minimo de la ganadora
+BUBBLE_RADIUS  = 9
+FILL_THRESHOLD = 0.22    # fill minimo de la ganadora
 MIN_CONTRAST   = 0.12    # contraste minimo fill_max - fill_2do
 
 
