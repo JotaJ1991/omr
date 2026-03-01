@@ -1,5 +1,6 @@
 """
-OMR App  —  Calificador de exámenes de selección múltiple
+OMR App  —  Calificador JMR
+Flujo: procesar (solo detección) → complementar fotos → guardar (Sheets)
 """
 import os
 import json
@@ -25,35 +26,23 @@ def allowed_file(f):
     return '.' in f and f.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def active_sheet():
-    """Hoja activa guardada en sesión. Persiste entre escaneos."""
     return session.get('active_sheet', DEFAULT_SHEET)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RUTAS PRINCIPALES
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Hojas ─────────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-
 @app.route('/active_sheet', methods=['GET'])
 def get_active_sheet():
-    """Devuelve la hoja activa y la lista completa de hojas."""
-    try:
-        sheets = list_sheets()
-    except Exception as e:
-        sheets = []
-    return jsonify({
-        'active': active_sheet(),
-        'sheets': sheets
-    })
-
+    try:    sheets = list_sheets()
+    except: sheets = []
+    return jsonify({'active': active_sheet(), 'sheets': sheets})
 
 @app.route('/active_sheet', methods=['POST'])
 def set_active_sheet():
-    """Cambia la hoja activa (persiste en sesión)."""
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
     if not name:
@@ -62,24 +51,17 @@ def set_active_sheet():
     session.modified = True
     return jsonify({'success': True, 'active': name})
 
-
 @app.route('/sheets', methods=['GET'])
 def sheets_list():
-    """Lista todas las pestañas del Spreadsheet."""
-    try:
-        return jsonify({'success': True, 'sheets': list_sheets()})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
+    try:    return jsonify({'success': True, 'sheets': list_sheets()})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/sheets', methods=['POST'])
 def sheets_create():
-    """Crea una nueva pestaña y la activa automáticamente."""
     data = request.get_json(silent=True) or {}
     name = data.get('name', '').strip()
     if not name:
         return jsonify({'success': False, 'error': 'Nombre vacío'}), 400
-
     result = create_sheet(name)
     if result['success']:
         session['active_sheet'] = name
@@ -88,55 +70,117 @@ def sheets_create():
     return jsonify(result)
 
 
+# ── Procesar imagen (SIN guardar en Sheets) ───────────────────────────────────
+
 @app.route('/process', methods=['POST'])
 def process():
+    """
+    Solo detecta respuestas. NO guarda en Sheets.
+    Acepta 'current_answers' (JSON) con las respuestas ya acumuladas
+    de fotos anteriores. Combina: los '?' se rellenan con la foto nueva.
+    """
     if 'image' not in request.files:
         return jsonify({'success': False, 'error': 'No se recibió imagen'}), 400
 
-    file         = request.files['image']
-    student_name = request.form.get('student_name', 'Sin nombre')
-    exam_id      = request.form.get('exam_id', '')
-    sheet_name   = request.form.get('sheet_name', active_sheet())
-
+    file = request.files['image']
     if not file.filename or not allowed_file(file.filename):
         return jsonify({'success': False,
                         'error': 'Formato no soportado. Usa JPG, PNG o WEBP'}), 400
+
+    # Respuestas acumuladas de fotos anteriores (pueden llegar vacías)
+    current_raw = request.form.get('current_answers', '')
+    try:
+        current = json.loads(current_raw) if current_raw else []
+    except Exception:
+        current = []
+
     try:
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
         result = process_exam_image(filepath)
+        os.remove(filepath)
+
         if not result['success']:
             return jsonify({'success': False, 'error': result['error']}), 422
 
-        answers    = result['answers']
-        confidence = result['confidence']
+        new_answers = result['answers']   # lista de 125
 
-        sheets_result = save_to_sheets(
-            student_name=student_name,
-            exam_id=exam_id,
-            answers=answers,
-            sheet_name=sheet_name
-        )
-        os.remove(filepath)
+        # Combinar: mantener respuesta existente si no es '?',
+        # completar con la nueva foto donde había '?'
+        if current and len(current) == 125:
+            merged   = current[:]
+            filled   = []   # índices que se completaron en esta foto
+            for i in range(125):
+                if merged[i] == '?' and new_answers[i] != '?':
+                    merged[i] = new_answers[i]
+                    filled.append(i + 1)   # número de pregunta (1-based)
+        else:
+            merged = new_answers
+            filled = [i + 1 for i, a in enumerate(merged) if a != '?']
 
-        detected = len([a for a in answers if a != '?'])
+        detected   = len([a for a in merged if a != '?'])
+        missing    = 125 - detected
+        new_filled = len(filled) if current else 0   # solo cuenta las nuevas en fotos extra
+
         return jsonify({
-            'success':            True,
-            'answers':            answers,
-            'confidence':         confidence,
-            'questions_detected': detected,
-            'sheet_name':         sheet_name,
-            'sheets_url':         sheets_result.get('url'),
-            'message': f'Examen procesado en "{sheet_name}". '
-                       f'{detected}/125 preguntas detectadas.'
+            'success':    True,
+            'answers':    merged,
+            'confidence': result['confidence'],
+            'detected':   detected,
+            'missing':    missing,
+            'new_filled': new_filled,   # cuántas se rescataron en esta foto extra
+            'filled_qs':  filled[:20],  # primeras 20 para el aviso (no spamear)
         })
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error interno: {str(e)}'}), 500
 
+
+# ── Guardar en Sheets (autorizado por el usuario) ─────────────────────────────
+
+@app.route('/save', methods=['POST'])
+def save():
+    """
+    Recibe el acumulado final de respuestas y lo guarda en Sheets.
+    """
+    data = request.get_json(silent=True) or {}
+
+    student_name = data.get('student_name', '').strip()
+    exam_id      = data.get('exam_id', '').strip()
+    answers      = data.get('answers', [])
+    sheet_name   = data.get('sheet_name', active_sheet())
+
+    if not student_name:
+        return jsonify({'success': False,
+                        'error': 'El nombre del estudiante es obligatorio.'}), 400
+    if len(answers) != 125:
+        return jsonify({'success': False,
+                        'error': 'Se requieren exactamente 125 respuestas.'}), 400
+
+    try:
+        sheets_result = save_to_sheets(
+            student_name=student_name,
+            exam_id=exam_id,
+            answers=answers,
+            sheet_name=sheet_name
+        )
+        detected = len([a for a in answers if a != '?'])
+        return jsonify({
+            'success':    True,
+            'row':        sheets_result.get('row'),
+            'sheets_url': sheets_result.get('url'),
+            'detected':   detected,
+            'message':    f'Guardado en "{sheet_name}" — {detected}/125 preguntas.'
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error al guardar: {str(e)}'}), 500
+
+
+# ── Resultados ────────────────────────────────────────────────────────────────
 
 @app.route('/results')
 def results():
@@ -157,9 +201,9 @@ def debug_image():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'debug_' + filename)
     file.save(filepath)
 
-    result       = process_exam_image(filepath, debug=True)
-    debug_path   = filepath.rsplit('.', 1)[0] + '_debug.jpg'
-    img_b64      = None
+    result     = process_exam_image(filepath, debug=True)
+    debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
+    img_b64    = None
 
     if os.path.exists(debug_path):
         with open(debug_path, 'rb') as f:
