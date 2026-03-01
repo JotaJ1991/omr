@@ -18,171 +18,127 @@
     --border: #e2e8f0;
     --radius: 12px;
   }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: var(--bg); color: var(--text); min-height: 100vh; }
 
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-  }
-
-  header {
-    background: var(--primary);
-    color: white;
-    padding: 16px 20px;
-    text-align: center;
-    box-shadow: 0 2px 8px rgba(37,99,235,.4);
-  }
+  header { background: var(--primary); color: white; padding: 16px 20px;
+           text-align: center; box-shadow: 0 2px 8px rgba(37,99,235,.4); }
   header h1 { font-size: 1.3rem; font-weight: 700; }
   header p  { font-size: .8rem; opacity: .85; margin-top: 2px; }
 
   main { max-width: 600px; margin: 0 auto; padding: 16px; }
 
-  .card {
-    background: var(--card);
-    border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.08);
-  }
+  .card { background: var(--card); border-radius: var(--radius); padding: 20px;
+          margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px;
+             display: flex; align-items: center; gap: 8px; }
 
-  .card h2 {
-    font-size: 1rem;
-    font-weight: 600;
+  label { display: block; font-size: .85rem; font-weight: 500;
+          margin-bottom: 5px; color: var(--muted); }
+
+  input[type="text"], select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: .95rem; margin-bottom: 12px;
+    transition: border-color .2s; background: white; color: var(--text);
+    appearance: none; -webkit-appearance: none;
+  }
+  input[type="text"]:focus, select:focus {
+    outline: none; border-color: var(--primary); }
+
+  /* ── Selector de hoja ── */
+  .sheet-selector {
+    display: flex; gap: 8px; align-items: stretch; margin-bottom: 12px;
+  }
+  .sheet-selector select { margin-bottom: 0; flex: 1;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    padding-right: 32px;
+  }
+  .btn-icon { padding: 10px 12px; border: 1.5px solid var(--border);
+              border-radius: 8px; background: white; cursor: pointer;
+              font-size: 1.1rem; transition: border-color .2s, background .2s;
+              display: flex; align-items: center; }
+  .btn-icon:hover { border-color: var(--primary); background: #eff6ff; }
+
+  /* Modal nueva hoja */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: white; border-radius: var(--radius); padding: 24px;
+    width: min(400px, calc(100vw - 32px)); box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  }
+  .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
+  .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
+
+  /* Badge hoja activa */
+  .sheet-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #eff6ff; color: var(--primary);
+    border: 1.5px solid #bfdbfe; border-radius: 99px;
+    padding: 4px 12px; font-size: .8rem; font-weight: 600;
     margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
   }
+  .sheet-badge .dot { width: 7px; height: 7px; border-radius: 50%;
+                      background: var(--primary); }
 
-  label { display: block; font-size: .85rem; font-weight: 500; margin-bottom: 5px; color: var(--muted); }
-
-  input[type="text"] {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1.5px solid var(--border);
-    border-radius: 8px;
-    font-size: .95rem;
-    margin-bottom: 12px;
-    transition: border-color .2s;
-  }
-  input[type="text"]:focus {
-    outline: none;
-    border-color: var(--primary);
-  }
-
-  /* ── Zona de captura de imagen ── */
+  /* ── Capture zone ── */
   .capture-zone {
-    border: 2.5px dashed var(--border);
-    border-radius: var(--radius);
-    min-height: 200px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    cursor: pointer;
-    transition: border-color .2s, background .2s;
-    position: relative;
-    overflow: hidden;
-    background: #f8fafc;
+    border: 2.5px dashed var(--border); border-radius: var(--radius);
+    min-height: 200px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    cursor: pointer; transition: border-color .2s, background .2s;
+    position: relative; overflow: hidden; background: #f8fafc;
   }
   .capture-zone:hover  { border-color: var(--primary); background: #eff6ff; }
   .capture-zone.active { border-color: var(--primary); border-style: solid; }
-
-  .capture-zone img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    border-radius: calc(var(--radius) - 2px);
-  }
-
-  .capture-zone .placeholder {
-    text-align: center;
-    color: var(--muted);
-    padding: 20px;
-  }
+  .capture-zone img { width: 100%; height: 100%; object-fit: contain;
+                      border-radius: calc(var(--radius) - 2px); }
+  .capture-zone .placeholder { text-align: center; color: var(--muted); padding: 20px; }
   .capture-zone .placeholder .icon { font-size: 3rem; margin-bottom: 8px; }
   .capture-zone .placeholder p    { font-size: .9rem; }
   .capture-zone .placeholder small { font-size: .75rem; opacity: .7; }
-
   input[type="file"] { display: none; }
 
   /* ── Botones ── */
   .btn-group { display: flex; gap: 10px; margin-top: 14px; }
-
-  button {
-    flex: 1;
-    padding: 13px;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity .15s, transform .1s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
+  button { flex: 1; padding: 13px; border: none; border-radius: 8px;
+           font-size: 1rem; font-weight: 600; cursor: pointer;
+           transition: opacity .15s, transform .1s;
+           display: flex; align-items: center; justify-content: center; gap: 6px; }
   button:active { transform: scale(.97); }
   button:disabled { opacity: .5; cursor: not-allowed; }
-
-  .btn-primary  { background: var(--primary); color: white; }
-  .btn-primary:hover:not(:disabled)  { background: var(--primary-dark); }
+  .btn-primary   { background: var(--primary); color: white; }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
   .btn-secondary { background: var(--border); color: var(--text); }
-  .btn-camera   { background: #0f172a; color: white; }
+  .btn-camera    { background: #0f172a; color: white; }
+  .btn-success   { background: var(--success); color: white; }
 
-  /* ── Estado / Resultados ── */
-  .status {
-    display: none;
-    padding: 14px 16px;
-    border-radius: 8px;
-    font-size: .9rem;
-    font-weight: 500;
-    margin-top: 12px;
-    align-items: center;
-    gap: 10px;
-  }
-  .status.show { display: flex; }
+  /* ── Status ── */
+  .status { display: none; padding: 14px 16px; border-radius: 8px;
+            font-size: .9rem; font-weight: 500; margin-top: 12px;
+            align-items: center; gap: 10px; }
+  .status.show    { display: flex; }
   .status.loading { background: #eff6ff; color: var(--primary); }
   .status.success { background: #f0fdf4; color: var(--success); }
   .status.error   { background: #fef2f2; color: var(--danger); }
   .status.warning { background: #fffbeb; color: var(--warning); }
-
-  .spinner {
-    width: 20px; height: 20px;
-    border: 2.5px solid currentColor;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-    flex-shrink: 0;
-  }
+  .spinner { width: 20px; height: 20px; border: 2.5px solid currentColor;
+             border-top-color: transparent; border-radius: 50%;
+             animation: spin .7s linear infinite; flex-shrink: 0; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Grid de respuestas ── */
-  .answers-grid {
-    display: none;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 12px;
-  }
+  /* ── Grid respuestas ── */
+  .answers-grid { display: none; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
   .answers-grid.show { display: flex; }
-
-  .answer-chip {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: #f8fafc;
-    border: 1.5px solid var(--border);
-    border-radius: 6px;
-    padding: 3px 7px;
-    font-size: .78rem;
-    font-weight: 600;
-    min-width: 52px;
-  }
+  .answer-chip { display: flex; align-items: center; gap: 4px;
+                 background: #f8fafc; border: 1.5px solid var(--border);
+                 border-radius: 6px; padding: 3px 7px; font-size: .78rem;
+                 font-weight: 600; min-width: 52px; }
   .answer-chip .qnum { color: var(--muted); font-weight: 400; }
   .answer-chip.A { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
   .answer-chip.B { border-color: #10b981; color: #065f46; background: #f0fdf4; }
@@ -190,65 +146,39 @@
   .answer-chip.D { border-color: #ef4444; color: #991b1b; background: #fef2f2; }
   .answer-chip.unknown { border-color: #cbd5e1; color: #94a3b8; background: #f1f5f9; }
 
-  /* ── Estadísticas rápidas ── */
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 14px;
-  }
-  .stat-box {
-    background: #f8fafc;
-    border-radius: 8px;
-    padding: 12px 8px;
-    text-align: center;
-  }
+  /* ── Stats ── */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr);
+               gap: 10px; margin-top: 14px; }
+  .stat-box { background: #f8fafc; border-radius: 8px; padding: 12px 8px; text-align: center; }
   .stat-box .val { font-size: 1.5rem; font-weight: 700; }
   .stat-box .lbl { font-size: .72rem; color: var(--muted); margin-top: 2px; }
 
+  .confidence-bar  { height: 6px; background: var(--border);
+                     border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .confidence-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
+
   /* ── Tabs ── */
   .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
-  .tab {
-    flex: 1;
-    padding: 10px;
-    text-align: center;
-    font-size: .85rem;
-    font-weight: 600;
-    cursor: pointer;
-    color: var(--muted);
-    border-bottom: 2.5px solid transparent;
-    margin-bottom: -2px;
-    transition: color .2s;
-  }
+  .tab  { flex: 1; padding: 10px; text-align: center; font-size: .85rem;
+          font-weight: 600; cursor: pointer; color: var(--muted);
+          border-bottom: 2.5px solid transparent; margin-bottom: -2px;
+          transition: color .2s; }
   .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-
   .tab-content { display: none; }
   .tab-content.active { display: block; }
 
   /* ── Historial ── */
-  .history-item {
-    border: 1.5px solid var(--border);
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 8px;
-    font-size: .85rem;
-  }
+  .history-item { border: 1.5px solid var(--border); border-radius: 8px;
+                  padding: 12px; margin-bottom: 8px; font-size: .85rem; }
   .history-item .name { font-weight: 600; }
   .history-item .meta { color: var(--muted); font-size: .78rem; margin-top: 3px; }
 
-  /* ── Barra de confianza ── */
-  .confidence-bar {
-    height: 6px;
-    background: var(--border);
-    border-radius: 99px;
-    margin-top: 8px;
-    overflow: hidden;
+  /* ── Select resultados ── */
+  .results-sheet-bar {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
   }
-  .confidence-fill {
-    height: 100%;
-    border-radius: 99px;
-    transition: width .5s ease;
-  }
+  .results-sheet-bar select { margin-bottom: 0; flex: 1; }
+  .results-sheet-bar button { flex: none; padding: 10px 16px; font-size: .85rem; }
 </style>
 </head>
 <body>
@@ -263,14 +193,34 @@
   <!-- TABS -->
   <div class="tabs">
     <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
-    <div class="tab" onclick="switchTab('results')">📊 Resultados</div>
+    <div class="tab" onclick="switchTab('results'); loadResults()">📊 Resultados</div>
     <div class="tab" onclick="switchTab('help')">❓ Ayuda</div>
   </div>
 
   <!-- TAB: ESCANEAR -->
   <div id="tab-scan" class="tab-content active">
 
-    <!-- Datos del estudiante -->
+    <!-- ① Selector de hoja -->
+    <div class="card">
+      <h2>📋 Curso / Grupo</h2>
+
+      <!-- Badge hoja activa -->
+      <div class="sheet-badge" id="active-badge">
+        <span class="dot"></span>
+        <span id="active-badge-text">Cargando…</span>
+      </div>
+
+      <label>Seleccionar hoja existente</label>
+      <div class="sheet-selector">
+        <select id="sheet-select" onchange="selectSheet(this.value)">
+          <option value="">— cargando hojas —</option>
+        </select>
+        <button class="btn-icon" title="Recargar hojas" onclick="loadSheets()">🔄</button>
+        <button class="btn-icon" title="Nueva hoja" onclick="showNewSheetModal()">➕</button>
+      </div>
+    </div>
+
+    <!-- ② Datos del estudiante -->
     <div class="card">
       <h2>👤 Datos del estudiante</h2>
       <label for="student-name">Nombre completo</label>
@@ -279,11 +229,11 @@
       <input type="text" id="student-id" placeholder="Ej: 1234567890">
     </div>
 
-    <!-- Captura de imagen -->
+    <!-- ③ Captura -->
     <div class="card">
       <h2>📷 Hoja de respuestas</h2>
-
-      <div class="capture-zone" id="capture-zone" onclick="document.getElementById('file-input').click()">
+      <div class="capture-zone" id="capture-zone"
+           onclick="document.getElementById('file-input').click()">
         <div class="placeholder" id="placeholder">
           <div class="icon">📄</div>
           <p>Toca aquí para tomar foto o seleccionar imagen</p>
@@ -291,9 +241,7 @@
         </div>
         <img id="preview-img" style="display:none;" alt="Vista previa">
       </div>
-
       <input type="file" id="file-input" accept="image/*" capture="environment">
-
       <div class="btn-group">
         <button class="btn-camera" onclick="document.getElementById('file-input').click()">
           📷 Cámara
@@ -302,15 +250,13 @@
           ✅ Procesar
         </button>
       </div>
-
-      <!-- Estado del procesamiento -->
       <div class="status" id="status-box">
         <div class="spinner" id="spinner"></div>
         <span id="status-text"></span>
       </div>
     </div>
 
-    <!-- Resultados del escaneo -->
+    <!-- Resultados escaneo -->
     <div class="card" id="result-card" style="display:none;">
       <h2>✅ Resultado del escaneo</h2>
 
@@ -330,23 +276,28 @@
       <div class="answers-grid show" id="answers-grid"></div>
 
       <div class="btn-group" style="margin-top:14px;">
-        <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo examen</button>
-        <button class="btn-primary" onclick="openSheets()">📊 Ver en Sheets</button>
+        <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo escaneo</button>
+        <button class="btn-primary"   onclick="openSheets()">📊 Ver en Sheets</button>
       </div>
     </div>
 
-  </div>
+  </div><!-- /tab-scan -->
 
   <!-- TAB: RESULTADOS -->
   <div id="tab-results" class="tab-content">
     <div class="card">
       <h2>📊 Exámenes guardados</h2>
-      <button class="btn-primary" onclick="loadResults()" style="margin-bottom:14px;">
-        🔄 Cargar desde Google Sheets
-      </button>
+
+      <div class="results-sheet-bar">
+        <select id="results-sheet-select" onchange="loadResults()">
+          <option value="">— selecciona hoja —</option>
+        </select>
+        <button class="btn-primary" onclick="loadResults()">🔄 Cargar</button>
+      </div>
+
       <div id="results-list">
-        <p style="color:var(--muted); font-size:.85rem; text-align:center; padding:20px;">
-          Toca el botón para cargar los resultados
+        <p style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;">
+          Selecciona una hoja y toca Cargar
         </p>
       </div>
     </div>
@@ -356,34 +307,34 @@
   <div id="tab-help" class="tab-content">
     <div class="card">
       <h2>📌 Cómo tomar la foto</h2>
-      <div style="display:flex; flex-direction:column; gap:10px; font-size:.9rem;">
-        <div style="display:flex; gap:10px; align-items:flex-start;">
+      <div style="display:flex;flex-direction:column;gap:12px;font-size:.9rem;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">1️⃣</span>
           <div><strong>Coloca la hoja sobre superficie plana</strong><br>
           <span style="color:var(--muted);">Evita arrugas y dobleces</span></div>
         </div>
-        <div style="display:flex; gap:10px; align-items:flex-start;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">2️⃣</span>
           <div><strong>Ilumina bien</strong><br>
           <span style="color:var(--muted);">Luz natural es ideal. Sin sombras sobre la hoja</span></div>
         </div>
-        <div style="display:flex; gap:10px; align-items:flex-start;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">3️⃣</span>
           <div><strong>Encuadra toda la hoja</strong><br>
           <span style="color:var(--muted);">Los 4 marcadores negros deben verse completos</span></div>
         </div>
-        <div style="display:flex; gap:10px; align-items:flex-start;">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">4️⃣</span>
           <div><strong>Mantén la cámara paralela</strong><br>
-          <span style="color:var(--muted);">Directamente arriba de la hoja. La app corrige ángulos leves automáticamente</span></div>
+          <span style="color:var(--muted);">Directamente arriba. La app corrige ángulos leves</span></div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2>⚙️ Calibración del OMR</h2>
-      <p style="font-size:.85rem; color:var(--muted); margin-bottom:12px;">
-        Si las detecciones son incorrectas, puedes enviar una imagen de prueba para ver las detecciones visuales.
+      <h2>⚙️ Diagnóstico OMR</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+        Envía una imagen para ver las detecciones visuales.
       </p>
       <input type="file" id="debug-input" accept="image/*" onchange="debugImage(this)">
       <button class="btn-secondary" onclick="document.getElementById('debug-input').click()">
@@ -394,20 +345,45 @@
 
     <div class="card">
       <h2>🔗 Google Sheets</h2>
-      <p style="font-size:.85rem; color:var(--muted);">
-        Los datos se guardan automáticamente. Cada examen agrega una fila nueva con:<br><br>
-        <strong>Fecha · Hora · Nombre · ID · P1 … P125 · Total respondidas</strong>
+      <p style="font-size:.85rem;color:var(--muted);">
+        Cada escaneo agrega una fila con:<br><br>
+        <strong>Fecha · Hora · Nombre · ID · P1…P125 · Total respondidas</strong><br><br>
+        Usa el selector <strong>Curso / Grupo</strong> para separar los resultados
+        por curso, grado o cualquier agrupación que necesites.
+        La hoja seleccionada se recuerda hasta que la cambies manualmente.
       </p>
     </div>
   </div>
 
 </main>
 
+<!-- Modal nueva hoja -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>➕ Nueva hoja</h3>
+    <label>Nombre del curso o grupo</label>
+    <input type="text" id="new-sheet-name"
+           placeholder="Ej: Grado 10A, Matemáticas, Grupo 3…"
+           onkeydown="if(event.key==='Enter') createNewSheet()">
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="hideNewSheetModal()">Cancelar</button>
+      <button class="btn-success"   onclick="createNewSheet()">✅ Crear y seleccionar</button>
+    </div>
+    <div id="modal-error" style="color:var(--danger);font-size:.85rem;margin-top:10px;display:none;"></div>
+  </div>
+</div>
+
 <script>
   let currentAnswers = [];
   let sheetsUrl = '';
+  let activeSheetName = '';
 
-  // ── Tabs ──────────────────────────────────────────────────────────────────
+  // ── Inicialización ─────────────────────────────────────────────────────────
+  (async function init() {
+    await loadSheets();
+  })();
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
   function switchTab(tab) {
     document.querySelectorAll('.tab').forEach((t, i) => {
       t.classList.toggle('active', ['scan','results','help'][i] === tab);
@@ -416,11 +392,123 @@
     document.getElementById('tab-' + tab).classList.add('active');
   }
 
-  // ── Previsualización de imagen ────────────────────────────────────────────
+  // ── Gestión de hojas ───────────────────────────────────────────────────────
+  async function loadSheets() {
+    try {
+      const resp = await fetch('/active_sheet');
+      const data = await resp.json();
+
+      activeSheetName = data.active;
+      updateActiveBadge(activeSheetName);
+
+      // Selector de la tab de escaneo
+      const sel = document.getElementById('sheet-select');
+      sel.innerHTML = data.sheets.length
+        ? data.sheets.map(s =>
+            `<option value="${s}" ${s === activeSheetName ? 'selected' : ''}>${s}</option>`
+          ).join('')
+        : '<option value="">— sin hojas —</option>';
+
+      // Selector de la tab de resultados
+      const rsel = document.getElementById('results-sheet-select');
+      rsel.innerHTML = data.sheets.length
+        ? data.sheets.map(s =>
+            `<option value="${s}" ${s === activeSheetName ? 'selected' : ''}>${s}</option>`
+          ).join('')
+        : '<option value="">— sin hojas —</option>';
+
+    } catch(e) {
+      console.error('Error cargando hojas:', e);
+    }
+  }
+
+  function updateActiveBadge(name) {
+    document.getElementById('active-badge-text').textContent =
+      name ? `Guardando en: ${name}` : 'Sin hoja seleccionada';
+  }
+
+  async function selectSheet(name) {
+    if (!name) return;
+    try {
+      const resp = await fetch('/active_sheet', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})
+      });
+      const data = await resp.json();
+      if (data.success) {
+        activeSheetName = name;
+        updateActiveBadge(name);
+        // Sincronizar selector de resultados
+        document.getElementById('results-sheet-select').value = name;
+      }
+    } catch(e) {
+      console.error('Error cambiando hoja:', e);
+    }
+  }
+
+  // ── Modal nueva hoja ───────────────────────────────────────────────────────
+  function showNewSheetModal() {
+    document.getElementById('new-sheet-name').value = '';
+    document.getElementById('modal-error').style.display = 'none';
+    document.getElementById('modal-overlay').classList.add('show');
+    setTimeout(() => document.getElementById('new-sheet-name').focus(), 100);
+  }
+
+  function hideNewSheetModal() {
+    document.getElementById('modal-overlay').classList.remove('show');
+  }
+
+  async function createNewSheet() {
+    const name = document.getElementById('new-sheet-name').value.trim();
+    const errEl = document.getElementById('modal-error');
+
+    if (!name) {
+      errEl.textContent = 'Escribe un nombre para la hoja.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    const btn = document.querySelector('#modal-overlay .btn-success');
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+    errEl.style.display = 'none';
+
+    try {
+      const resp = await fetch('/sheets', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})
+      });
+      const data = await resp.json();
+
+      if (data.success) {
+        activeSheetName = data.active;
+        hideNewSheetModal();
+        await loadSheets();           // Recargar lista con la nueva hoja
+        updateActiveBadge(activeSheetName);
+      } else {
+        errEl.textContent = data.error || 'Error al crear la hoja.';
+        errEl.style.display = 'block';
+      }
+    } catch(e) {
+      errEl.textContent = 'Error de conexión.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✅ Crear y seleccionar';
+    }
+  }
+
+  // Cerrar modal al tocar el fondo
+  document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) hideNewSheetModal();
+  });
+
+  // ── Previsualización ────────────────────────────────────────────────────────
   document.getElementById('file-input').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = document.getElementById('preview-img');
@@ -429,38 +517,38 @@
       document.getElementById('placeholder').style.display = 'none';
       document.getElementById('capture-zone').classList.add('active');
       document.getElementById('btn-process').disabled = false;
-      // Ocultar resultado anterior
       document.getElementById('result-card').style.display = 'none';
       setStatus('', '');
     };
     reader.readAsDataURL(file);
   });
 
-  // ── Procesamiento principal ───────────────────────────────────────────────
+  // ── Procesamiento ───────────────────────────────────────────────────────────
   async function processExam() {
     const fileInput = document.getElementById('file-input');
-    const name = document.getElementById('student-name').value.trim();
-    const id   = document.getElementById('student-id').value.trim();
+    const name      = document.getElementById('student-name').value.trim();
+    const id        = document.getElementById('student-id').value.trim();
 
     if (!fileInput.files[0]) {
       setStatus('error', 'Por favor selecciona una imagen primero');
       return;
     }
-
-    if (!name) {
-      setStatus('warning', 'Se recomienda ingresar el nombre del estudiante');
+    if (!activeSheetName) {
+      setStatus('error', 'Selecciona o crea una hoja antes de procesar');
+      return;
     }
 
-    setStatus('loading', 'Analizando hoja de respuestas…');
+    setStatus('loading', `Analizando hoja… guardando en "${activeSheetName}"`);
     document.getElementById('btn-process').disabled = true;
 
-    const formData = new FormData();
-    formData.append('image', fileInput.files[0]);
-    formData.append('student_name', name || 'Sin nombre');
-    formData.append('exam_id', id);
+    const fd = new FormData();
+    fd.append('image',        fileInput.files[0]);
+    fd.append('student_name', name || 'Sin nombre');
+    fd.append('exam_id',      id);
+    fd.append('sheet_name',   activeSheetName);
 
     try {
-      const resp = await fetch('/process', { method: 'POST', body: formData });
+      const resp = await fetch('/process', { method: 'POST', body: fd });
       const data = await resp.json();
 
       if (!data.success) {
@@ -469,22 +557,19 @@
         return;
       }
 
-      // Mostrar resultados
       currentAnswers = data.answers;
-      sheetsUrl = data.sheets_url || '';
-
+      sheetsUrl      = data.sheets_url || '';
       setStatus('success', `✅ ${data.message}`);
       renderResults(data);
 
-    } catch (err) {
+    } catch(err) {
       setStatus('error', 'Error de conexión. ¿El servidor está activo?');
       document.getElementById('btn-process').disabled = false;
     }
   }
 
   function renderResults(data) {
-    // Stats
-    const answered  = data.questions_detected;
+    const answered   = data.questions_detected;
     const unanswered = 125 - answered;
     const confidence = data.confidence;
 
@@ -500,26 +585,28 @@
       <div class="stat-box">
         <div class="val" style="color:var(--primary)">${Math.round(confidence)}%</div>
         <div class="lbl">Confianza</div>
-      </div>
-    `;
+      </div>`;
 
-    // Barra de confianza
-    const fill = document.getElementById('confidence-fill');
+    const fill  = document.getElementById('confidence-fill');
     const color = confidence >= 80 ? '#16a34a' : confidence >= 60 ? '#d97706' : '#dc2626';
     fill.style.background = color;
     setTimeout(() => fill.style.width = confidence + '%', 50);
     document.getElementById('confidence-text').textContent =
       confidence >= 80 ? 'Alta confianza — resultados confiables' :
       confidence >= 60 ? 'Confianza media — revisa algunas respuestas' :
-      'Baja confianza — considera retomar la foto';
+                         'Baja confianza — considera retomar la foto';
 
-    // Grid de respuestas
     const grid = document.getElementById('answers-grid');
     grid.innerHTML = data.answers.map((ans, i) => `
       <div class="answer-chip ${ans === '?' ? 'unknown' : ans}">
         <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
-      </div>
-    `).join('');
+      </div>`).join('');
+
+    // Mostrar hoja usada en el resultado
+    if (data.sheet_name) {
+      const h2 = document.querySelector('#result-card h2');
+      h2.innerHTML = `✅ Resultado — <span style="color:var(--primary);font-size:.85rem;">${data.sheet_name}</span>`;
+    }
 
     document.getElementById('result-card').style.display = 'block';
     document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
@@ -527,11 +614,10 @@
 
   function setStatus(type, msg) {
     const box = document.getElementById('status-box');
-    const spinner = document.getElementById('spinner');
     box.className = 'status';
-    if (!type) { box.className = 'status'; return; }
+    if (!type) return;
     box.classList.add('show', type);
-    spinner.style.display = type === 'loading' ? 'block' : 'none';
+    document.getElementById('spinner').style.display = type === 'loading' ? 'block' : 'none';
     document.getElementById('status-text').textContent = msg;
   }
 
@@ -549,18 +635,25 @@
 
   function openSheets() {
     if (sheetsUrl) window.open(sheetsUrl, '_blank');
-    else alert('URL de Sheets no disponible. Configura SPREADSHEET_ID en el servidor.');
+    else alert('URL no disponible. Configura SPREADSHEET_ID en el servidor.');
   }
 
-  // ── Cargar resultados ─────────────────────────────────────────────────────
+  // ── Resultados por hoja ────────────────────────────────────────────────────
   async function loadResults() {
+    const sel  = document.getElementById('results-sheet-select');
+    const name = sel.value || activeSheetName;
+    if (!name) return;
+
     const list = document.getElementById('results-list');
     list.innerHTML = '<p style="text-align:center;padding:20px;">Cargando…</p>';
+
     try {
-      const resp = await fetch('/results');
+      const resp = await fetch(`/results?sheet=${encodeURIComponent(name)}`);
       const data = await resp.json();
+
       if (!data.success || !data.data.length) {
-        list.innerHTML = '<p style="color:var(--muted);text-align:center;padding:20px;">No hay datos todavía</p>';
+        list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:20px;">
+          No hay datos en la hoja "${name}"</p>`;
         return;
       }
       list.innerHTML = data.data.slice().reverse().slice(0, 50).map(row => `
@@ -569,16 +662,16 @@
           <div class="meta">
             ID: ${row.ID_Estudiante || '—'} &nbsp;·&nbsp;
             ${row.Fecha || ''} ${row.Hora || ''} &nbsp;·&nbsp;
-            <strong>${row.Total_Respondidas || '?'}</strong>/125 respondidas
+            <strong>${row.Total_Respondidas ?? '?'}</strong>/125 respondidas
           </div>
-        </div>
-      `).join('');
+        </div>`).join('');
     } catch(e) {
-      list.innerHTML = '<p style="color:var(--danger);padding:16px;">Error cargando datos. ¿Está configurado Google Sheets?</p>';
+      list.innerHTML = `<p style="color:var(--danger);padding:16px;">
+        Error cargando datos. ¿Está configurado Google Sheets?</p>`;
     }
   }
 
-  // ── Debug de imagen ───────────────────────────────────────────────────────
+  // ── Debug imagen ───────────────────────────────────────────────────────────
   async function debugImage(input) {
     const file = input.files[0];
     if (!file) return;
@@ -593,12 +686,12 @@
         result.innerHTML = `<img src="data:image/jpeg;base64,${data.debug_image}"
           style="width:100%;border-radius:8px;margin-top:8px;" alt="Debug">
           <p style="color:var(--muted);font-size:.8rem;margin-top:6px;">
-          Verde=burbujas detectadas, Rojo=no detectada</p>`;
+          Verde=A  Azul=B  Cian=C  Morado=D  Gris=no detectada</p>`;
       } else {
-        result.innerHTML = `<p>Respuestas: ${JSON.stringify(data.answers)}</p>`;
+        result.innerHTML = `<p>Respuestas: ${JSON.stringify(data.answers?.slice(0,10))}…</p>`;
       }
     } catch(e) {
-      result.innerHTML = '<p style="color:var(--danger)">Error</p>';
+      result.innerHTML = '<p style="color:var(--danger)">Error de conexión</p>';
     }
   }
 </script>
