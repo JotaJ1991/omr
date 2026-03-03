@@ -1,4 +1,5 @@
 """
+Jose Javier Mercado Reyes
 omr_processor.py  —  v5  (parametros calibrados con hoja real)
 ==============================================================
 Hoja de respuestas con:
