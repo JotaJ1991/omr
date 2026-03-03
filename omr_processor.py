@@ -48,7 +48,7 @@ BINARIZE_C     = 8
 # clipLimit: cuanto amplifica el contraste (2.0-4.0, mayor = más agresivo)
 # tileGridSize: tamaño de la cuadrícula (8x8 es estándar)
 # ---------------------------------------------------------------------------
-CLAHE_CLIP  = 2.5
+CLAHE_CLIP  = 2
 CLAHE_GRID  = (8, 8)
 
 
