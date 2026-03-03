@@ -1,10 +1,9 @@
 """
-omr_processor.py  —  v6  (CLAHE + corrección EXIF + parámetros calibrados)
-===========================================================================
-Mejoras v6:
+omr_processor.py  —  v7  (corrección EXIF + parámetros recalibrados)
+=====================================================================
   1. Corrección de orientación EXIF  → la foto llega siempre derecha
-  2. CLAHE antes de binarizar        → contraste uniforme sin importar la luz
-  3. Parámetros calibrados con hoja real
+  2. Binarización adaptativa directa (sin CLAHE)
+  3. Parámetros recalibrados
 """
 
 import cv2
@@ -22,8 +21,8 @@ WORK_H = 1650
 # POSICIONES X CALIBRADAS (fraccion de WORK_W)
 # ---------------------------------------------------------------------------
 BUBBLE_FX = {
-    0: [0.110, 0.145, 0.180, 0.215],   # P1-P25[0.104, 0.138, 0.173, 0.207]
-    1: [0.290, 0.325, 0.360, 0.395],   # P26-P50.[0.270, 0.304, 0.339, 0.373] 
+    0: [0.110, 0.145, 0.180, 0.215],   # P1-P25
+    1: [0.290, 0.325, 0.360, 0.395],   # P26-P50
     2: [0.470, 0.505, 0.540, 0.575],   # P51-P75
     3: [0.650, 0.685, 0.720, 0.755],   # P76-P100
     4: [0.830, 0.865, 0.900, 0.935],   # P101-P125
@@ -38,19 +37,10 @@ ANSWERS_BOTTOM_F = 0.90
 # PARAMETROS DE DETECCION
 # ---------------------------------------------------------------------------
 BUBBLE_RADIUS  = 10
-FILL_THRESHOLD = 0.22
+FILL_THRESHOLD = 0.18
 MIN_CONTRAST   = 0.12
 BINARIZE_BLOCK = 25
 BINARIZE_C     = 8
-
-# ---------------------------------------------------------------------------
-# CLAHE — ecualización de histograma local
-# clipLimit: cuanto amplifica el contraste (2.0-4.0, mayor = más agresivo)
-# tileGridSize: tamaño de la cuadrícula (8x8 es estándar)
-# ---------------------------------------------------------------------------
-CLAHE_CLIP  = 2
-CLAHE_GRID  = (8, 8)
-
 
 # ===========================================================================
 # API PUBLICA
@@ -67,11 +57,7 @@ def process_exam_image(image_path: str, debug: bool = False) -> dict:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     warped, p_ok   = _correct_perspective(gray)
-
-    # ── MEJORA 2: CLAHE antes de binarizar ───────────────────────────────────
-    warped_enhanced = _apply_clahe(warped)
-
-    binary         = _binarize(warped_enhanced)
+    binary         = _binarize(warped)
     y_rows, n_rows = _detect_rows_from_timing(binary)
     answers, confs = _read_answers(binary, y_rows)
 
@@ -129,29 +115,6 @@ def _fix_exif_rotation(image_path: str, img):
         pass
 
     return img
-
-
-# ===========================================================================
-# MEJORA 2 — CLAHE (ecualización local de histograma)
-# ===========================================================================
-
-def _apply_clahe(gray):
-    """
-    CLAHE (Contrast Limited Adaptive Histogram Equalization):
-    Divide la imagen en pequeños bloques (tileGridSize) y ecualiza
-    el histograma de cada bloque por separado, limitando la amplificación
-    al valor clipLimit para evitar ruido excesivo.
-
-    Resultado: las marcas de lápiz sobre papel gris/oscuro se vuelven
-    mucho más distinguibles, independientemente de la iluminación.
-    """
-    clahe   = cv2.createCLAHE(clipLimit=CLAHE_CLIP, tileGridSize=CLAHE_GRID)
-    equalized = clahe.apply(gray)
-
-    # Mezclar 70% CLAHE + 30% original para preservar los timing marks
-    # (los rectángulos negros ya tienen buen contraste, no necesitan CLAHE)
-    blended = cv2.addWeighted(equalized, 0.70, gray, 0.30, 0)
-    return blended
 
 
 # ===========================================================================

@@ -665,8 +665,11 @@ function renderResult(data, isFirstPhoto) {
 function renderActionButtons(missing) {
   const btns = document.getElementById('action-btns');
   if (missing > 0) {
-    // Hay faltantes: puede tomar otra foto o guardar igual
+    // Hay faltantes: otra foto, guardar igual, o descartar
     btns.innerHTML = `
+      <button class="btn-danger"   onclick="confirmDiscard()" title="Descartar y empezar de cero">
+        🗑️
+      </button>
       <button class="btn-camera" onclick="takeAnotherPhoto()">
         📷 Otra foto
       </button>
@@ -674,14 +677,20 @@ function renderActionButtons(missing) {
         💾 Guardar
       </button>`;
   } else {
-    // Todo detectado: solo guardar o reiniciar
+    // Todo detectado: guardar, descartar o nuevo escaneo
     btns.innerHTML = `
-      <button class="btn-secondary" onclick="resetScan()">
-        🔄 Nuevo escaneo
+      <button class="btn-danger"   onclick="confirmDiscard()" title="Descartar y empezar de cero">
+        🗑️
       </button>
       <button class="btn-success" onclick="confirmSave()">
         💾 Guardar en Sheets
       </button>`;
+  }
+}
+
+function confirmDiscard() {
+  if (confirm('¿Descartar este escaneo? No se guardará nada.')) {
+    resetScan();
   }
 }
 
@@ -734,7 +743,7 @@ async function confirmSave() {
     state.sheetsUrl = data.sheets_url || '';
     setStatus('success', `✅ ${data.message}`);
 
-    // Reemplazar botones por "Ver en Sheets" + "Nuevo escaneo"
+    // Reemplazar botones tras guardar exitosamente
     document.getElementById('action-btns').innerHTML = `
       <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo escaneo</button>
       <button class="btn-primary"   onclick="openSheets()">📊 Ver en Sheets</button>`;
