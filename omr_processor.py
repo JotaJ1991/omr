@@ -1,8 +1,8 @@
 """
-omr_processor.py  —  v7  (corrección EXIF + parámetros recalibrados)
+omr_processor.py  —  v8  (CLAHE sin corrección EXIF)
 =====================================================================
-  1. Corrección de orientación EXIF  → la foto llega siempre derecha
-  2. Binarización adaptativa directa (sin CLAHE)
+  1. CLAHE antes de binarizar  → contraste uniforme sin importar la luz
+  2. Sin corrección EXIF
   3. Parámetros recalibrados
 """
 
@@ -42,6 +42,11 @@ MIN_CONTRAST   = 0.12
 BINARIZE_BLOCK = 25
 BINARIZE_C     = 8
 
+# CLAHE
+CLAHE_CLIP = 2.5
+CLAHE_GRID = (8, 8)
+
+
 # ===========================================================================
 # API PUBLICA
 # ===========================================================================
@@ -51,15 +56,13 @@ def process_exam_image(image_path: str, debug: bool = False) -> dict:
     if img is None:
         return {'success': False, 'error': 'No se pudo abrir la imagen.'}
 
-    # ── MEJORA 1: corregir orientación EXIF ──────────────────────────────────
-    img = _fix_exif_rotation(image_path, img)
-
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    warped, p_ok   = _correct_perspective(gray)
-    binary         = _binarize(warped)
-    y_rows, n_rows = _detect_rows_from_timing(binary)
-    answers, confs = _read_answers(binary, y_rows)
+    warped, p_ok    = _correct_perspective(gray)
+    warped_enhanced = _apply_clahe(warped)
+    binary          = _binarize(warped_enhanced)
+    y_rows, n_rows  = _detect_rows_from_timing(binary)
+    answers, confs  = _read_answers(binary, y_rows)
 
     if debug:
         _save_debug(warped, binary, answers, y_rows, image_path)
@@ -74,47 +77,14 @@ def process_exam_image(image_path: str, debug: bool = False) -> dict:
 
 
 # ===========================================================================
-# MEJORA 1 — CORRECCIÓN DE ORIENTACIÓN EXIF
+# CLAHE
 # ===========================================================================
 
-def _fix_exif_rotation(image_path: str, img):
-    """
-    Los celulares guardan la foto con un tag EXIF de orientación.
-    OpenCV ignora ese tag y carga la imagen "cruda", que puede aparecer
-    girada 90°, 180° o 270°. Esta función la endereza.
-
-    Tag EXIF 0x0112 (Orientation):
-      1 = normal          → no hacer nada
-      3 = 180°            → rotar 180
-      6 = 90° CW          → rotar 90° CCW  (−90)
-      8 = 90° CCW         → rotar 90° CW   (+90)
-    """
-    try:
-        # Intentar con Pillow (más confiable para EXIF)
-        from PIL import Image
-        import io
-
-        pil_img = Image.open(image_path)
-        exif    = pil_img._getexif() if hasattr(pil_img, '_getexif') else None
-
-        if exif is None:
-            return img
-
-        orientation = exif.get(274)   # 274 = tag Orientation
-
-        if orientation == 3:
-            img = cv2.rotate(img, cv2.ROTATE_180)
-        elif orientation == 6:
-            img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-        elif orientation == 8:
-            img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-        # orientation 1 (o None) → no hacer nada
-
-    except Exception:
-        # Si Pillow no está o no hay EXIF, continuar sin rotar
-        pass
-
-    return img
+def _apply_clahe(gray):
+    """70% CLAHE + 30% original para mejorar contraste sin perder timing marks."""
+    clahe     = cv2.createCLAHE(clipLimit=CLAHE_CLIP, tileGridSize=CLAHE_GRID)
+    equalized = clahe.apply(gray)
+    return cv2.addWeighted(equalized, 0.70, gray, 0.30, 0)
 
 
 # ===========================================================================
@@ -209,11 +179,6 @@ def _find_corners(cands, w, h):
 # ===========================================================================
 
 def _binarize(gray):
-    """
-    Umbralización adaptativa gaussiana sobre la imagen ya mejorada por CLAHE.
-    blockSize: tamaño del vecindario local (px). Debe ser impar.
-    C: constante que se resta al umbral calculado. Mayor = más estricto.
-    """
     return cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -223,7 +188,7 @@ def _binarize(gray):
 
 
 # ===========================================================================
-# DETECCION DE FILAS (TIMING MARKS)
+# DETECCION DE FILAS
 # ===========================================================================
 
 def _detect_rows_from_timing(binary):
