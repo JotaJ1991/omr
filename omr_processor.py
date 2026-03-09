@@ -31,7 +31,7 @@ BUBBLE_FX = {
 TIMING_FX = {0: 0.056, 1: 0.236, 2: 0.419, 3: 0.601, 4: 0.789}
 
 ANSWERS_TOP_F    = 0.35
-ANSWERS_BOTTOM_F = 0.90
+ANSWERS_BOTTOM_F = 0.87
 
 # ---------------------------------------------------------------------------
 # PARAMETROS DE DETECCION
