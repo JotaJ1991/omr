@@ -37,8 +37,8 @@ ANSWERS_BOTTOM_F = 0.87
 # PARAMETROS DE DETECCION
 # ---------------------------------------------------------------------------
 BUBBLE_RADIUS  = 10
-FILL_THRESHOLD = 0.18
-MIN_CONTRAST   = 0.12
+FILL_THRESHOLD = 0.15
+MIN_CONTRAST   = 0.10
 BINARIZE_BLOCK = 25
 BINARIZE_C     = 8
 
