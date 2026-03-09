@@ -156,9 +156,9 @@ def save():
     if not student_name:
         return jsonify({'success': False,
                         'error': 'El nombre del estudiante es obligatorio.'}), 400
-    if len(answers) < 1 or len(answers) > 125:
+    if len(answers) != 125:
         return jsonify({'success': False,
-                        'error': 'Número de respuestas inválido (1-125).'}), 400
+                        'error': 'Se requieren exactamente 125 respuestas.'}), 400
 
     try:
         sheets_result = save_to_sheets(

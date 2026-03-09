@@ -83,52 +83,6 @@
   input[type="file"] { display: none; }
 
 
-  /* ── Toggle flash ── */
-  .flash-toggle {
-    display: flex; align-items: center; gap: 10px;
-    background: #f8fafc; border: 1.5px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
-    cursor: pointer; user-select: none; transition: border-color .2s;
-  }
-  .flash-toggle:hover { border-color: var(--primary); }
-  .flash-toggle .flash-icon { font-size: 1.3rem; }
-  .flash-toggle .flash-label { flex: 1; font-size: .9rem; font-weight: 500; }
-  .flash-toggle .flash-label small { display:block; font-size:.75rem;
-    color: var(--muted); font-weight:400; }
-  /* Switch pill */
-  .switch { position: relative; width: 44px; height: 24px; flex-shrink:0; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .switch-track {
-    position: absolute; inset: 0; background: var(--border);
-    border-radius: 99px; transition: background .2s;
-  }
-  .switch input:checked + .switch-track { background: #f59e0b; }
-  .switch-thumb {
-    position: absolute; top: 3px; left: 3px;
-    width: 18px; height: 18px; background: white;
-    border-radius: 50%; transition: transform .2s;
-    box-shadow: 0 1px 3px rgba(0,0,0,.3);
-  }
-  .switch input:checked ~ .switch-thumb { transform: translateX(20px); }
-
-  /* ── Selector número de preguntas ── */
-  .q-selector {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
-  }
-  .q-selector label { font-size: .85rem; font-weight: 500;
-    color: var(--muted); white-space: nowrap; margin-bottom: 0; }
-  .q-selector input[type="number"] {
-    width: 80px; padding: 8px 10px; border: 1.5px solid var(--border);
-    border-radius: 8px; font-size: .95rem; font-weight: 600;
-    text-align: center; margin-bottom: 0;
-  }
-  .q-selector input[type="number"]:focus { border-color: var(--primary); outline:none; }
-  .q-badge {
-    background: #eff6ff; color: var(--primary);
-    border: 1.5px solid #bfdbfe; border-radius: 99px;
-    padding: 3px 10px; font-size: .78rem; font-weight: 600;
-  }
-
   /* ── Botones ── */
   .btn-group { display: flex; gap: 10px; margin-top: 14px; }
   button { flex: 1; padding: 13px; border: none; border-radius: 8px;
@@ -282,28 +236,6 @@
     <!-- 3. Captura -->
     <div class="card" id="scan-card">
       <h2 id="scan-title">📷 Hoja de respuestas</h2>
-
-      <!-- Número de preguntas -->
-      <div class="q-selector">
-        <label for="num-questions">Preguntas:</label>
-        <input type="number" id="num-questions" value="125" min="1" max="125"
-               oninput="updateNumQuestions(this.value)">
-        <span class="q-badge" id="q-badge">125 preguntas</span>
-      </div>
-
-      <!-- Toggle flash -->
-      <label class="flash-toggle" onclick="toggleFlash()">
-        <span class="flash-icon" id="flash-icon">⚡</span>
-        <span class="flash-label">
-          Flash
-          <small id="flash-label-sub">Activado — la cámara usará flash</small>
-        </span>
-        <label class="switch" onclick="event.stopPropagation()">
-          <input type="checkbox" id="flash-checkbox" checked onchange="toggleFlash()">
-          <span class="switch-track"></span>
-          <span class="switch-thumb"></span>
-        </label>
-      </label>
 
       <div class="capture-zone" id="capture-zone"
            onclick="document.getElementById('file-input').click()">
@@ -479,111 +411,16 @@
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 let state = {
-  answers:        Array(125).fill('?'),  // respuestas acumuladas (siempre 125)
+  answers:        Array(125).fill('?'),  // respuestas acumuladas
   confidence:     0,
-  photoCount:     0,
+  photoCount:     0,      // número de fotos tomadas en este escaneo
   activeSheet:    '',
   sheetsUrl:      '',
-  lastNewFilled:  [],
-  numQuestions:   125,    // preguntas activas de esta evaluación
-  flashOn:        true,   // estado del flash
+  lastNewFilled:  [],     // índices de respuestas rescatadas en última foto
 };
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 (async function init() { await loadSheets(); })();
-
-// ══ FLASH ══════════════════════════════════════════════════════════════════
-// El atributo `capture` en un <input type="file"> le dice al navegador
-// móvil que abra directamente la cámara (sin mostrar galería).
-// No existe un atributo HTML estándar para forzar flash ON/OFF desde el
-// navegador — eso lo decide el SO/cámara. Lo que sí podemos hacer:
-//   Flash ON  → capture="environment"  (cámara trasera, flash según ajuste del celu)
-//   Flash OFF → sin atributo capture   (abre selector: cámara o galería, sin restricción)
-// Para que el cambio surta efecto hay que recrear el <input> porque algunos
-// navegadores móviles cachean el elemento y no ven el cambio de atributo.
-function toggleFlash() {
-  state.flashOn = document.getElementById('flash-checkbox').checked;
-  const icon = document.getElementById('flash-icon');
-  const sub  = document.getElementById('flash-label-sub');
-
-  if (state.flashOn) {
-    icon.textContent = '⚡';
-    sub.textContent  = 'Activado — cámara trasera con flash';
-  } else {
-    icon.textContent = '🔦';
-    sub.textContent  = 'Desactivado — sin restricción de flash';
-  }
-  _rebuildFileInput();
-}
-
-function _rebuildFileInput() {
-  // Recrear el <input type="file"> con los atributos correctos
-  // para que el cambio de capture se aplique limpiamente
-  const old = document.getElementById('file-input');
-  const neo = document.createElement('input');
-  neo.type   = 'file';
-  neo.id     = 'file-input';
-  neo.accept = 'image/*';
-  neo.style.display = 'none';
-  if (state.flashOn) {
-    neo.setAttribute('capture', 'environment');
-  }
-  // Transferir el listener de previsualización
-  neo.addEventListener('change', _onFileSelected);
-  old.parentNode.replaceChild(neo, old);
-}
-
-function _onFileSelected(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = document.getElementById('preview-img');
-    img.src = ev.target.result;
-    img.style.display = 'block';
-    document.getElementById('placeholder').style.display = 'none';
-    document.getElementById('capture-zone').classList.add('active');
-    document.getElementById('btn-process').disabled = false;
-    setStatus('', '');
-  };
-  reader.readAsDataURL(file);
-}
-
-// ══ NÚMERO DE PREGUNTAS ════════════════════════════════════════════════════
-function updateNumQuestions(val) {
-  let n = parseInt(val, 10);
-  if (isNaN(n) || n < 1)  n = 1;
-  if (n > 125)            n = 125;
-  state.numQuestions = n;
-  document.getElementById('num-questions').value = n;
-  document.getElementById('q-badge').textContent =
-    n === 125 ? '125 preguntas' : `${n} de 125`;
-  // Si ya hay un escaneo activo, re-renderizar el grid con el nuevo límite
-  if (state.photoCount > 0) rerenderGrid();
-}
-
-function rerenderGrid() {
-  const n      = state.numQuestions;
-  const newSet = new Set(state.lastNewFilled.map(q => q - 1));
-  const grid   = document.getElementById('answers-grid');
-  grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
-    const cls   = ans === '?' ? 'unknown' : ans;
-    const extra = newSet.has(i) ? ' new-found' : '';
-    return `<div class="answer-chip ${cls}${extra}">
-      <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
-    </div>`;
-  }).join('');
-  // Recalcular faltantes y actualizar banners/botones
-  const detected = state.answers.slice(0, n).filter(a => a !== '?').length;
-  const missing  = n - detected;
-  document.getElementById('missing-count').textContent = missing;
-  document.getElementById('incomplete-banner').style.display = missing > 0 ? 'block' : 'none';
-  const pct = Math.round(detected / n * 100);
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('progress-label').textContent =
-    `${detected} / ${n} preguntas (${pct}%)`;
-  renderActionButtons(missing);
-}
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -672,8 +509,21 @@ document.getElementById('modal-overlay').addEventListener('click', function(e){
 });
 
 // ══ PREVISUALIZACIÓN ═══════════════════════════════════════════════════════
-// El listener se añade en _rebuildFileInput(); aquí solo enganchamos el inicial
-document.getElementById('file-input').addEventListener('change', _onFileSelected);
+document.getElementById('file-input').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('preview-img');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('capture-zone').classList.add('active');
+    document.getElementById('btn-process').disabled = false;
+    setStatus('','');
+  };
+  reader.readAsDataURL(file);
+});
 
 // ══ PROCESAR FOTO (sin guardar) ════════════════════════════════════════════
 async function processPhoto() {
@@ -718,8 +568,8 @@ async function processPhoto() {
     setStatus('','');
     renderResult(data, isFirstPhoto);
 
-    // Limpiar y reconstruir el input para la próxima foto
-    _rebuildFileInput();
+    // Limpiar el input de archivo para poder volver a tomar foto
+    fileInput.value = '';
     document.getElementById('preview-img').style.display = 'none';
     document.getElementById('placeholder').style.display = 'flex';
     document.getElementById('capture-zone').classList.remove('active');
@@ -733,11 +583,9 @@ async function processPhoto() {
 
 // ══ RENDER DEL PANEL DE RESULTADO ══════════════════════════════════════════
 function renderResult(data, isFirstPhoto) {
-  const n        = state.numQuestions;   // preguntas activas
-  // Recalcular detected/missing sobre las primeras N respuestas
-  const detected  = state.answers.slice(0, n).filter(a => a !== '?').length;
-  const missing   = n - detected;
-  const newFilled = data.new_filled || 0;
+  const missing    = data.missing;
+  const detected   = data.detected;
+  const newFilled  = data.new_filled || 0;
 
   // ── Banners ──
   const incompleteBanner = document.getElementById('incomplete-banner');
@@ -762,7 +610,7 @@ function renderResult(data, isFirstPhoto) {
   // ── Título dinámico ──
   const titleEl = document.getElementById('result-title');
   if (missing === 0) {
-    titleEl.innerHTML = `✅ Todas las respuestas detectadas`;
+    titleEl.innerHTML = '✅ Todas las respuestas detectadas';
   } else {
     titleEl.innerHTML = `📋 Respuestas — foto ${state.photoCount}`;
   }
@@ -784,18 +632,22 @@ function renderResult(data, isFirstPhoto) {
     </div>`;
 
   // ── Barra progreso ──
-  const pct    = Math.round(detected / n * 100);
+  const pct = Math.round(detected / 125 * 100);
   const pColor = pct===100 ? 'var(--success)' : pct>=80 ? 'var(--warning)' : 'var(--danger)';
   document.getElementById('progress-fill').style.background = pColor;
   setTimeout(() => document.getElementById('progress-fill').style.width = pct+'%', 50);
   document.getElementById('progress-label').textContent =
-    `${detected} / ${n} preguntas (${pct}%)`;
+    `${detected} / 125 preguntas (${pct}%)`;
 
-  // ── Grid de respuestas (solo las N activas) ──
-  const newSet = new Set(state.lastNewFilled.map(q => q - 1));
-  const grid   = document.getElementById('answers-grid');
-  grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
+  // ── Grid de respuestas ──
+  // Respuestas encontradas en ESTA foto → morado animado (new-found)
+  // Respuestas de fotos anteriores que ya eran moradas → vuelven a su color normal
+  // (state.lastNewFilled solo contiene los índices 1-based de la foto más reciente)
+  const newSet = new Set(state.lastNewFilled.map(q => q - 1)); // convertir a 0-based
+  const grid = document.getElementById('answers-grid');
+  grid.innerHTML = state.answers.map((ans, i) => {
     const cls   = ans === '?' ? 'unknown' : ans;
+    // Solo marcar morado las recién encontradas EN ESTA foto (no la primera)
     const extra = (!isFirstPhoto && newSet.has(i)) ? ' new-found' : '';
     return `<div class="answer-chip ${cls}${extra}">
       <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
@@ -876,7 +728,7 @@ async function confirmSave() {
       body: JSON.stringify({
         student_name: name,
         exam_id:      id,
-        answers:      state.answers.slice(0, state.numQuestions),
+        answers:      state.answers,
         sheet_name:   state.activeSheet
       })
     });
@@ -926,10 +778,6 @@ function resetScan() {
   document.getElementById('incomplete-banner').style.display = 'none';
   document.getElementById('found-banner').style.display      = 'none';
   document.getElementById('scan-title').textContent = '📷 Hoja de respuestas';
-  // Restaurar número de preguntas a 125
-  state.numQuestions = 125;
-  document.getElementById('num-questions').value = 125;
-  document.getElementById('q-badge').textContent = '125 preguntas';
   setStatus('','');
   window.scrollTo({top:0, behavior:'smooth'});
 }
