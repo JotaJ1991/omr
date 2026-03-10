@@ -83,6 +83,26 @@
   input[type="file"] { display: none; }
 
 
+
+
+  /* ── Selector número de preguntas ── */
+  .q-selector {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  }
+  .q-selector label { font-size: .85rem; font-weight: 500;
+    color: var(--muted); white-space: nowrap; margin-bottom: 0; }
+  .q-selector input[type="number"] {
+    width: 80px; padding: 8px 10px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: .95rem; font-weight: 600;
+    text-align: center; margin-bottom: 0;
+  }
+  .q-selector input[type="number"]:focus { border-color: var(--primary); outline:none; }
+  .q-badge {
+    background: #eff6ff; color: var(--primary);
+    border: 1.5px solid #bfdbfe; border-radius: 99px;
+    padding: 3px 10px; font-size: .78rem; font-weight: 600;
+  }
+
   /* ── Botones ── */
   .btn-group { display: flex; gap: 10px; margin-top: 14px; }
   button { flex: 1; padding: 13px; border: none; border-radius: 8px;
@@ -183,6 +203,30 @@
   .progress-fill { height: 100%; border-radius: 99px;
     background: var(--success); transition: width .4s ease; }
   .progress-label { font-size: .75rem; color: var(--muted); margin-top: 4px; text-align: right; }
+
+  /* ── Panel clave de respuestas ── */
+  .key-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 5px; margin: 12px 0; }
+  .key-chip { display: flex; align-items: center; gap: 3px;
+    border: 1.5px solid var(--border); border-radius: 6px;
+    padding: 3px 5px; font-size: .78rem; font-weight: 600; }
+  .key-chip .qnum { color: var(--muted); font-weight: 400; font-size: .72rem; }
+  .key-chip select {
+    border: none; background: transparent; font-size: .8rem; font-weight: 700;
+    color: #1d4ed8; padding: 0; cursor: pointer; width: 32px;
+    -webkit-appearance: none; text-align: center;
+  }
+  .key-chip.filled { border-color: #3b82f6; background: #eff6ff; }
+  .key-status { font-size: .82rem; color: var(--muted); margin-bottom: 8px; }
+  .key-status strong { color: var(--primary); }
+  .btn-key-save { background: #1d4ed8; color: white; }
+  .btn-key-save:hover { opacity: .88; }
+  .btn-key-clear { background: #f1f5f9; color: #64748b; }
+  /* Mostrar nota de correctas al guardar */
+  .score-note { background: #f0fdf4; border: 1.5px solid #86efac;
+    border-radius: 8px; padding: 10px 14px; margin-top: 10px;
+    font-size: .88rem; color: #166534; display: none; }
+  .score-note.show { display: block; }
 </style>
 </head>
 <body>
@@ -196,6 +240,7 @@
 
   <div class="tabs">
     <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
+    <div class="tab" onclick="switchTab('key'); initKeyPanel()">🔑 Clave</div>
     <div class="tab" onclick="switchTab('results'); loadResults()">📊 Resultados</div>
     <div class="tab" onclick="switchTab('help')">❓ Ayuda</div>
   </div>
@@ -236,6 +281,14 @@
     <!-- 3. Captura -->
     <div class="card" id="scan-card">
       <h2 id="scan-title">📷 Hoja de respuestas</h2>
+
+      <!-- Número de preguntas -->
+      <div class="q-selector">
+        <label for="num-questions">Preguntas:</label>
+        <input type="number" id="num-questions" value="125" min="1" max="125"
+               oninput="updateNumQuestions(this.value)">
+        <span class="q-badge" id="q-badge">125 preguntas</span>
+      </div>
 
       <div class="capture-zone" id="capture-zone"
            onclick="document.getElementById('file-input').click()">
@@ -319,6 +372,37 @@
     </div>
 
   </div><!-- /tab-scan -->
+
+  <!-- ══ TAB CLAVE DE RESPUESTAS ══════════════════════════════════════════════ -->
+  <div id="tab-key" class="tab-content">
+    <div class="card">
+      <h2>🔑 Clave de respuestas</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+        Define las respuestas correctas para la hoja activa.
+        Se guardan en la fila 2 del Sheets. Al escanear estudiantes,
+        el sistema calculará automáticamente correctas y porcentaje.
+      </p>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <label style="font-size:.85rem;font-weight:500;color:var(--muted);">Preguntas:</label>
+        <input type="number" id="key-num-q" value="125" min="1" max="125"
+          style="width:70px;padding:6px 8px;border:1.5px solid var(--border);
+                 border-radius:7px;font-size:.9rem;font-weight:600;text-align:center;"
+          oninput="buildKeyGrid(this.value)">
+        <span class="key-status" id="key-status">0 de 125 definidas</span>
+      </div>
+
+      <div class="key-grid" id="key-grid"></div>
+
+      <div class="btn-group" style="margin-top:14px;">
+        <button class="btn-key-clear" onclick="clearKeyGrid()">🗑️ Limpiar</button>
+        <button class="btn-key-save"  onclick="saveKey()">💾 Guardar clave</button>
+      </div>
+      <div class="score-note" id="key-saved-note">
+        ✅ Clave guardada correctamente en la hoja activa.
+      </div>
+    </div>
+  </div><!-- /tab-key -->
 
   <!-- ══ TAB RESULTADOS ════════════════════════════════════════════════════ -->
   <div id="tab-results" class="tab-content">
@@ -411,24 +495,175 @@
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 let state = {
-  answers:        Array(125).fill('?'),  // respuestas acumuladas
+  answers:        Array(125).fill('?'),  // respuestas acumuladas (siempre 125)
   confidence:     0,
-  photoCount:     0,      // número de fotos tomadas en este escaneo
+  photoCount:     0,
   activeSheet:    '',
   sheetsUrl:      '',
-  lastNewFilled:  [],     // índices de respuestas rescatadas en última foto
+  lastNewFilled:  [],
+  numQuestions:   125,    // preguntas activas de esta evaluación
 };
 
 // ── Inicialización ─────────────────────────────────────────────────────────
 (async function init() { await loadSheets(); })();
 
+// ══ PREVISUALIZACIÓN DE ARCHIVO ════════════════════════════════════════════
+function _onFileSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('preview-img');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('capture-zone').classList.add('active');
+    document.getElementById('btn-process').disabled = false;
+    setStatus('', '');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ══ NÚMERO DE PREGUNTAS ════════════════════════════════════════════════════
+function updateNumQuestions(val) {
+  let n = parseInt(val, 10);
+  if (isNaN(n) || n < 1)  n = 1;
+  if (n > 125)            n = 125;
+  state.numQuestions = n;
+  document.getElementById('num-questions').value = n;
+  document.getElementById('q-badge').textContent =
+    n === 125 ? '125 preguntas' : `${n} de 125`;
+  // Si ya hay un escaneo activo, re-renderizar el grid con el nuevo límite
+  if (state.photoCount > 0) rerenderGrid();
+}
+
+function rerenderGrid() {
+  const n      = state.numQuestions;
+  const newSet = new Set(state.lastNewFilled.map(q => q - 1));
+  const grid   = document.getElementById('answers-grid');
+  grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
+    const cls   = ans === '?' ? 'unknown' : ans;
+    const extra = newSet.has(i) ? ' new-found' : '';
+    return `<div class="answer-chip ${cls}${extra}">
+      <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
+    </div>`;
+  }).join('');
+  // Recalcular faltantes y actualizar banners/botones
+  const detected = state.answers.slice(0, n).filter(a => a !== '?').length;
+  const missing  = n - detected;
+  document.getElementById('missing-count').textContent = missing;
+  document.getElementById('incomplete-banner').style.display = missing > 0 ? 'block' : 'none';
+  const pct = Math.round(detected / n * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-label').textContent =
+    `${detected} / ${n} preguntas (${pct}%)`;
+  renderActionButtons(missing);
+}
+
 // ── Tabs ───────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t,i) =>
-    t.classList.toggle('active', ['scan','results','help'][i] === tab));
+    t.classList.toggle('active', ['scan','key','results','help'][i] === tab));
   document.querySelectorAll('.tab-content').forEach(tc =>
     tc.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
+}
+
+// ══ CLAVE DE RESPUESTAS ════════════════════════════════════════════════════
+
+let keyAnswers = new Array(125).fill('');   // clave en memoria
+
+function initKeyPanel() {
+  // Sincronizar número de preguntas con el selector del escaneo
+  const n = parseInt(document.getElementById('num-questions').value) || 125;
+  document.getElementById('key-num-q').value = n;
+  buildKeyGrid(n);
+}
+
+function buildKeyGrid(val) {
+  let n = parseInt(val, 10);
+  if (isNaN(n) || n < 1)  n = 1;
+  if (n > 125)             n = 125;
+  document.getElementById('key-num-q').value = n;
+
+  // Ajustar el array de clave
+  if (keyAnswers.length < n) {
+    keyAnswers = keyAnswers.concat(new Array(n - keyAnswers.length).fill(''));
+  }
+
+  const grid = document.getElementById('key-grid');
+  grid.innerHTML = Array.from({length: n}, (_, i) => {
+    const v = keyAnswers[i] || '';
+    const filled = v ? ' filled' : '';
+    return `<div class="key-chip${filled}" id="kc-${i}">
+      <span class="qnum">${i+1}.</span>
+      <select onchange="setKeyAnswer(${i}, this.value)">
+        <option value=""  ${v===''  ?'selected':''}>—</option>
+        <option value="A" ${v==='A' ?'selected':''}>A</option>
+        <option value="B" ${v==='B' ?'selected':''}>B</option>
+        <option value="C" ${v==='C' ?'selected':''}>C</option>
+        <option value="D" ${v==='D' ?'selected':''}>D</option>
+      </select>
+    </div>`;
+  }).join('');
+
+  updateKeyStatus(n);
+}
+
+function setKeyAnswer(idx, val) {
+  keyAnswers[idx] = val;
+  const chip = document.getElementById(`kc-${idx}`);
+  if (chip) chip.className = 'key-chip' + (val ? ' filled' : '');
+  const n = parseInt(document.getElementById('key-num-q').value) || 125;
+  updateKeyStatus(n);
+}
+
+function updateKeyStatus(n) {
+  const defined = keyAnswers.slice(0, n).filter(v => v !== '').length;
+  const el = document.getElementById('key-status');
+  el.innerHTML = `<strong>${defined}</strong> de ${n} definidas`;
+}
+
+function clearKeyGrid() {
+  const n = parseInt(document.getElementById('key-num-q').value) || 125;
+  keyAnswers = new Array(125).fill('');
+  buildKeyGrid(n);
+  document.getElementById('key-saved-note').classList.remove('show');
+}
+
+async function saveKey() {
+  const n    = parseInt(document.getElementById('key-num-q').value) || 125;
+  const data = keyAnswers.slice(0, n);
+  const defined = data.filter(v => v !== '').length;
+
+  if (defined === 0) {
+    alert('Define al menos una respuesta correcta antes de guardar.');
+    return;
+  }
+
+  const sheetName = state.activeSheet;
+  if (!sheetName) {
+    alert('Selecciona una hoja primero (tab Escanear → Curso/Grupo).');
+    return;
+  }
+
+  try {
+    const resp = await fetch('/save_key', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ answers: data, sheet_name: sheetName })
+    });
+    const result = await resp.json();
+    if (result.success) {
+      document.getElementById('key-saved-note').classList.add('show');
+      setTimeout(() =>
+        document.getElementById('key-saved-note').classList.remove('show'), 4000);
+    } else {
+      alert('Error al guardar clave: ' + result.error);
+    }
+  } catch(e) {
+    alert('Error de conexión al guardar la clave.');
+  }
 }
 
 // ══ HOJAS ══════════════════════════════════════════════════════════════════
@@ -509,21 +744,7 @@ document.getElementById('modal-overlay').addEventListener('click', function(e){
 });
 
 // ══ PREVISUALIZACIÓN ═══════════════════════════════════════════════════════
-document.getElementById('file-input').addEventListener('change', function(e){
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = document.getElementById('preview-img');
-    img.src = ev.target.result;
-    img.style.display = 'block';
-    document.getElementById('placeholder').style.display = 'none';
-    document.getElementById('capture-zone').classList.add('active');
-    document.getElementById('btn-process').disabled = false;
-    setStatus('','');
-  };
-  reader.readAsDataURL(file);
-});
+document.getElementById('file-input').addEventListener('change', _onFileSelected);
 
 // ══ PROCESAR FOTO (sin guardar) ════════════════════════════════════════════
 async function processPhoto() {
@@ -568,8 +789,8 @@ async function processPhoto() {
     setStatus('','');
     renderResult(data, isFirstPhoto);
 
-    // Limpiar el input de archivo para poder volver a tomar foto
-    fileInput.value = '';
+    // Limpiar el input para la próxima foto
+    document.getElementById('file-input').value = '';
     document.getElementById('preview-img').style.display = 'none';
     document.getElementById('placeholder').style.display = 'flex';
     document.getElementById('capture-zone').classList.remove('active');
@@ -583,9 +804,11 @@ async function processPhoto() {
 
 // ══ RENDER DEL PANEL DE RESULTADO ══════════════════════════════════════════
 function renderResult(data, isFirstPhoto) {
-  const missing    = data.missing;
-  const detected   = data.detected;
-  const newFilled  = data.new_filled || 0;
+  const n        = state.numQuestions;   // preguntas activas
+  // Recalcular detected/missing sobre las primeras N respuestas
+  const detected  = state.answers.slice(0, n).filter(a => a !== '?').length;
+  const missing   = n - detected;
+  const newFilled = data.new_filled || 0;
 
   // ── Banners ──
   const incompleteBanner = document.getElementById('incomplete-banner');
@@ -610,7 +833,7 @@ function renderResult(data, isFirstPhoto) {
   // ── Título dinámico ──
   const titleEl = document.getElementById('result-title');
   if (missing === 0) {
-    titleEl.innerHTML = '✅ Todas las respuestas detectadas';
+    titleEl.innerHTML = `✅ Todas las respuestas detectadas`;
   } else {
     titleEl.innerHTML = `📋 Respuestas — foto ${state.photoCount}`;
   }
@@ -632,22 +855,18 @@ function renderResult(data, isFirstPhoto) {
     </div>`;
 
   // ── Barra progreso ──
-  const pct = Math.round(detected / 125 * 100);
+  const pct    = Math.round(detected / n * 100);
   const pColor = pct===100 ? 'var(--success)' : pct>=80 ? 'var(--warning)' : 'var(--danger)';
   document.getElementById('progress-fill').style.background = pColor;
   setTimeout(() => document.getElementById('progress-fill').style.width = pct+'%', 50);
   document.getElementById('progress-label').textContent =
-    `${detected} / 125 preguntas (${pct}%)`;
+    `${detected} / ${n} preguntas (${pct}%)`;
 
-  // ── Grid de respuestas ──
-  // Respuestas encontradas en ESTA foto → morado animado (new-found)
-  // Respuestas de fotos anteriores que ya eran moradas → vuelven a su color normal
-  // (state.lastNewFilled solo contiene los índices 1-based de la foto más reciente)
-  const newSet = new Set(state.lastNewFilled.map(q => q - 1)); // convertir a 0-based
-  const grid = document.getElementById('answers-grid');
-  grid.innerHTML = state.answers.map((ans, i) => {
+  // ── Grid de respuestas (solo las N activas) ──
+  const newSet = new Set(state.lastNewFilled.map(q => q - 1));
+  const grid   = document.getElementById('answers-grid');
+  grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
     const cls   = ans === '?' ? 'unknown' : ans;
-    // Solo marcar morado las recién encontradas EN ESTA foto (no la primera)
     const extra = (!isFirstPhoto && newSet.has(i)) ? ' new-found' : '';
     return `<div class="answer-chip ${cls}${extra}">
       <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
@@ -728,7 +947,7 @@ async function confirmSave() {
       body: JSON.stringify({
         student_name: name,
         exam_id:      id,
-        answers:      state.answers,
+        answers:      state.answers.slice(0, state.numQuestions),
         sheet_name:   state.activeSheet
       })
     });
@@ -741,7 +960,14 @@ async function confirmSave() {
     }
 
     state.sheetsUrl = data.sheets_url || '';
-    setStatus('success', `✅ ${data.message}`);
+
+    // Mostrar puntaje si hay clave definida
+    let msg = `✅ ${data.message}`;
+    if (data.correct !== null && data.correct !== undefined) {
+      const n = state.numQuestions;
+      msg += `  |  🎯 ${data.correct}/${n} correctas (${data.pct})`;
+    }
+    setStatus('success', msg);
 
     // Reemplazar botones tras guardar exitosamente
     document.getElementById('action-btns').innerHTML = `
@@ -778,6 +1004,10 @@ function resetScan() {
   document.getElementById('incomplete-banner').style.display = 'none';
   document.getElementById('found-banner').style.display      = 'none';
   document.getElementById('scan-title').textContent = '📷 Hoja de respuestas';
+  // Restaurar número de preguntas a 125
+  state.numQuestions = 125;
+  document.getElementById('num-questions').value = 125;
+  document.getElementById('q-badge').textContent = '125 preguntas';
   setStatus('','');
   window.scrollTo({top:0, behavior:'smooth'});
 }

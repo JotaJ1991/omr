@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image
 from sheets_connector import (
-    save_to_sheets, get_sheet_data,
+    save_to_sheets, save_answer_key, get_sheet_data,
     list_sheets, create_sheet
 )
 
@@ -145,6 +145,7 @@ def process():
 def save():
     """
     Recibe el acumulado final de respuestas y lo guarda en Sheets.
+    Incluye conteo de correctas si la hoja tiene clave definida.
     """
     data = request.get_json(silent=True) or {}
 
@@ -156,9 +157,10 @@ def save():
     if not student_name:
         return jsonify({'success': False,
                         'error': 'El nombre del estudiante es obligatorio.'}), 400
-    if len(answers) != 125:
+    n = len(answers)
+    if n < 1 or n > 125:
         return jsonify({'success': False,
-                        'error': 'Se requieren exactamente 125 respuestas.'}), 400
+                        'error': 'Número de respuestas inválido (1-125).'}), 400
 
     try:
         sheets_result = save_to_sheets(
@@ -167,17 +169,49 @@ def save():
             answers=answers,
             sheet_name=sheet_name
         )
-        detected = len([a for a in answers if a != '?'])
+        detected = len([a for a in answers if a not in ('?', '')])
+        correct  = sheets_result.get('correct')
+        pct      = sheets_result.get('pct', '')
+
+        if correct is not None:
+            msg = (f'Guardado en "{sheet_name}" — '
+                   f'{correct}/{n} correctas ({pct})')
+        else:
+            msg = f'Guardado en "{sheet_name}" — {detected}/{n} detectadas.'
+
         return jsonify({
             'success':    True,
             'row':        sheets_result.get('row'),
             'sheets_url': sheets_result.get('url'),
             'detected':   detected,
-            'message':    f'Guardado en "{sheet_name}" — {detected}/125 preguntas.'
+            'correct':    correct,
+            'pct':        pct,
+            'message':    msg
         })
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error al guardar: {str(e)}'}), 500
+
+
+@app.route('/save_key', methods=['POST'])
+def save_key():
+    """
+    Guarda o actualiza la clave de respuestas correctas en fila 2 de la hoja.
+    Body JSON: { answers: [...], sheet_name: "..." }
+    """
+    data       = request.get_json(silent=True) or {}
+    answers    = data.get('answers', [])
+    sheet_name = data.get('sheet_name', active_sheet())
+
+    if not answers:
+        return jsonify({'success': False, 'error': 'No se recibieron respuestas.'}), 400
+
+    try:
+        result = save_answer_key(answers, sheet_name)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ── Resultados ────────────────────────────────────────────────────────────────
