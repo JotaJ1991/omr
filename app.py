@@ -1,6 +1,5 @@
 """
-OMR App  —  Calificador JMR
-Flujo: procesar (solo detección) → complementar fotos → guardar (Sheets)
+OMR App  —  Calificador JMR  (multi-perfil)
 """
 import os
 import json
@@ -9,18 +8,19 @@ import base64
 from flask import Flask, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image
+from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_sheet_data,
     list_sheets, create_sheet
 )
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'omr-secret-2025')
+app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['UPLOAD_FOLDER']      = 'uploads'
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
-DEFAULT_SHEET = 'Respuestas'
+DEFAULT_SHEET      = 'Respuestas'
 
 def allowed_file(f):
     return '.' in f and f.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -28,12 +28,20 @@ def allowed_file(f):
 def active_sheet():
     return session.get('active_sheet', DEFAULT_SHEET)
 
+def active_profile_id():
+    return session.get('profile_id', DEFAULT_PROFILE_ID)
 
-# ── Hojas ─────────────────────────────────────────────────────────────────────
+
+# ── Página principal ──────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html',
+                           profiles=PROFILE_LIST,
+                           default_profile=DEFAULT_PROFILE_ID)
+
+
+# ── Hojas ─────────────────────────────────────────────────────────────────────
 
 @app.route('/active_sheet', methods=['GET'])
 def get_active_sheet():
@@ -70,15 +78,52 @@ def sheets_create():
     return jsonify(result)
 
 
-# ── Procesar imagen (SIN guardar en Sheets) ───────────────────────────────────
+# ── Perfil de examen ──────────────────────────────────────────────────────────
+
+@app.route('/profile', methods=['GET'])
+def get_profile_route():
+    pid     = active_profile_id()
+    profile = get_profile(pid)
+    return jsonify({
+        'active_id':   pid,
+        'active_name': profile['name'],
+        'total_q':     profile['total_q'],
+        'profiles':    PROFILE_LIST,
+        # Opciones por pregunta — útil para la UI de clave
+        'options_per_q': _build_options_per_q(profile),
+    })
+
+@app.route('/profile', methods=['POST'])
+def set_profile_route():
+    data = request.get_json(silent=True) or {}
+    pid  = data.get('profile_id', '').strip()
+    p    = get_profile(pid)
+    if p['id'] != pid:   # fallback ocurrió → ID inválido
+        return jsonify({'success': False, 'error': f'Perfil "{pid}" no existe.'}), 400
+    session['profile_id'] = pid
+    session.modified = True
+    profile = get_profile(pid)
+    return jsonify({
+        'success':       True,
+        'active_id':     pid,
+        'active_name':   profile['name'],
+        'total_q':       profile['total_q'],
+        'options_per_q': _build_options_per_q(profile),
+    })
+
+def _build_options_per_q(profile) -> list:
+    """Lista de longitud total_q con las opciones válidas de cada pregunta."""
+    result = []
+    for col in profile['columns']:
+        n = col['q_end'] - col['q_start'] + 1
+        result.extend([col['options']] * n)
+    return result
+
+
+# ── Procesar imagen ───────────────────────────────────────────────────────────
 
 @app.route('/process', methods=['POST'])
 def process():
-    """
-    Solo detecta respuestas. NO guarda en Sheets.
-    Acepta 'current_answers' (JSON) con las respuestas ya acumuladas
-    de fotos anteriores. Combina: los '?' se rellenan con la foto nueva.
-    """
     if 'image' not in request.files:
         return jsonify({'success': False, 'error': 'No se recibió imagen'}), 400
 
@@ -87,7 +132,10 @@ def process():
         return jsonify({'success': False,
                         'error': 'Formato no soportado. Usa JPG, PNG o WEBP'}), 400
 
-    # Respuestas acumuladas de fotos anteriores (pueden llegar vacías)
+    pid         = request.form.get('profile_id', active_profile_id())
+    profile     = get_profile(pid)
+    total_q     = profile['total_q']
+
     current_raw = request.form.get('current_answers', '')
     try:
         current = json.loads(current_raw) if current_raw else []
@@ -99,30 +147,28 @@ def process():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        result = process_exam_image(filepath)
+        result = process_exam_image(filepath, profile_id=pid)
         os.remove(filepath)
 
         if not result['success']:
             return jsonify({'success': False, 'error': result['error']}), 422
 
-        new_answers = result['answers']   # lista de 125
+        new_answers = result['answers']   # longitud = total_q del perfil
 
-        # Combinar: mantener respuesta existente si no es '?',
-        # completar con la nueva foto donde había '?'
-        if current and len(current) == 125:
-            merged   = current[:]
-            filled   = []   # índices que se completaron en esta foto
-            for i in range(125):
+        if current and len(current) == total_q:
+            merged = current[:]
+            filled = []
+            for i in range(total_q):
                 if merged[i] == '?' and new_answers[i] != '?':
                     merged[i] = new_answers[i]
-                    filled.append(i + 1)   # número de pregunta (1-based)
+                    filled.append(i + 1)
         else:
             merged = new_answers
             filled = [i + 1 for i, a in enumerate(merged) if a != '?']
 
         detected   = len([a for a in merged if a != '?'])
-        missing    = 125 - detected
-        new_filled = len(filled) if current else 0   # solo cuenta las nuevas en fotos extra
+        missing    = total_q - detected
+        new_filled = len(filled) if current else 0
 
         return jsonify({
             'success':    True,
@@ -130,8 +176,10 @@ def process():
             'confidence': result['confidence'],
             'detected':   detected,
             'missing':    missing,
-            'new_filled': new_filled,   # cuántas se rescataron en esta foto extra
-            'filled_qs':  filled[:20],  # primeras 20 para el aviso (no spamear)
+            'new_filled': new_filled,
+            'filled_qs':  filled[:20],
+            'total_q':    total_q,
+            'profile_id': pid,
         })
 
     except Exception as e:
@@ -139,14 +187,10 @@ def process():
         return jsonify({'success': False, 'error': f'Error interno: {str(e)}'}), 500
 
 
-# ── Guardar en Sheets (autorizado por el usuario) ─────────────────────────────
+# ── Guardar en Sheets ─────────────────────────────────────────────────────────
 
 @app.route('/save', methods=['POST'])
 def save():
-    """
-    Recibe el acumulado final de respuestas y lo guarda en Sheets.
-    Incluye conteo de correctas si la hoja tiene clave definida.
-    """
     data = request.get_json(silent=True) or {}
 
     student_name = data.get('student_name', '').strip()
@@ -158,9 +202,9 @@ def save():
         return jsonify({'success': False,
                         'error': 'El nombre del estudiante es obligatorio.'}), 400
     n = len(answers)
-    if n < 1 or n > 125:
+    if n < 1 or n > 200:
         return jsonify({'success': False,
-                        'error': 'Número de respuestas inválido (1-125).'}), 400
+                        'error': 'Número de respuestas inválido.'}), 400
 
     try:
         sheets_result = save_to_sheets(
@@ -174,8 +218,7 @@ def save():
         pct      = sheets_result.get('pct', '')
 
         if correct is not None:
-            msg = (f'Guardado en "{sheet_name}" — '
-                   f'{correct}/{n} correctas ({pct})')
+            msg = f'Guardado en "{sheet_name}" — {correct}/{n} correctas ({pct})'
         else:
             msg = f'Guardado en "{sheet_name}" — {detected}/{n} detectadas.'
 
@@ -195,17 +238,12 @@ def save():
 
 @app.route('/save_key', methods=['POST'])
 def save_key():
-    """
-    Guarda o actualiza la clave de respuestas correctas en fila 2 de la hoja.
-    Body JSON: { answers: [...], sheet_name: "..." }
-    """
     data       = request.get_json(silent=True) or {}
     answers    = data.get('answers', [])
     sheet_name = data.get('sheet_name', active_sheet())
 
     if not answers:
         return jsonify({'success': False, 'error': 'No se recibieron respuestas.'}), 400
-
     try:
         result = save_answer_key(answers, sheet_name)
         return jsonify(result)
@@ -231,11 +269,12 @@ def debug_image():
     if 'image' not in request.files:
         return jsonify({'success': False, 'error': 'No se recibió imagen'}), 400
     file     = request.files['image']
+    pid      = request.form.get('profile_id', active_profile_id())
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'debug_' + filename)
     file.save(filepath)
 
-    result     = process_exam_image(filepath, debug=True)
+    result     = process_exam_image(filepath, profile_id=pid, debug=True)
     debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
     img_b64    = None
 

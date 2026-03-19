@@ -204,6 +204,17 @@
     background: var(--success); transition: width .4s ease; }
   .progress-label { font-size: .75rem; color: var(--muted); margin-top: 4px; text-align: right; }
 
+  /* ── Tarjetas de perfil de examen ── */
+  .profile-option {
+    border: 2px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .profile-option:hover    { border-color: var(--primary); background: #eff6ff; }
+  .profile-option.active-profile {
+    border-color: var(--primary); background: #eff6ff;
+  }
+
   /* ── Panel clave de respuestas ── */
   .key-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
     gap: 5px; margin: 12px 0; }
@@ -242,7 +253,7 @@
     <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
     <div class="tab" onclick="switchTab('key'); initKeyPanel()">🔑 Clave</div>
     <div class="tab" onclick="switchTab('results'); loadResults()">📊 Resultados</div>
-    <div class="tab" onclick="switchTab('help')">❓ Ayuda</div>
+    <div class="tab" onclick="switchTab('config')">⚙️ Config</div>
   </div>
 
   <!-- ══ TAB ESCANEAR ══════════════════════════════════════════════════════ -->
@@ -423,24 +434,39 @@
   </div>
 
   <!-- ══ TAB AYUDA ══════════════════════════════════════════════════════════ -->
-  <div id="tab-help" class="tab-content">
+  <div id="tab-config" class="tab-content">
+
+    <!-- ── Tipo de evaluación ── -->
+    <div class="card">
+      <h2>📋 Tipo de evaluación</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Selecciona el formato de hoja de respuestas que vas a escanear.
+        El cambio aplica al próximo escaneo.
+      </p>
+      <div id="profile-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div class="score-note" id="profile-saved-note" style="margin-top:10px;">
+        ✅ Tipo de evaluación actualizado.
+      </div>
+    </div>
+
+    <!-- ── Ayuda: foto ── -->
     <div class="card">
       <h2>📌 Cómo tomar la foto</h2>
       <div style="display:flex;flex-direction:column;gap:12px;font-size:.9rem;">
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">1️⃣</span>
           <div><strong>Coloca la hoja sobre superficie plana</strong><br>
-          <span style="color:var(--muted);">Evita arrugas y dobleces</span></div>
+          <span style="color:var(--muted);">Evita arrugas y dobleces. Fondo oscuro mejora la detección</span></div>
         </div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">2️⃣</span>
-          <div><strong>Ilumina bien</strong><br>
-          <span style="color:var(--muted);">Luz natural es ideal. Sin sombras</span></div>
+          <div><strong>Ilumina bien y activa el flash</strong><br>
+          <span style="color:var(--muted);">Luz pareja sin sombras. Activa el flash manualmente</span></div>
         </div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">3️⃣</span>
           <div><strong>Encuadra toda la hoja</strong><br>
-          <span style="color:var(--muted);">Los 4 marcadores negros deben verse completos</span></div>
+          <span style="color:var(--muted);">Los 4 marcadores negros de las esquinas deben verse completos</span></div>
         </div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <span style="font-size:1.5rem;">4️⃣</span>
@@ -449,19 +475,25 @@
         </div>
       </div>
     </div>
+
+    <!-- ── Ayuda: flujo ── -->
     <div class="card">
-      <h2>💾 Flujo de guardado</h2>
+      <h2>💾 Flujo de trabajo</h2>
       <div style="display:flex;flex-direction:column;gap:10px;font-size:.88rem;color:var(--muted);">
-        <div>📷 <strong style="color:var(--text);">Analizar</strong> — solo procesa la imagen, no guarda nada.</div>
-        <div>📷➕ <strong style="color:var(--text);">Otra foto</strong> — si hay respuestas sin detectar, agrega una segunda (o más) fotos para completarlas.</div>
-        <div>💾 <strong style="color:var(--text);">Guardar</strong> — escribe el nombre del estudiante y confirma. Solo entonces se guarda en Google Sheets.</div>
+        <div>📷 <strong style="color:var(--text);">Analizar</strong> — procesa la imagen sin guardar nada.</div>
+        <div>📷➕ <strong style="color:var(--text);">Otra foto</strong> — agrega fotos adicionales para completar respuestas no detectadas.</div>
+        <div>🔑 <strong style="color:var(--text);">Clave</strong> — define las respuestas correctas antes de escanear. El sistema calculará el puntaje automáticamente.</div>
+        <div>💾 <strong style="color:var(--text);">Guardar</strong> — escribe el nombre del estudiante y confirma. Solo entonces se guarda en Sheets.</div>
+        <div>🗑️ <strong style="color:var(--text);">Descartar</strong> — cancela el escaneo actual sin guardar nada.</div>
         <div>🔄 <strong style="color:var(--text);">Nuevo escaneo</strong> — limpia todo para el siguiente estudiante.</div>
       </div>
     </div>
+
+    <!-- ── Diagnóstico ── -->
     <div class="card">
-      <h2>⚙️ Diagnóstico OMR</h2>
+      <h2>🔬 Diagnóstico OMR</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
-        Envía una imagen para ver las detecciones visuales.
+        Envía una imagen para visualizar las detecciones del algoritmo.
       </p>
       <input type="file" id="debug-input" accept="image/*" onchange="debugImage(this)">
       <button class="btn-secondary" onclick="document.getElementById('debug-input').click()">
@@ -469,7 +501,8 @@
       </button>
       <div id="debug-result" style="margin-top:12px;"></div>
     </div>
-  </div>
+
+  </div><!-- /tab-config -->
 
 </main>
 
@@ -495,17 +528,23 @@
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
 let state = {
-  answers:        Array(125).fill('?'),  // respuestas acumuladas (siempre 125)
+  answers:        Array(125).fill('?'),
   confidence:     0,
   photoCount:     0,
   activeSheet:    '',
   sheetsUrl:      '',
   lastNewFilled:  [],
-  numQuestions:   125,    // preguntas activas de esta evaluación
+  numQuestions:   125,       // preguntas activas en esta sesión
+  profileId:      'JMR125',  // perfil activo
+  profileTotalQ:  125,       // total_q del perfil
+  optionsPerQ:    [],        // opciones válidas por pregunta (del perfil)
 };
 
 // ── Inicialización ─────────────────────────────────────────────────────────
-(async function init() { await loadSheets(); })();
+(async function init() {
+  await loadSheets();
+  await loadProfile();
+})();
 
 // ══ PREVISUALIZACIÓN DE ARCHIVO ════════════════════════════════════════════
 function _onFileSelected(e) {
@@ -563,10 +602,85 @@ function rerenderGrid() {
 // ── Tabs ───────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach((t,i) =>
-    t.classList.toggle('active', ['scan','key','results','help'][i] === tab));
+    t.classList.toggle('active', ['scan','key','results','config'][i] === tab));
   document.querySelectorAll('.tab-content').forEach(tc =>
     tc.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
+}
+
+// ══ PERFILES DE EXAMEN ════════════════════════════════════════════════════
+
+async function loadProfile() {
+  try {
+    const resp = await fetch('/profile');
+    const data = await resp.json();
+    applyProfile(data);
+    renderProfileList(data);
+  } catch(e) {
+    console.warn('No se pudo cargar perfil:', e);
+  }
+}
+
+function applyProfile(data) {
+  state.profileId    = data.active_id;
+  state.profileTotalQ = data.total_q;
+  state.optionsPerQ  = data.options_per_q || [];
+  // Ajustar numQuestions al máximo del perfil si excede
+  if (state.numQuestions > data.total_q) {
+    state.numQuestions = data.total_q;
+    document.getElementById('num-questions').max   = data.total_q;
+    document.getElementById('num-questions').value = data.total_q;
+    document.getElementById('q-badge').textContent = `${data.total_q} preguntas`;
+  }
+  document.getElementById('num-questions').max = data.total_q;
+  // Resetear answers al tamaño del perfil
+  state.answers = Array(data.total_q).fill('?');
+
+  // Actualizar badge en la cabecera si existe
+  const badge = document.getElementById('active-profile-badge');
+  if (badge) badge.textContent = data.active_name;
+}
+
+function renderProfileList(data) {
+  const container = document.getElementById('profile-list');
+  if (!container) return;
+  container.innerHTML = (data.profiles || []).map(p => {
+    const isActive = p.id === data.active_id;
+    return `<div class="profile-option${isActive ? ' active-profile' : ''}"
+                 onclick="selectProfile('${p.id}')">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:1.4rem;">${isActive ? '✅' : '⬜'}</span>
+        <div>
+          <div style="font-weight:600;font-size:.92rem;">${p.name}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function selectProfile(pid) {
+  if (pid === state.profileId) return;
+  try {
+    const resp = await fetch('/profile', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({profile_id: pid})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      applyProfile(data);
+      renderProfileList(data);
+      // Resetear escaneo activo si lo hay
+      if (state.photoCount > 0) resetScan();
+      document.getElementById('profile-saved-note').classList.add('show');
+      setTimeout(() =>
+        document.getElementById('profile-saved-note').classList.remove('show'), 3000);
+    } else {
+      alert('Error al cambiar perfil: ' + data.error);
+    }
+  } catch(e) {
+    alert('Error de conexión al cambiar perfil.');
+  }
 }
 
 // ══ CLAVE DE RESPUESTAS ════════════════════════════════════════════════════
@@ -574,8 +688,11 @@ function switchTab(tab) {
 let keyAnswers = new Array(125).fill('');   // clave en memoria
 
 function initKeyPanel() {
-  // Sincronizar número de preguntas con el selector del escaneo
-  const n = parseInt(document.getElementById('num-questions').value) || 125;
+  // Sincronizar con el perfil activo
+  const maxQ = state.profileTotalQ;
+  document.getElementById('key-num-q').max = maxQ;
+  // Usar el mismo numQuestions del escaneo, acotado al perfil
+  const n = Math.min(state.numQuestions, maxQ);
   document.getElementById('key-num-q').value = n;
   buildKeyGrid(n);
 }
@@ -583,8 +700,9 @@ function initKeyPanel() {
 function buildKeyGrid(val) {
   let n = parseInt(val, 10);
   if (isNaN(n) || n < 1)  n = 1;
-  if (n > 125)             n = 125;
+  if (n > state.profileTotalQ) n = state.profileTotalQ;
   document.getElementById('key-num-q').value = n;
+  document.getElementById('key-num-q').max   = state.profileTotalQ;
 
   // Ajustar el array de clave
   if (keyAnswers.length < n) {
@@ -593,16 +711,20 @@ function buildKeyGrid(val) {
 
   const grid = document.getElementById('key-grid');
   grid.innerHTML = Array.from({length: n}, (_, i) => {
-    const v = keyAnswers[i] || '';
-    const filled = v ? ' filled' : '';
+    const v       = keyAnswers[i] || '';
+    const filled  = v ? ' filled' : '';
+    // Opciones para esta pregunta según el perfil
+    const opts    = (state.optionsPerQ && state.optionsPerQ[i])
+                    ? state.optionsPerQ[i]
+                    : ['A','B','C','D'];
+    const options = opts.map(o =>
+      `<option value="${o}" ${v===o?'selected':''}>${o}</option>`
+    ).join('');
     return `<div class="key-chip${filled}" id="kc-${i}">
       <span class="qnum">${i+1}.</span>
       <select onchange="setKeyAnswer(${i}, this.value)">
-        <option value=""  ${v===''  ?'selected':''}>—</option>
-        <option value="A" ${v==='A' ?'selected':''}>A</option>
-        <option value="B" ${v==='B' ?'selected':''}>B</option>
-        <option value="C" ${v==='C' ?'selected':''}>C</option>
-        <option value="D" ${v==='D' ?'selected':''}>D</option>
+        <option value="" ${v===''?'selected':''}>—</option>
+        ${options}
       </select>
     </div>`;
   }).join('');
@@ -766,6 +888,7 @@ async function processPhoto() {
 
   const fd = new FormData();
   fd.append('image', imageFile);
+  fd.append('profile_id', state.profileId);
   // Enviar respuestas acumuladas (vacío en primera foto)
   if (!isFirstPhoto) {
     fd.append('current_answers', JSON.stringify(state.answers));
@@ -785,6 +908,8 @@ async function processPhoto() {
     state.confidence = data.confidence;
     state.photoCount++;
     state.lastNewFilled = isFirstPhoto ? [] : (data.filled_qs || []);
+    // Actualizar total_q si el perfil cambió
+    if (data.total_q) state.profileTotalQ = data.total_q;
 
     setStatus('','');
     renderResult(data, isFirstPhoto);
@@ -987,7 +1112,7 @@ function openSheets() {
 
 // ══ RESET ══════════════════════════════════════════════════════════════════
 function resetScan() {
-  state.answers       = Array(125).fill('?');
+  state.answers       = Array(state.profileTotalQ).fill('?');
   state.confidence    = 0;
   state.photoCount    = 0;
   state.lastNewFilled = [];

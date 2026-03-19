@@ -1,78 +1,60 @@
 """
-omr_processor.py  —  v8  (CLAHE sin corrección EXIF)
-=====================================================================
-  1. CLAHE antes de binarizar  → contraste uniforme sin importar la luz
-  2. Sin corrección EXIF
-  3. Parámetros recalibrados
+omr_processor.py  —  v9  (multi-perfil)
+========================================
+Toda la geometría viene del perfil activo (exam_profiles.py).
+Sin constantes fijas — 100 % configurable por tipo de examen.
 """
 
 import cv2
 import numpy as np
 import os
 from scipy.signal import find_peaks
-
-# ---------------------------------------------------------------------------
-# TAMANIO CANONICO
-# ---------------------------------------------------------------------------
-WORK_W = 1275
-WORK_H = 1650
-
-# ---------------------------------------------------------------------------
-# POSICIONES X CALIBRADAS (fraccion de WORK_W)
-# ---------------------------------------------------------------------------
-BUBBLE_FX = {
-    0: [0.110, 0.145, 0.180, 0.215],   # P1-P25
-    1: [0.290, 0.325, 0.360, 0.395],   # P26-P50
-    2: [0.470, 0.505, 0.540, 0.575],   # P51-P75
-    3: [0.650, 0.685, 0.720, 0.755],   # P76-P100
-    4: [0.830, 0.865, 0.900, 0.935],   # P101-P125
-}
-
-TIMING_FX = {0: 0.056, 1: 0.236, 2: 0.419, 3: 0.601, 4: 0.789}
-
-ANSWERS_TOP_F    = 0.35
-ANSWERS_BOTTOM_F = 0.87
-
-# ---------------------------------------------------------------------------
-# PARAMETROS DE DETECCION
-# ---------------------------------------------------------------------------
-BUBBLE_RADIUS  = 10
-FILL_THRESHOLD = 0.12
-MIN_CONTRAST   = 0.10
-BINARIZE_BLOCK = 25
-BINARIZE_C     = 8
-
-# CLAHE
-CLAHE_CLIP = 2.5
-CLAHE_GRID = (8, 8)
+from exam_profiles import get_profile, DEFAULT_PROFILE_ID
 
 
 # ===========================================================================
 # API PUBLICA
 # ===========================================================================
 
-def process_exam_image(image_path: str, debug: bool = False) -> dict:
+def process_exam_image(image_path: str,
+                       profile_id: str = DEFAULT_PROFILE_ID,
+                       debug: bool = False) -> dict:
+    profile = get_profile(profile_id)
+
     img = cv2.imread(image_path)
     if img is None:
         return {'success': False, 'error': 'No se pudo abrir la imagen.'}
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    warped, p_ok    = _correct_perspective(gray)
-    warped_enhanced = _apply_clahe(warped)
-    binary          = _binarize(warped_enhanced)
-    y_rows, n_rows  = _detect_rows_from_timing(binary)
-    answers, confs  = _read_answers(binary, y_rows)
+    warped, p_ok = _correct_perspective(gray)
+
+    # CLAHE opcional según el perfil
+    if profile.get('clahe_clip', 0) > 0:
+        warped = _apply_clahe(warped,
+                              profile['clahe_clip'],
+                              profile['clahe_grid'])
+
+    binary         = _binarize(warped,
+                               profile['binarize_block'],
+                               profile['binarize_c'])
+    y_rows, n_rows = _detect_rows(binary, profile)
+    answers, confs = _read_answers(binary, y_rows, profile)
 
     if debug:
-        _save_debug(warped, binary, answers, y_rows, image_path)
+        _save_debug(warped, binary, answers, y_rows, profile, image_path)
+
+    total_q  = profile['total_q']
+    detected = len([a for a in answers if a != '?'])
 
     return {
         'success':               True,
-        'answers':               answers,
+        'answers':               answers,       # lista de total_q elementos
         'confidence':            round(float(np.mean(confs)) if confs else 0, 1),
         'rows_detected':         n_rows,
         'perspective_corrected': p_ok,
+        'total_q':               total_q,
+        'profile_id':            profile_id,
     }
 
 
@@ -80,19 +62,31 @@ def process_exam_image(image_path: str, debug: bool = False) -> dict:
 # CLAHE
 # ===========================================================================
 
-def _apply_clahe(gray):
-    """70% CLAHE + 30% original para mejorar contraste sin perder timing marks."""
-    clahe     = cv2.createCLAHE(clipLimit=CLAHE_CLIP, tileGridSize=CLAHE_GRID)
+def _apply_clahe(gray, clip, grid):
+    clahe     = cv2.createCLAHE(clipLimit=clip, tileGridSize=grid)
     equalized = clahe.apply(gray)
     return cv2.addWeighted(equalized, 0.70, gray, 0.30, 0)
 
 
 # ===========================================================================
-# CORRECCION DE PERSPECTIVA
+# BINARIZACIÓN
+# ===========================================================================
+
+def _binarize(gray, block, c):
+    return cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        blockSize=block, C=c
+    )
+
+
+# ===========================================================================
+# CORRECCIÓN DE PERSPECTIVA  (igual para todos los perfiles)
 # ===========================================================================
 
 def _find_sheet_corners(gray):
-    h, w = gray.shape
+    h, w    = gray.shape
     blurred = cv2.GaussianBlur(gray, (21, 21), 0)
     _, thr  = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY)
     kernel  = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
@@ -117,18 +111,19 @@ def _find_sheet_corners(gray):
 
 
 def _correct_perspective(gray):
+    from exam_profiles import get_profile, DEFAULT_PROFILE_ID
+    p    = get_profile(DEFAULT_PROFILE_ID)   # tamaño canónico del perfil activo
+    W, H = p['work_w'], p['work_h']
     h, w = gray.shape
 
-    # Estrategia 1: contorno de la hoja blanca
     corners = _find_sheet_corners(gray)
     if corners is not None:
         tl, tr, br, bl = corners
         src = np.float32([tl, tr, br, bl])
-        dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+        dst = np.float32([[0,0],[W-1,0],[W-1,H-1],[0,H-1]])
         M   = cv2.getPerspectiveTransform(src, dst)
-        return cv2.warpPerspective(gray, M, (WORK_W, WORK_H)), True
+        return cv2.warpPerspective(gray, M, (W, H)), True
 
-    # Estrategia 2: fiduciales negros con varios umbrales
     for thresh_val in [50, 70, 90, 110]:
         _, thr = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY_INV)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
@@ -143,18 +138,18 @@ def _correct_perspective(gray):
             asp = bw / bh if bh else 0
             if 0.3 < asp < 3.5 and area / (bw * bh) > 0.40:
                 cands.append({'cx': x+bw//2, 'cy': y+bh//2, 'area': area})
-        result = _find_corners(cands, w, h)
+        result = _find_corners_from_cands(cands, w, h)
         if result is not None:
             tl, tr, br, bl = result
             src = np.float32([tl, tr, br, bl])
-            dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+            dst = np.float32([[0,0],[W-1,0],[W-1,H-1],[0,H-1]])
             M   = cv2.getPerspectiveTransform(src, dst)
-            return cv2.warpPerspective(gray, M, (WORK_W, WORK_H)), True
+            return cv2.warpPerspective(gray, M, (W, H)), True
 
-    return cv2.resize(gray, (WORK_W, WORK_H)), False
+    return cv2.resize(gray, (W, H)), False
 
 
-def _find_corners(cands, w, h):
+def _find_corners_from_cands(cands, w, h):
     if len(cands) < 4:
         return None
     mx, my = w/2, h/2
@@ -168,48 +163,40 @@ def _find_corners(cands, w, h):
     }
     if not all(q.values()):
         return None
-    tl=best(q['tl'],0,0); tr=best(q['tr'],w,0)
-    br=best(q['br'],w,h); bl=best(q['bl'],0,h)
+    tl = best(q['tl'],0,0); tr = best(q['tr'],w,0)
+    br = best(q['br'],w,h); bl = best(q['bl'],0,h)
     return ([tl['cx'],tl['cy']], [tr['cx'],tr['cy']],
             [br['cx'],br['cy']], [bl['cx'],bl['cy']])
 
 
 # ===========================================================================
-# BINARIZACION
+# DETECCIÓN DE FILAS (timing marks)
 # ===========================================================================
 
-def _binarize(gray):
-    return cv2.adaptiveThreshold(
-        gray, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        blockSize=BINARIZE_BLOCK, C=BINARIZE_C
-    )
-
-
-# ===========================================================================
-# DETECCION DE FILAS
-# ===========================================================================
-
-def _detect_rows_from_timing(binary):
-    h, w = binary.shape
-    y_top    = int(ANSWERS_TOP_F * h)
-    y_bottom = int(ANSWERS_BOTTOM_F * h)
+def _detect_rows(binary, profile):
+    """
+    Detecta las Y de cada fila usando los timing marks de TODAS las columnas
+    del perfil. Retorna la lista de Y con longitud = max filas por columna.
+    """
+    h, w     = binary.shape
+    y_top    = int(profile['answers_top_f']    * h)
+    y_bottom = int(profile['answers_bottom_f'] * h)
 
     best_rows  = []
     best_count = 0
 
-    for col_idx in range(5):
-        x_tm = int(TIMING_FX[col_idx] * w)
+    for col in profile['columns']:
+        x_tm = int(col['timing_fx'] * w)
         x1   = max(0, x_tm - 3)
         x2   = min(w, x_tm + 18)
 
         strip     = binary[y_top:y_bottom, x1:x2].astype(np.float32)
-        profile   = strip.mean(axis=1)
+        profile_v = strip.mean(axis=1)
         kernel    = np.ones(5) / 5
-        profile_s = np.convolve(profile, kernel, mode='same')
+        profile_s = np.convolve(profile_v, kernel, mode='same')
 
-        min_dist = max(10, int((y_bottom - y_top) / 30))
+        n_rows   = col['q_end'] - col['q_start'] + 1
+        min_dist = max(8, int((y_bottom - y_top) / (n_rows + 5)))
         peaks, _ = find_peaks(
             profile_s,
             height=profile_s.max() * 0.35,
@@ -220,88 +207,108 @@ def _detect_rows_from_timing(binary):
             best_count = len(peaks)
             best_rows  = [y_top + int(p) for p in peaks]
 
-    if len(best_rows) >= 25:
-        step = (best_rows[-1] - best_rows[0]) / 24
-        best_rows = [int(best_rows[0] + i * step) for i in range(25)]
-    elif len(best_rows) >= 10:
+    # Normalizar al número de filas de la columna más larga
+    max_rows = max(col['q_end'] - col['q_start'] + 1
+                   for col in profile['columns'])
+
+    if len(best_rows) >= max_rows:
+        step = (best_rows[-1] - best_rows[0]) / (max_rows - 1)
+        best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
+    elif len(best_rows) >= max_rows // 2:
         step = (best_rows[-1] - best_rows[0]) / (len(best_rows) - 1)
-        best_rows = [int(best_rows[0] + i * step) for i in range(25)]
+        best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
     else:
-        step = (y_bottom - y_top) / 24
-        best_rows = [int(y_top + i * step) for i in range(25)]
+        step = (y_bottom - y_top) / (max_rows - 1)
+        best_rows = [int(y_top + i * step) for i in range(max_rows)]
         best_count = 0
 
-    return best_rows[:25], min(best_count, 25)
+    return best_rows[:max_rows], min(best_count, max_rows)
 
 
 # ===========================================================================
 # LECTURA DE BURBUJAS
 # ===========================================================================
 
-def _read_answers(binary, y_rows):
-    h, w = binary.shape
-    answers, confs = [], []
+def _read_answers(binary, y_rows, profile):
+    h, w      = binary.shape
+    answers   = []
+    confs     = []
+    radius    = profile['bubble_radius']
+    threshold = profile['fill_threshold']
+    contrast  = profile['min_contrast']
 
-    for col_idx in range(5):
-        xs = [int(fx * w) for fx in BUBBLE_FX[col_idx]]
-        for row_idx in range(25):
+    for col in profile['columns']:
+        xs      = [int(fx * w) for fx in col['bubble_fx']]
+        options = col['options']
+        n_rows  = col['q_end'] - col['q_start'] + 1
+
+        for row_idx in range(n_rows):
             y = y_rows[row_idx] if row_idx < len(y_rows) else 0
             fills = []
             for x in xs:
-                y1 = max(0, y - BUBBLE_RADIUS)
-                y2 = min(h, y + BUBBLE_RADIUS)
-                x1 = max(0, x - BUBBLE_RADIUS)
-                x2 = min(w, x + BUBBLE_RADIUS)
+                y1  = max(0, y - radius)
+                y2  = min(h, y + radius)
+                x1  = max(0, x - radius)
+                x2  = min(w, x + radius)
                 roi = binary[y1:y2, x1:x2]
-                fills.append(float(np.sum(roi > 127)) / roi.size if roi.size else 0.0)
-            ans, conf = _pick_answer(fills)
+                fills.append(
+                    float(np.sum(roi > 127)) / roi.size if roi.size else 0.0
+                )
+            ans, conf = _pick_answer(fills, options, threshold, contrast)
             answers.append(ans)
             confs.append(conf)
 
     return answers, confs
 
 
-def _pick_answer(fills):
+def _pick_answer(fills, options, threshold, min_contrast):
     mx = max(fills)
     mi = fills.index(mx)
-    if mx < FILL_THRESHOLD:
+    if mx < threshold:
         return '?', 0.0
-    sf = sorted(fills, reverse=True)
+    sf       = sorted(fills, reverse=True)
     contrast = sf[0] - sf[1]
-    if contrast < MIN_CONTRAST:
+    if contrast < min_contrast:
         return '?', 5.0
     conf = min(100.0, (contrast / (sf[0] + 1e-6)) * 130)
-    return 'ABCD'[mi], round(conf, 1)
+    return options[mi], round(conf, 1)
 
 
 # ===========================================================================
 # DEBUG
 # ===========================================================================
 
-def _save_debug(warped, binary, answers, y_rows, original_path):
-    h, w = warped.shape
+def _save_debug(warped, binary, answers, y_rows, profile, original_path):
+    h, w   = warped.shape
     debug  = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
-    colors = {
-        'A': (50, 200, 50), 'B': (50, 50, 230),
-        'C': (0, 180, 230),  'D': (200, 50, 200),
-        '?': (80, 80, 80),
-    }
-    for col_idx in range(5):
-        xs = [int(fx * w) for fx in BUBBLE_FX[col_idx]]
-        for row_idx in range(25):
-            q   = col_idx * 25 + row_idx
-            ans = answers[q] if q < len(answers) else '?'
+    # Colores ciclicos para las opciones
+    palette = [
+        (50,200,50),(50,50,230),(0,180,230),(200,50,200),
+        (230,130,0),(0,180,130),(180,0,180),(100,100,230)
+    ]
+    radius = profile['bubble_radius']
+
+    q_idx = 0
+    for col in profile['columns']:
+        xs      = [int(fx * w) for fx in col['bubble_fx']]
+        options = col['options']
+        n_rows  = col['q_end'] - col['q_start'] + 1
+        for row_idx in range(n_rows):
+            ans = answers[q_idx] if q_idx < len(answers) else '?'
             y   = y_rows[row_idx] if row_idx < len(y_rows) else 0
-            clr = colors.get(ans, (80, 80, 80))
             for oi, x in enumerate(xs):
-                if 'ABCD'[oi] == ans:
-                    cv2.circle(debug, (x, y), BUBBLE_RADIUS, clr, 2)
-                    cv2.putText(debug, 'ABCD'[oi], (x-5, y+4),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.3, clr, 1)
-                else:
-                    cv2.circle(debug, (x, y), BUBBLE_RADIUS, (160, 160, 160), 1)
+                opt = options[oi]
+                clr = palette[oi % len(palette)] if opt == ans else (160,160,160)
+                thick = 2 if opt == ans else 1
+                cv2.circle(debug, (x, y), radius, clr, thick)
+                if opt == ans:
+                    cv2.putText(debug, opt, (x-4, y+4),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.28, clr, 1)
+            q_idx += 1
+
     for y in y_rows:
         cv2.line(debug, (0, y), (30, y), (0, 220, 220), 1)
+
     base, _ = os.path.splitext(original_path)
     cv2.imwrite(base + '_debug.jpg', debug)
 
@@ -309,18 +316,30 @@ def _save_debug(warped, binary, answers, y_rows, original_path):
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
     import sys
+    from exam_profiles import PROFILE_LIST
     if len(sys.argv) < 2:
-        print("Uso: python omr_processor.py <foto.jpg>")
+        print("Uso: python omr_processor.py <foto.jpg> [profile_id]")
+        print("Perfiles disponibles:")
+        for p in PROFILE_LIST:
+            print(f"  {p['id']}  —  {p['name']}")
         sys.exit(1)
-    r = process_exam_image(sys.argv[1], debug=True)
+
+    pid = sys.argv[2] if len(sys.argv) > 2 else DEFAULT_PROFILE_ID
+    r   = process_exam_image(sys.argv[1], profile_id=pid, debug=True)
+
     if not r['success']:
         print("ERROR:", r['error']); sys.exit(1)
-    print(f"Perspectiva OK : {r['perspective_corrected']}")
-    print(f"Filas timing   : {r['rows_detected']}/25")
-    print(f"Confianza      : {r['confidence']}%")
+
+    print(f"Perfil        : {r['profile_id']}")
+    print(f"Perspectiva OK: {r['perspective_corrected']}")
+    print(f"Filas timing  : {r['rows_detected']}")
+    print(f"Confianza     : {r['confidence']}%")
     answered = sum(1 for a in r['answers'] if a != '?')
-    print(f"Respondidas    : {answered}/125")
-    for col in range(5):
-        s = col * 25
-        print(f"P{s+1:3d}-P{s+25:3d}: {' '.join(r['answers'][s:s+25])}")
-    print(f"Debug          : {sys.argv[1].rsplit('.',1)[0]}_debug.jpg")
+    print(f"Respondidas   : {answered}/{r['total_q']}")
+    profile = get_profile(pid)
+    for col in profile['columns']:
+        s   = col['q_start'] - 1
+        e   = col['q_end']
+        ans = r['answers'][s:e]
+        print(f"  P{col['q_start']:3d}-P{col['q_end']:3d}: {' '.join(ans)}")
+    print(f"Debug         : {sys.argv[1].rsplit('.',1)[0]}_debug.jpg")
