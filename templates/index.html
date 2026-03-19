@@ -1188,17 +1188,26 @@ async function debugImage(input) {
   const file = input.files[0]; if(!file) return;
   const result = document.getElementById('debug-result');
   result.innerHTML = '<p style="color:var(--muted)">Procesando…</p>';
-  const fd = new FormData(); fd.append('image', file);
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('profile_id', state.profileId);   // usar perfil activo
   try {
     const resp = await fetch('/debug_image',{method:'POST',body:fd});
     const data = await resp.json();
     if (data.debug_image) {
-      result.innerHTML=`<img src="data:image/jpeg;base64,${data.debug_image}"
-        style="width:100%;border-radius:8px;margin-top:8px;">
-        <p style="color:var(--muted);font-size:.8rem;margin-top:6px;">
-        Verde=A · Azul=B · Cian=C · Morado=D · Gris=no detectada</p>`;
+      const n = data.answers ? data.answers.length : 0;
+      const detected = data.answers ? data.answers.filter(a => a !== '?').length : 0;
+      result.innerHTML=`
+        <p style="font-size:.82rem;color:var(--muted);margin-bottom:6px;">
+          Perfil: <strong>${state.profileId}</strong> ·
+          Detectadas: <strong>${detected}/${n}</strong>
+        </p>
+        <img src="data:image/jpeg;base64,${data.debug_image}"
+          style="width:100%;border-radius:8px;">
+        <p style="color:var(--muted);font-size:.78rem;margin-top:6px;">
+          Verde=A · Azul=B · Cian=C · Morado=D · Naranja=E · Verde agua=F · Magenta=G · Azul claro=H · Gris=no detectada</p>`;
     } else {
-      result.innerHTML=`<p>Respuestas: ${JSON.stringify(data.answers?.slice(0,10))}…</p>`;
+      result.innerHTML=`<p style="color:var(--danger)">Sin imagen de diagnóstico. Respuestas: ${JSON.stringify(data.answers?.slice(0,10))}…</p>`;
     }
   } catch(e) {
     result.innerHTML='<p style="color:var(--danger)">Error de conexión</p>';
