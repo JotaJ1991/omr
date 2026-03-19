@@ -27,7 +27,7 @@ def process_exam_image(image_path: str,
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    warped, p_ok = _correct_perspective(gray)
+    warped, p_ok = _correct_perspective(gray, profile)
 
     # CLAHE opcional según el perfil
     if profile.get('clahe_clip', 0) > 0:
@@ -110,10 +110,8 @@ def _find_sheet_corners(gray):
     return tl, tr, br, bl
 
 
-def _correct_perspective(gray):
-    from exam_profiles import get_profile, DEFAULT_PROFILE_ID
-    p    = get_profile(DEFAULT_PROFILE_ID)   # tamaño canónico del perfil activo
-    W, H = p['work_w'], p['work_h']
+def _correct_perspective(gray, profile):
+    W, H = profile['work_w'], profile['work_h']
     h, w = gray.shape
 
     corners = _find_sheet_corners(gray)
@@ -279,35 +277,65 @@ def _pick_answer(fills, options, threshold, min_contrast):
 # ===========================================================================
 
 def _save_debug(warped, binary, answers, y_rows, profile, original_path):
-    h, w   = warped.shape
-    debug  = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
-    # Colores ciclicos para las opciones
+    h, w  = warped.shape
+    debug = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
+
     palette = [
         (50,200,50),(50,50,230),(0,180,230),(200,50,200),
         (230,130,0),(0,180,130),(180,0,180),(100,100,230)
     ]
     radius = profile['bubble_radius']
 
+    # ── Dibujar TODAS las posiciones de burbuja (detectada o no) ─────────────
     q_idx = 0
     for col in profile['columns']:
         xs      = [int(fx * w) for fx in col['bubble_fx']]
         options = col['options']
         n_rows  = col['q_end'] - col['q_start'] + 1
+
         for row_idx in range(n_rows):
             ans = answers[q_idx] if q_idx < len(answers) else '?'
             y   = y_rows[row_idx] if row_idx < len(y_rows) else 0
+
             for oi, x in enumerate(xs):
                 opt = options[oi]
-                clr = palette[oi % len(palette)] if opt == ans else (160,160,160)
-                thick = 2 if opt == ans else 1
-                cv2.circle(debug, (x, y), radius, clr, thick)
                 if opt == ans:
+                    # Detectada: círculo grueso con color
+                    clr = palette[oi % len(palette)]
+                    cv2.circle(debug, (x, y), radius, clr, 2)
                     cv2.putText(debug, opt, (x-4, y+4),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.28, clr, 1)
+                else:
+                    # No detectada: círculo fino gris para ver la posición
+                    cv2.circle(debug, (x, y), radius, (180, 180, 180), 1)
+
             q_idx += 1
 
+    # ── Líneas horizontales de cada fila (timing marks detectados) ───────────
     for y in y_rows:
-        cv2.line(debug, (0, y), (30, y), (0, 220, 220), 1)
+        cv2.line(debug, (0, y), (w, y), (0, 200, 200), 1)
+
+    # ── Líneas verticales de timing marks ────────────────────────────────────
+    for col in profile['columns']:
+        x_tm = int(col['timing_fx'] * w)
+        cv2.line(debug, (x_tm, 0), (x_tm, h), (0, 200, 200), 1)
+
+    # ── Zona de respuestas (top/bottom) ──────────────────────────────────────
+    y_top    = int(profile['answers_top_f']    * h)
+    y_bottom = int(profile['answers_bottom_f'] * h)
+    cv2.line(debug, (0, y_top),    (w, y_top),    (0, 120, 255), 2)
+    cv2.line(debug, (0, y_bottom), (w, y_bottom), (0, 120, 255), 2)
+
+    # ── Textos informativos ───────────────────────────────────────────────────
+    info_lines = [
+        f"Perfil: {profile.get('id','?')}",
+        f"Filas detectadas: {len(y_rows)}",
+        f"top_f={profile['answers_top_f']}  bot_f={profile['answers_bottom_f']}",
+        f"fill_thr={profile['fill_threshold']}  contrast={profile['min_contrast']}",
+    ]
+    for i, txt in enumerate(info_lines):
+        cv2.putText(debug, txt, (10, 22 + i * 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 120, 255), 1, cv2.LINE_AA)
 
     base, _ = os.path.splitext(original_path)
     cv2.imwrite(base + '_debug.jpg', debug)
