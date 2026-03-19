@@ -565,14 +565,13 @@ function _onFileSelected(e) {
 
 // ══ NÚMERO DE PREGUNTAS ════════════════════════════════════════════════════
 function updateNumQuestions(val) {
-  const maxQ = state.profileTotalQ || 125;
   let n = parseInt(val, 10);
-  if (isNaN(n) || n < 1) n = 1;
-  if (n > maxQ)          n = maxQ;
+  if (isNaN(n) || n < 1)  n = 1;
+  if (n > 125)            n = 125;
   state.numQuestions = n;
   document.getElementById('num-questions').value = n;
   document.getElementById('q-badge').textContent =
-    n === maxQ ? `${maxQ} preguntas` : `${n} de ${maxQ}`;
+    n === 125 ? '125 preguntas' : `${n} de 125`;
   // Si ya hay un escaneo activo, re-renderizar el grid con el nuevo límite
   if (state.photoCount > 0) rerenderGrid();
 }
@@ -623,28 +622,23 @@ async function loadProfile() {
 }
 
 function applyProfile(data) {
-  state.profileId     = data.active_id;
+  state.profileId    = data.active_id;
   state.profileTotalQ = data.total_q;
-  state.optionsPerQ   = data.options_per_q || [];
-
-  // Sincronizar numQuestions al total del perfil activo
-  state.numQuestions = data.total_q;
-  const qInput = document.getElementById('num-questions');
-  qInput.max   = data.total_q;
-  qInput.value = data.total_q;
-  document.getElementById('q-badge').textContent = `${data.total_q} preguntas`;
-
+  state.optionsPerQ  = data.options_per_q || [];
+  // Ajustar numQuestions al máximo del perfil si excede
+  if (state.numQuestions > data.total_q) {
+    state.numQuestions = data.total_q;
+    document.getElementById('num-questions').max   = data.total_q;
+    document.getElementById('num-questions').value = data.total_q;
+    document.getElementById('q-badge').textContent = `${data.total_q} preguntas`;
+  }
+  document.getElementById('num-questions').max = data.total_q;
   // Resetear answers al tamaño del perfil
   state.answers = Array(data.total_q).fill('?');
 
-  // Mostrar nombre del perfil activo en el encabezado del card de escaneo
+  // Actualizar badge en la cabecera si existe
   const badge = document.getElementById('active-profile-badge');
   if (badge) badge.textContent = data.active_name;
-
-  // Actualizar subtítulo del header principal
-  const sub = document.querySelector('header p');
-  if (sub) sub.textContent = data.active_name;
-}
 }
 
 function renderProfileList(data) {
@@ -1135,12 +1129,10 @@ function resetScan() {
   document.getElementById('incomplete-banner').style.display = 'none';
   document.getElementById('found-banner').style.display      = 'none';
   document.getElementById('scan-title').textContent = '📷 Hoja de respuestas';
-  // Restaurar número de preguntas al total del perfil activo
-  const totalQ = state.profileTotalQ || 125;
-  state.numQuestions = totalQ;
-  document.getElementById('num-questions').max   = totalQ;
-  document.getElementById('num-questions').value = totalQ;
-  document.getElementById('q-badge').textContent = `${totalQ} preguntas`;
+  // Restaurar número de preguntas a 125
+  state.numQuestions = 125;
+  document.getElementById('num-questions').value = 125;
+  document.getElementById('q-badge').textContent = '125 preguntas';
   setStatus('','');
   window.scrollTo({top:0, behavior:'smooth'});
 }
