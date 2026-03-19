@@ -107,7 +107,7 @@ SIPAGRE_140 = {
     ],
 
     'answers_top_f':    0.210,
-    'answers_bottom_f': 0.900,
+    'answers_bottom_f': 0.85,
     'bubble_radius':     9,     # burbujas ligeramente más pequeñas (12pt vs 15pt)
     'fill_threshold':   0.12,
     'min_contrast':     0.10,
