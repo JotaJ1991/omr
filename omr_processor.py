@@ -173,14 +173,27 @@ def _find_corners_from_cands(cands, w, h):
 
 def _detect_rows(binary, profile):
     """
-    Detecta las Y de cada fila usando los timing marks de TODAS las columnas
-    del perfil. Retorna la lista de Y con longitud = max filas por columna.
+    Detecta las Y de cada fila usando los timing marks.
+
+    Estrategia:
+      1. Buscar picos con find_peaks en la franja de cada timing mark.
+      2. Si detecta suficientes picos, estimar el paso real entre filas
+         promediando los intervalos entre picos consecutivos.
+      3. Distribuir las filas uniformemente dentro de [y_top, y_bottom]
+         usando ese paso, anclando al primer pico detectado si es fiable,
+         o al centro del rango si no hay datos.
+
+    Esto garantiza espaciado uniforme y que las 35 filas queden
+    exactamente dentro de los límites establecidos.
     """
     h, w     = binary.shape
     y_top    = int(profile['answers_top_f']    * h)
     y_bottom = int(profile['answers_bottom_f'] * h)
 
-    best_rows  = []
+    max_rows = max(col['q_end'] - col['q_start'] + 1
+                   for col in profile['columns'])
+
+    best_peaks = []
     best_count = 0
 
     for col in profile['columns']:
@@ -203,25 +216,37 @@ def _detect_rows(binary, profile):
 
         if len(peaks) > best_count:
             best_count = len(peaks)
-            best_rows  = [y_top + int(p) for p in peaks]
+            best_peaks = [y_top + int(p) for p in peaks]
 
-    # Normalizar al número de filas de la columna más larga
-    max_rows = max(col['q_end'] - col['q_start'] + 1
-                   for col in profile['columns'])
+    # ── Calcular paso uniforme ────────────────────────────────────────────────
+    # El paso ideal es (y_bottom - y_top) / (max_rows - 1)
+    # Si hay suficientes picos, refinarlo con el promedio de intervalos reales
+    ideal_step = (y_bottom - y_top) / (max_rows - 1)
 
-    if len(best_rows) >= max_rows:
-        step = (best_rows[-1] - best_rows[0]) / (max_rows - 1)
-        best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
-    elif len(best_rows) >= max_rows // 2:
-        # Extrapolar desde los picos detectados pero sin salir de y_bottom
-        step = (best_rows[-1] - best_rows[0]) / (len(best_rows) - 1)
-        best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
+    if len(best_peaks) >= 4:
+        intervals = [best_peaks[i+1] - best_peaks[i]
+                     for i in range(len(best_peaks) - 1)]
+        # Filtrar outliers (intervalos que dupliquen o sean la mitad del ideal)
+        filtered = [iv for iv in intervals
+                    if ideal_step * 0.5 < iv < ideal_step * 1.5]
+        step = float(np.mean(filtered)) if filtered else ideal_step
     else:
-        step = (y_bottom - y_top) / (max_rows - 1)
-        best_rows = [int(y_top + i * step) for i in range(max_rows)]
-        best_count = 0
+        step = ideal_step
 
-    # Asegurar que ninguna fila quede fuera del rango top/bottom
+    # ── Anclar la primera fila ────────────────────────────────────────────────
+    # Si hay picos fiables, la primera fila = primer pico detectado
+    # pero solo si está dentro de [y_top, y_top + step]
+    if best_peaks and y_top <= best_peaks[0] <= y_top + step:
+        first_row = float(best_peaks[0])
+    else:
+        # Distribuir simétricamente dentro del rango
+        total_span = step * (max_rows - 1)
+        first_row  = y_top + (y_bottom - y_top - total_span) / 2
+
+    # ── Generar las max_rows filas con paso uniforme ──────────────────────────
+    best_rows = [int(round(first_row + i * step)) for i in range(max_rows)]
+
+    # Clamp final para garantizar que ninguna quede fuera del rango
     best_rows = [max(y_top, min(y_bottom, y)) for y in best_rows]
 
     return best_rows[:max_rows], min(best_count, max_rows)
