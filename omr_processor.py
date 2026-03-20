@@ -218,12 +218,25 @@ def _detect_rows(binary, profile):
             best_count = len(peaks)
             best_peaks = [y_top + int(p) for p in peaks]
 
-    # ── Distribución: 37 puntos equidistantes, tomar los 35 interiores ──────
-    # Punto 0 = y_top, Punto 36 = y_bottom
-    # Filas = puntos 1..35 (los 35 interiores)
-    # step = (y_bottom - y_top) / 36
-    step = (y_bottom - y_top) / (max_rows + 1)
-    best_rows = [int(round(y_top + step * i)) for i in range(1, max_rows + 1)]
+    # ── Distribución de filas ─────────────────────────────────────────────────
+    if max_rows <= 25:
+        # Lógica original — funciona bien para JMR-125
+        if len(best_peaks) >= max_rows:
+            step = (best_peaks[-1] - best_peaks[0]) / (max_rows - 1)
+            best_rows = [int(best_peaks[0] + i * step) for i in range(max_rows)]
+        elif len(best_peaks) >= max_rows // 2:
+            step = (best_peaks[-1] - best_peaks[0]) / (len(best_peaks) - 1)
+            best_rows = [int(best_peaks[0] + i * step) for i in range(max_rows)]
+        else:
+            step = (y_bottom - y_top) / (max_rows - 1)
+            best_rows = [int(y_top + i * step) for i in range(max_rows)]
+            best_count = 0
+        best_rows = [max(y_top, min(y_bottom, y)) for y in best_rows]
+    else:
+        # Para perfiles con más filas (SIPAGRE-140): distribución de N+2 puntos
+        # y_top y y_bottom son los bordes, las max_rows filas son los interiores
+        step = (y_bottom - y_top) / (max_rows + 1)
+        best_rows = [int(round(y_top + step * i)) for i in range(1, max_rows + 1)]
 
     return best_rows[:max_rows], min(best_count, max_rows)
 
