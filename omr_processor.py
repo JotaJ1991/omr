@@ -213,12 +213,16 @@ def _detect_rows(binary, profile):
         step = (best_rows[-1] - best_rows[0]) / (max_rows - 1)
         best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
     elif len(best_rows) >= max_rows // 2:
+        # Extrapolar desde los picos detectados pero sin salir de y_bottom
         step = (best_rows[-1] - best_rows[0]) / (len(best_rows) - 1)
         best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
     else:
         step = (y_bottom - y_top) / (max_rows - 1)
         best_rows = [int(y_top + i * step) for i in range(max_rows)]
         best_count = 0
+
+    # Asegurar que ninguna fila quede fuera del rango top/bottom
+    best_rows = [max(y_top, min(y_bottom, y)) for y in best_rows]
 
     return best_rows[:max_rows], min(best_count, max_rows)
 
@@ -311,20 +315,21 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path):
 
             q_idx += 1
 
-    # ── Líneas horizontales de cada fila (timing marks detectados) ───────────
-    for y in y_rows:
-        cv2.line(debug, (0, y), (w, y), (0, 200, 200), 1)
-
-    # ── Líneas verticales de timing marks ────────────────────────────────────
-    for col in profile['columns']:
-        x_tm = int(col['timing_fx'] * w)
-        cv2.line(debug, (x_tm, 0), (x_tm, h), (0, 200, 200), 1)
-
-    # ── Zona de respuestas (top/bottom) ──────────────────────────────────────
+    # ── Zona de respuestas (top/bottom) — se dibuja primero como referencia ──
     y_top    = int(profile['answers_top_f']    * h)
     y_bottom = int(profile['answers_bottom_f'] * h)
     cv2.line(debug, (0, y_top),    (w, y_top),    (0, 120, 255), 2)
     cv2.line(debug, (0, y_bottom), (w, y_bottom), (0, 120, 255), 2)
+
+    # ── Líneas horizontales de cada fila — solo dentro del rango ─────────────
+    for y in y_rows:
+        if y_top <= y <= y_bottom:
+            cv2.line(debug, (0, y), (w, y), (0, 200, 200), 1)
+
+    # ── Líneas verticales de timing marks ────────────────────────────────────
+    for col in profile['columns']:
+        x_tm = int(col['timing_fx'] * w)
+        cv2.line(debug, (x_tm, y_top), (x_tm, y_bottom), (0, 200, 200), 1)
 
     # ── Textos informativos ───────────────────────────────────────────────────
     info_lines = [

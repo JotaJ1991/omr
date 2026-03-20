@@ -84,7 +84,7 @@ SIPAGRE_140 = {
     'work_w':  1275,
     'work_h':  1650,
 
-    # Posiciones calibradas con foto real (2025)
+    # Posiciones calibradas con foto real
     # Col 1-3: A B C D (4 opciones)
     # Col 4:   A B C D E F G H (8 opciones)
     'columns': [
@@ -107,7 +107,7 @@ SIPAGRE_140 = {
     ],
 
     'answers_top_f':    0.210,
-    'answers_bottom_f': 0.90,
+    'answers_bottom_f': 0.855,
     'bubble_radius':     9,     # burbujas ligeramente más pequeñas (12pt vs 15pt)
     'fill_threshold':   0.12,
     'min_contrast':     0.10,
