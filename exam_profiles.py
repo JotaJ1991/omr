@@ -84,30 +84,30 @@ SIPAGRE_140 = {
     'work_w':  1275,
     'work_h':  1650,
 
-    # Posiciones calibradas con imagen de diagnóstico real
+    # Posiciones calibradas con foto real (2025)
     # Col 1-3: A B C D (4 opciones)
     # Col 4:   A B C D E F G H (8 opciones)
     'columns': [
         # Col 1: P1-P35  — A B C D
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.135, 0.155, 0.175, 0.200],
-         'timing_fx': 0.105},
+         'bubble_fx': [0.105, 0.125, 0.150, 0.170],
+         'timing_fx': 0.060},
         # Col 2: P36-P70  — A B C D
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.345, 0.365, 0.385, 0.405],
-         'timing_fx': 0.315},
+         'bubble_fx': [0.330, 0.350, 0.375, 0.395],
+         'timing_fx': 0.285},
         # Col 3: P71-P105 — A B C D
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.555, 0.575, 0.595, 0.615],
-         'timing_fx': 0.525},
+         'bubble_fx': [0.555, 0.575, 0.600, 0.620],
+         'timing_fx': 0.510},
         # Col 4: P106-P140 — A B C D E F G H
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.760, 0.780, 0.805, 0.820, 0.845, 0.860, 0.880, 0.905],
-         'timing_fx': 0.730},
+         'bubble_fx': [0.780, 0.800, 0.825, 0.845, 0.865, 0.890, 0.910, 0.935],
+         'timing_fx': 0.735},
     ],
 
-    'answers_top_f':    0.220,
-    'answers_bottom_f': 0.820,
+    'answers_top_f':    0.210,
+    'answers_bottom_f': 0.855,
     'bubble_radius':     9,     # burbujas ligeramente más pequeñas (12pt vs 15pt)
     'fill_threshold':   0.12,
     'min_contrast':     0.10,
