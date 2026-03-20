@@ -106,7 +106,7 @@ SIPAGRE_140 = {
          'timing_fx': 0.735},
     ],
 
-    'answers_top_f':    0.200,
+    'answers_top_f':    0.195,
     'answers_bottom_f': 0.905,
     'bubble_radius':     9,     # burbujas ligeramente más pequeñas (12pt vs 15pt)
     'fill_threshold':   0.12,
