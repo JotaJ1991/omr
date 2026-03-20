@@ -218,10 +218,9 @@ def _detect_rows(binary, profile):
             best_count = len(peaks)
             best_peaks = [y_top + int(p) for p in peaks]
 
-    # ── Calcular paso uniforme ────────────────────────────────────────────────
-    # El paso ideal es (y_bottom - y_top) / (max_rows - 1)
-    # Si hay suficientes picos, refinarlo con el promedio de intervalos reales
-    ideal_step = (y_bottom - y_top) / (max_rows - 1)
+    # El paso se calcula dejando medio paso de margen arriba y abajo
+    # para que las filas queden centradas dentro del rango, no en los bordes
+    ideal_step = (y_bottom - y_top) / max_rows   # max_rows divisiones, no max_rows-1
 
     if len(best_peaks) >= 4:
         intervals = [best_peaks[i+1] - best_peaks[i]
@@ -234,14 +233,14 @@ def _detect_rows(binary, profile):
         step = ideal_step
 
     # ── Anclar la primera fila ────────────────────────────────────────────────
-    # Si hay picos fiables, la primera fila = primer pico detectado
-    # pero solo si está dentro de [y_top, y_top + step]
-    if best_peaks and y_top <= best_peaks[0] <= y_top + step:
+    # La primera fila empieza a medio paso desde y_top
+    # y la última queda a medio paso antes de y_bottom
+    half_step = step / 2.0
+
+    if best_peaks and y_top + half_step * 0.5 <= best_peaks[0] <= y_top + step * 1.5:
         first_row = float(best_peaks[0])
     else:
-        # Distribuir simétricamente dentro del rango
-        total_span = step * (max_rows - 1)
-        first_row  = y_top + (y_bottom - y_top - total_span) / 2
+        first_row = y_top + half_step   # medio paso desde el borde superior
 
     # ── Generar las max_rows filas con paso uniforme ──────────────────────────
     best_rows = [int(round(first_row + i * step)) for i in range(max_rows)]
