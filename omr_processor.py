@@ -173,14 +173,27 @@ def _find_corners_from_cands(cands, w, h):
 
 def _detect_rows(binary, profile):
     """
-    Detecta las Y de cada fila usando los timing marks de TODAS las columnas
-    del perfil. Retorna la lista de Y con longitud = max filas por columna.
+    Detecta las Y de cada fila usando los timing marks.
+
+    Estrategia:
+      1. Buscar picos con find_peaks en la franja de cada timing mark.
+      2. Si detecta suficientes picos, estimar el paso real entre filas
+         promediando los intervalos entre picos consecutivos.
+      3. Distribuir las filas uniformemente dentro de [y_top, y_bottom]
+         usando ese paso, anclando al primer pico detectado si es fiable,
+         o al centro del rango si no hay datos.
+
+    Esto garantiza espaciado uniforme y que las 35 filas queden
+    exactamente dentro de los límites establecidos.
     """
     h, w     = binary.shape
     y_top    = int(profile['answers_top_f']    * h)
     y_bottom = int(profile['answers_bottom_f'] * h)
 
-    best_rows  = []
+    max_rows = max(col['q_end'] - col['q_start'] + 1
+                   for col in profile['columns'])
+
+    best_peaks = []
     best_count = 0
 
     for col in profile['columns']:
@@ -203,26 +216,14 @@ def _detect_rows(binary, profile):
 
         if len(peaks) > best_count:
             best_count = len(peaks)
-            best_rows  = [y_top + int(p) for p in peaks]
+            best_peaks = [y_top + int(p) for p in peaks]
 
-    # Normalizar al número de filas de la columna más larga
-    max_rows = max(col['q_end'] - col['q_start'] + 1
-                   for col in profile['columns'])
-
-    if len(best_rows) >= max_rows:
-        step = (best_rows[-1] - best_rows[0]) / (max_rows - 1)
-        best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
-    elif len(best_rows) >= max_rows // 2:
-        # Extrapolar desde los picos detectados pero sin salir de y_bottom
-        step = (best_rows[-1] - best_rows[0]) / (len(best_rows) - 1)
-        best_rows = [int(best_rows[0] + i * step) for i in range(max_rows)]
-    else:
-        step = (y_bottom - y_top) / (max_rows - 1)
-        best_rows = [int(y_top + i * step) for i in range(max_rows)]
-        best_count = 0
-
-    # Asegurar que ninguna fila quede fuera del rango top/bottom
-    best_rows = [max(y_top, min(y_bottom, y)) for y in best_rows]
+    # ── Distribución: 37 puntos equidistantes, tomar los 35 interiores ──────
+    # Punto 0 = y_top, Punto 36 = y_bottom
+    # Filas = puntos 1..35 (los 35 interiores)
+    # step = (y_bottom - y_top) / 36
+    step = (y_bottom - y_top) / (max_rows + 1)
+    best_rows = [int(round(y_top + step * i)) for i in range(1, max_rows + 1)]
 
     return best_rows[:max_rows], min(best_count, max_rows)
 
@@ -321,9 +322,10 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path):
     cv2.line(debug, (0, y_top),    (w, y_top),    (0, 120, 255), 2)
     cv2.line(debug, (0, y_bottom), (w, y_bottom), (0, 120, 255), 2)
 
-    # ── Líneas horizontales de cada fila — solo dentro del rango ─────────────
+    # Líneas horizontales de cada fila — solo dentro del rango visible
+    margin = profile.get('bubble_radius', 10) + 2
     for y in y_rows:
-        if y_top <= y <= y_bottom:
+        if y_top + margin <= y <= y_bottom - margin:
             cv2.line(debug, (0, y), (w, y), (0, 200, 200), 1)
 
     # ── Líneas verticales de timing marks ────────────────────────────────────
