@@ -155,6 +155,18 @@
 
   /* ── Grid respuestas ── */
   .answers-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+
+  /* ── Imagen anotada del escaneo ── */
+  .scan-image-wrap {
+    margin-top: 14px; border-radius: 8px; overflow: hidden;
+    border: 1.5px solid var(--border); display: none;
+  }
+  .scan-image-wrap.show { display: block; }
+  .scan-image-wrap img  { width: 100%; display: block; }
+  .scan-image-legend {
+    background: #f8fafc; padding: 6px 10px;
+    font-size: .72rem; color: var(--muted); line-height: 1.6;
+  }
   .answer-chip { display: flex; align-items: center; gap: 4px;
     background: #f8fafc; border: 1.5px solid var(--border);
     border-radius: 6px; padding: 3px 7px; font-size: .78rem;
@@ -373,6 +385,17 @@
             </span>
           </div>
           <div class="answers-grid" id="answers-grid"></div>
+        </div>
+
+        <!-- Imagen anotada del escaneo -->
+        <div class="scan-image-wrap" id="scan-image-wrap">
+          <img id="scan-debug-img" src="" alt="Imagen anotada">
+          <div class="scan-image-legend">
+            🟢 A &nbsp;🔵 B &nbsp;🔷 C &nbsp;🟣 D &nbsp;
+            🟠 E &nbsp;🟦 F &nbsp;🟤 G &nbsp;🔹 H &nbsp;
+            ⚪ no detectada &nbsp;·&nbsp;
+            <span style="color:#1d7aff">━</span> zona de respuestas
+          </div>
         </div>
 
         <!-- Botones de acción -->
@@ -1006,6 +1029,16 @@ function renderResult(data, isFirstPhoto) {
   // ── Botones de acción ──
   renderActionButtons(missing);
 
+  // ── Imagen anotada del escaneo ──
+  const imgWrap = document.getElementById('scan-image-wrap');
+  const imgEl   = document.getElementById('scan-debug-img');
+  if (data.debug_image) {
+    imgEl.src = `data:image/jpeg;base64,${data.debug_image}`;
+    imgWrap.classList.add('show');
+  } else {
+    imgWrap.classList.remove('show');
+  }
+
   // Mostrar panel
   document.getElementById('result-panel').style.display = 'block';
   document.getElementById('result-panel').scrollIntoView({behavior:'smooth'});
@@ -1133,6 +1166,8 @@ function resetScan() {
   document.getElementById('result-panel').style.display  = 'none';
   document.getElementById('incomplete-banner').style.display = 'none';
   document.getElementById('found-banner').style.display      = 'none';
+  document.getElementById('scan-image-wrap').classList.remove('show');
+  document.getElementById('scan-debug-img').src = '';
   document.getElementById('scan-title').textContent = '📷 Hoja de respuestas';
   // Restaurar número de preguntas al total del perfil activo
   const totalQ = state.profileTotalQ || 125;

@@ -147,13 +147,22 @@ def process():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        result = process_exam_image(filepath, profile_id=pid)
-        os.remove(filepath)
+        result = process_exam_image(filepath, profile_id=pid, debug=True)
+
+        # Leer imagen anotada y eliminar archivos temporales
+        debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
+        img_b64 = None
+        if os.path.exists(debug_path):
+            with open(debug_path, 'rb') as f:
+                img_b64 = base64.b64encode(f.read()).decode()
+            os.remove(debug_path)
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
         if not result['success']:
             return jsonify({'success': False, 'error': result['error']}), 422
 
-        new_answers = result['answers']   # longitud = total_q del perfil
+        new_answers = result['answers']
 
         if current and len(current) == total_q:
             merged = current[:]
@@ -171,15 +180,16 @@ def process():
         new_filled = len(filled) if current else 0
 
         return jsonify({
-            'success':    True,
-            'answers':    merged,
-            'confidence': result['confidence'],
-            'detected':   detected,
-            'missing':    missing,
-            'new_filled': new_filled,
-            'filled_qs':  filled[:20],
-            'total_q':    total_q,
-            'profile_id': pid,
+            'success':     True,
+            'answers':     merged,
+            'confidence':  result['confidence'],
+            'detected':    detected,
+            'missing':     missing,
+            'new_filled':  new_filled,
+            'filled_qs':   filled[:20],
+            'total_q':     total_q,
+            'profile_id':  pid,
+            'debug_image': img_b64,
         })
 
     except Exception as e:
