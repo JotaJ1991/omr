@@ -77,7 +77,8 @@ def _build_header(n=125):
 def _ensure_structure(worksheet, n_questions=125):
     """
     Crea encabezado (fila 1) y fila de CLAVE (fila 2) si la hoja está vacía.
-    Si ya existe no la toca.
+    Si ya existe pero tiene menos columnas de las necesarias, extiende el encabezado.
+    Si ya tiene suficientes columnas no la toca.
     """
     all_rows = worksheet.get_all_values()
 
@@ -89,12 +90,11 @@ def _ensure_structure(worksheet, n_questions=125):
         key_row = [datetime.now().strftime('%Y-%m-%d'),
                    datetime.now().strftime('%H:%M:%S'),
                    KEY_ROW_NAME, '']
-        key_row += [''] * n_questions        # respuestas correctas vacías
-        key_row += ['', '', '']              # Respondidas / Correctas / %
+        key_row += [''] * n_questions
+        key_row += ['', '', '']
         worksheet.append_row(key_row, value_input_option='RAW')
 
-        # Formato encabezado — azul oscuro
-        end_col = _col_letter(COL_OFFSET + n_questions + 3)
+        end_col = _col_letter(COL_OFFSET + n_questions + 2)
         try:
             worksheet.format(f'A1:{end_col}1', {
                 'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
@@ -102,9 +102,27 @@ def _ensure_structure(worksheet, n_questions=125):
                                'foregroundColor': {'red':1,'green':1,'blue':1}},
                 'horizontalAlignment': 'CENTER'
             })
-            # Formato fila clave — verde oscuro
             worksheet.format(f'A2:{end_col}2', {
                 'backgroundColor': {'red': 0.12, 'green': 0.39, 'blue': 0.19},
+                'textFormat': {'bold': True,
+                               'foregroundColor': {'red':1,'green':1,'blue':1}},
+                'horizontalAlignment': 'CENTER'
+            })
+        except Exception:
+            pass
+        return
+
+    # Hoja ya existe — verificar que el encabezado cubra n_questions
+    header_row = all_rows[0] if all_rows else []
+    existing_q_cols = len(header_row) - COL_OFFSET - 3  # descontar fecha/hora/nombre/id + 3 resumen
+    if existing_q_cols < n_questions:
+        # Extender encabezado con las columnas que faltan
+        new_header = _build_header(n_questions)
+        end_col = _col_letter(len(new_header) - 1)
+        worksheet.update(f'A1:{end_col}1', [new_header], value_input_option='RAW')
+        try:
+            worksheet.format(f'A1:{end_col}1', {
+                'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
                 'textFormat': {'bold': True,
                                'foregroundColor': {'red':1,'green':1,'blue':1}},
                 'horizontalAlignment': 'CENTER'
@@ -304,7 +322,7 @@ def get_answer_key(sheet_name: str) -> dict:
 def save_answer_key(key_answers: list, sheet_name: str) -> dict:
     """
     Guarda o actualiza la fila de clave en fila 2.
-    key_answers: lista de hasta 125 respuestas ('A','B','C','D' o '')
+    key_answers: lista de hasta 200 respuestas (A-H o '')
     """
     spreadsheet = _open_spreadsheet()
     try:
@@ -318,7 +336,9 @@ def save_answer_key(key_answers: list, sheet_name: str) -> dict:
     now = datetime.now()
     key_row = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
                KEY_ROW_NAME, '']
-    key_row += [a.upper() if a in ('a','b','c','d','A','B','C','D') else ''
+    # Aceptar cualquier letra A-H (mayúscula o minúscula)
+    valid = set('ABCDEFGHabcdefgh')
+    key_row += [a.upper() if a in valid else ''
                 for a in key_answers]
     key_row += ['', '', '']
 
