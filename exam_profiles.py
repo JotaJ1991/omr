@@ -96,8 +96,8 @@ SIPAGRE_140 = {
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
          'bubble_fx': [0.330, 0.350, 0.375, 0.395],
          'timing_fx': 0.285},
-        # Col 3: P71-P105 — A B C D
-        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
+        # Col 3: P71-P105 — A B C D E F G H
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
          'bubble_fx': [0.555, 0.575, 0.600, 0.620],
          'timing_fx': 0.510},
         # Col 4: P106-P140 — A B C D E F G H
