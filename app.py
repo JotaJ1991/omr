@@ -10,7 +10,7 @@ from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image
 from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
 from sheets_connector import (
-    save_to_sheets, save_answer_key, get_sheet_data,
+    save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet
 )
 
@@ -244,6 +244,17 @@ def save():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error al guardar: {str(e)}'}), 500
+
+
+@app.route('/get_key', methods=['GET'])
+def get_key():
+    """Retorna la clave guardada en la hoja activa."""
+    sheet_name = request.args.get('sheet', active_sheet())
+    try:
+        result = get_answer_key(sheet_name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e), 'answers': []})
 
 
 @app.route('/save_key', methods=['POST'])

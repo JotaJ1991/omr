@@ -716,13 +716,41 @@ async function selectProfile(pid) {
 let keyAnswers = new Array(125).fill('');   // clave en memoria
 
 function initKeyPanel() {
-  // Sincronizar con el perfil activo
   const maxQ = state.profileTotalQ;
-  document.getElementById('key-num-q').max = maxQ;
-  // Usar el mismo numQuestions del escaneo, acotado al perfil
-  const n = Math.min(state.numQuestions, maxQ);
-  document.getElementById('key-num-q').value = n;
-  buildKeyGrid(n);
+  document.getElementById('key-num-q').max   = maxQ;
+  document.getElementById('key-num-q').value = maxQ;
+  // Asegurar que el array tiene el tamaño correcto
+  if (keyAnswers.length !== maxQ) {
+    keyAnswers = new Array(maxQ).fill('');
+  }
+  buildKeyGrid(maxQ);
+  // Cargar clave guardada desde la hoja activa
+  if (state.activeSheet) loadSavedKey();
+}
+
+async function loadSavedKey() {
+  try {
+    const resp = await fetch(`/get_key?sheet=${encodeURIComponent(state.activeSheet)}`);
+    const data = await resp.json();
+    if (data.success && data.answers && data.answers.length > 0) {
+      // Rellenar keyAnswers con los valores guardados
+      const maxQ = state.profileTotalQ;
+      keyAnswers  = new Array(maxQ).fill('');
+      data.answers.forEach((v, i) => {
+        if (i < maxQ) keyAnswers[i] = v || '';
+      });
+      const n = parseInt(document.getElementById('key-num-q').value) || maxQ;
+      buildKeyGrid(n);
+
+      // Mostrar indicador de que se cargó
+      const note = document.getElementById('key-saved-note');
+      note.textContent = `✅ Clave cargada desde "${state.activeSheet}" (${data.answers.filter(v=>v).length} respuestas)`;
+      note.classList.add('show');
+      setTimeout(() => note.classList.remove('show'), 3500);
+    }
+  } catch(e) {
+    console.warn('No se pudo cargar la clave:', e);
+  }
 }
 
 function buildKeyGrid(val) {
@@ -775,8 +803,9 @@ function updateKeyStatus(n) {
 }
 
 function clearKeyGrid() {
-  const n = parseInt(document.getElementById('key-num-q').value) || 125;
-  keyAnswers = new Array(125).fill('');
+  const maxQ = state.profileTotalQ;
+  const n    = parseInt(document.getElementById('key-num-q').value) || maxQ;
+  keyAnswers  = new Array(maxQ).fill('');
   buildKeyGrid(n);
   document.getElementById('key-saved-note').classList.remove('show');
 }
@@ -805,9 +834,10 @@ async function saveKey() {
     });
     const result = await resp.json();
     if (result.success) {
-      document.getElementById('key-saved-note').classList.add('show');
-      setTimeout(() =>
-        document.getElementById('key-saved-note').classList.remove('show'), 4000);
+      const note = document.getElementById('key-saved-note');
+      note.textContent = '✅ Clave guardada correctamente en la hoja activa.';
+      note.classList.add('show');
+      setTimeout(() => note.classList.remove('show'), 4000);
     } else {
       alert('Error al guardar clave: ' + result.error);
     }

@@ -290,6 +290,17 @@ def save_to_sheets(student_name: str, exam_id: str,
     }
 
 
+def get_answer_key(sheet_name: str) -> dict:
+    """Retorna la clave de respuestas guardada en la fila 2 de la hoja."""
+    spreadsheet = _open_spreadsheet()
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+        key = _get_answer_key(worksheet)
+        return {'success': True, 'answers': key}
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'answers': []}
+
+
 def save_answer_key(key_answers: list, sheet_name: str) -> dict:
     """
     Guarda o actualiza la fila de clave en fila 2.
