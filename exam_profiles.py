@@ -77,9 +77,13 @@ JMR_125 = {
 #   Col1 inicio X ≈ 12mm / 193.6mm ≈ 0.062 (fracción del área útil)
 #   TM en col i: 0.062 + i * (46.8+2.1)/193.6
 # ---------------------------------------------------------------------------
-SIPAGRE_140 = {
-    'id':    'SIPAGRE140',
-    'name':  'SIPAGRE — 140 preguntas (4 col × 35)',
+# ---------------------------------------------------------------------------
+# 1S SIPAGRE-140  —  4 col × 35 filas
+#   Col 1-2: A-D  |  Col 3-4: A-H
+# ---------------------------------------------------------------------------
+SIPAGRE_1S = {
+    'id':    '1SSIPAGRE',
+    'name':  '1S SIPAGRE — 140 preguntas',
     'total_q': 140,
     'work_w':  1275,
     'work_h':  1650,
@@ -106,9 +110,9 @@ SIPAGRE_140 = {
          'timing_fx': 0.718},
     ],
 
-    'answers_top_f':    0.2,
-    'answers_bottom_f': 0.91,
-    'bubble_radius':     9,     # burbujas ligeramente más pequeñas (12pt vs 15pt)
+    'answers_top_f':    0.200,
+    'answers_bottom_f': 0.910,
+    'bubble_radius':     9,
     'fill_threshold':   0.12,
     'min_contrast':     0.10,
     'binarize_block':   25,
@@ -119,20 +123,65 @@ SIPAGRE_140 = {
 
 
 # ---------------------------------------------------------------------------
-# Registro central — agregar aquí nuevos perfiles en el futuro
+# 2S SIPAGRE-140  —  4 col × 35 filas
+#   Col 1-2: A-D  |  Col 3: A-H  |  Col 4: A-D
+#   Misma geometría que 1S SIPAGRE, solo cambian las opciones de col 3 y 4
+# ---------------------------------------------------------------------------
+SIPAGRE_2S = {
+    'id':    '2SSIPAGRE',
+    'name':  '2S SIPAGRE — 140 preguntas',
+    'total_q': 140,
+    'work_w':  1275,
+    'work_h':  1650,
+
+    'columns': [
+        # Col 1: P1-P35  — A B C D
+        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.120, 0.142, 0.164, 0.186],
+         'timing_fx': 0.078},
+        # Col 2: P36-P70  — A B C D
+        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.334, 0.356, 0.378, 0.400],
+         'timing_fx': 0.292},
+        # Col 3: P71-P105 — A B C D E F G H
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.547, 0.569, 0.591, 0.613],
+         'timing_fx': 0.505},
+        # Col 4: P106-P140 — A B C D  (solo 4 opciones)
+        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.760, 0.782, 0.804, 0.826],
+         'timing_fx': 0.718},
+    ],
+
+    'answers_top_f':    0.200,
+    'answers_bottom_f': 0.910,
+    'bubble_radius':     9,
+    'fill_threshold':   0.12,
+    'min_contrast':     0.10,
+    'binarize_block':   25,
+    'binarize_c':        8,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+}
+
+
+# ---------------------------------------------------------------------------
+# Registro central
 # ---------------------------------------------------------------------------
 PROFILES = {
-    JMR_125['id']:     JMR_125,
-    SIPAGRE_140['id']: SIPAGRE_140,
+    JMR_125['id']:    JMR_125,
+    SIPAGRE_1S['id']: SIPAGRE_1S,
+    SIPAGRE_2S['id']: SIPAGRE_2S,
 }
 
 # Lista ordenada para la UI
 PROFILE_LIST = [
-    {'id': JMR_125['id'],     'name': JMR_125['name']},
-    {'id': SIPAGRE_140['id'], 'name': SIPAGRE_140['name']},
+    {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
+    {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
+    {'id': JMR_125['id'],    'name': JMR_125['name']},
 ]
 
-DEFAULT_PROFILE_ID = SIPAGRE_140['id']
+DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
 
 
 def get_profile(profile_id: str) -> dict:
