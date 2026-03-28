@@ -149,8 +149,8 @@ SIPAGRE_2S = {
          'timing_fx': 0.505},
         # Col 4: P106-P140 — A B C D  (solo 4 burbujas físicas)
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.760, 0.782, 0.804, 0.826],
-         'timing_fx': 0.718},
+         'bubble_fx': [0.8327, 0.8548, 0.8752, 0.8991],
+         'timing_fx': 0.79},
     ],
 
     'answers_top_f':    0.200,
