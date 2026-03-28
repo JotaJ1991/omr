@@ -98,7 +98,7 @@ SIPAGRE_140 = {
          'timing_fx': 0.292},
         # Col 3: P71-P105 — A B C D E F G H
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.547, 0.569, 0.601, 0.613],
+         'bubble_fx': [0.547, 0.569, 0.591, 0.613],
          'timing_fx': 0.505},
         # Col 4: P106-P140 — A B C D E F G H
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
