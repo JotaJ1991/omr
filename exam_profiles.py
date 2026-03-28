@@ -132,7 +132,7 @@ PROFILE_LIST = [
     {'id': SIPAGRE_140['id'], 'name': SIPAGRE_140['name']},
 ]
 
-DEFAULT_PROFILE_ID = JMR_125['id']
+DEFAULT_PROFILE_ID = SIPAGRE_140['id']
 
 
 def get_profile(profile_id: str) -> dict:

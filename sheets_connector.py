@@ -160,49 +160,74 @@ def _get_answer_key(worksheet) -> list:
 
 
 def _count_correct(student_answers: list, key: list) -> int:
-    """Cuenta cuántas respuestas coinciden con la clave."""
+    """
+    Cuenta correctas solo hasta la última pregunta con clave definida.
+    Si la clave tiene ['A','B','','C',''], el último definido es índice 3
+    y solo se evalúan las preguntas 1-4.
+    """
     if not key:
+        return 0
+    # Encontrar el último índice con clave definida
+    last_defined = -1
+    for i in range(len(key) - 1, -1, -1):
+        if key[i] not in ('', '?'):
+            last_defined = i
+            break
+    if last_defined == -1:
         return 0
     return sum(
         1 for i, ans in enumerate(student_answers)
-        if i < len(key) and key[i] not in ('', '?') and ans == key[i]
+        if i <= last_defined and i < len(key)
+        and key[i] not in ('', '?') and ans == key[i]
     )
+
+
+def _key_total(key: list) -> int:
+    """Número de preguntas con clave definida (hasta la última)."""
+    for i in range(len(key) - 1, -1, -1):
+        if key[i] not in ('', '?'):
+            return i + 1   # preguntas 1..(i+1)
+    return 0
 
 
 def _update_totals_row(worksheet, n_questions):
     """
-    Actualiza (o crea) la fila de TOTALES al final de la hoja.
-    Calcula % de aciertos por pregunta (columna vertical).
-    Solo cuenta filas de estudiantes reales (excluye CLAVE y TOTALES).
+    Escribe (o sobreescribe) la fila de TOTALES al final de la hoja.
+    Siempre es la última fila — nunca se duplica.
     """
     try:
         all_rows = worksheet.get_all_values()
         if len(all_rows) < 3:
-            return  # solo encabezado + clave, nada que totalizar
+            return
 
-        # Filas de estudiantes: desde fila índice 2 en adelante,
-        # excluyendo la última si ya es la fila de totales
-        student_rows = []
-        for r in all_rows[2:]:
-            if r and r[2] not in (KEY_ROW_NAME, '--- TOTALES ---'):
-                student_rows.append(r)
-
+        # Filas de estudiantes reales (excluir encabezado, clave y totales)
+        student_rows = [
+            r for r in all_rows[2:]
+            if r and r[2] not in (KEY_ROW_NAME, '--- TOTALES ---')
+        ]
         if not student_rows:
             return
 
-        key = _get_answer_key(worksheet)
+        key   = _get_answer_key(worksheet)
+        key_n = _key_total(key)   # hasta qué pregunta hay clave definida
 
         totals_label = ['', '', '--- TOTALES ---', '']
-        col_totals = []
+        col_totals   = []
+
         for q in range(n_questions):
-            col_idx = COL_OFFSET + q
-            answers_for_q = [r[col_idx] if col_idx < len(r) else ''
-                             for r in student_rows]
+            col_idx        = COL_OFFSET + q
+            answers_for_q  = [r[col_idx] if col_idx < len(r) else ''
+                               for r in student_rows]
             total_students = len(answers_for_q)
+
             if key and q < len(key) and key[q] not in ('', '?'):
                 correct = sum(1 for a in answers_for_q if a == key[q])
-                pct = round(correct / total_students * 100) if total_students else 0
+                pct     = round(correct / total_students * 100) if total_students else 0
                 col_totals.append(f'{correct}/{total_students} ({pct}%)')
+            elif q < key_n:
+                # Dentro del rango de la clave pero sin respuesta definida
+                detected = sum(1 for a in answers_for_q if a not in ('', '?', '—'))
+                col_totals.append(f'{detected}/{total_students}')
             else:
                 detected = sum(1 for a in answers_for_q if a not in ('', '?', '—'))
                 col_totals.append(f'{detected}/{total_students}')
@@ -210,19 +235,18 @@ def _update_totals_row(worksheet, n_questions):
         totals_label += col_totals
         totals_label += ['', '', '']
 
-        # Buscar si ya existe fila de totales (última fila)
+        # Buscar si ya existe fila de totales (debe ser la última)
         last_row_idx = len(all_rows)
-        last_row = all_rows[-1] if all_rows else []
+        last_row     = all_rows[-1] if all_rows else []
+
         if last_row and last_row[2] == '--- TOTALES ---':
-            # Actualizar en lugar de agregar
             worksheet.update(f'A{last_row_idx}', [totals_label],
                              value_input_option='RAW')
         else:
             worksheet.append_row(totals_label, value_input_option='RAW')
             last_row_idx = len(worksheet.col_values(1))
 
-        # Formato fila totales — gris oscuro
-        end_col = _col_letter(COL_OFFSET + n_questions + 3)
+        end_col = _col_letter(COL_OFFSET + n_questions + 2)
         try:
             worksheet.format(f'A{last_row_idx}:{end_col}{last_row_idx}', {
                 'backgroundColor': {'red': 0.25, 'green': 0.25, 'blue': 0.25},
@@ -233,7 +257,7 @@ def _update_totals_row(worksheet, n_questions):
         except Exception:
             pass
     except Exception:
-        pass  # no interrumpir el guardado si falla el resumen
+        pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -267,7 +291,7 @@ def save_to_sheets(student_name: str, exam_id: str,
                    answers: list, sheet_name: str) -> dict:
     """
     Guarda una fila de respuestas, calcula correctas vs clave,
-    y actualiza la fila de totales verticales.
+    y mantiene UNA SOLA fila de totales al final.
     """
     spreadsheet  = _open_spreadsheet()
 
@@ -280,29 +304,41 @@ def save_to_sheets(student_name: str, exam_id: str,
     n_questions = len(answers)
     _ensure_structure(worksheet, n_questions)
 
-    # Obtener clave y calcular correctas
-    key       = _get_answer_key(worksheet)
-    correct   = _count_correct(answers, key)
-    detected  = len([a for a in answers if a not in ('?', '')])
-    pct_str   = f'{round(correct / n_questions * 100)}%' if key else ''
+    # Obtener clave
+    key      = _get_answer_key(worksheet)
+    correct  = _count_correct(answers, key)
+    detected = len([a for a in answers if a not in ('?', '')])
 
+    # Porcentaje sobre el total de preguntas con clave definida
+    key_n   = _key_total(key)
+    pct_str = f'{round(correct / key_n * 100)}%' if key_n > 0 else ''
+
+    # ── Eliminar fila de TOTALES existente antes de agregar el estudiante ─────
+    # Esto evita que los totales queden duplicados o en posición incorrecta
+    all_rows = worksheet.get_all_values()
+    for i, row in enumerate(all_rows):
+        if row and len(row) > 2 and row[2] == '--- TOTALES ---':
+            worksheet.delete_rows(i + 1)   # gspread usa índice 1-based
+            break
+
+    # ── Agregar fila del estudiante ───────────────────────────────────────────
     now      = datetime.now()
     row_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
                 student_name, exam_id]
     row_data += [a if a != '?' else '—' for a in answers]
     row_data += [detected,
-                 correct if key else '',
+                 correct if key_n > 0 else '',
                  pct_str]
 
     worksheet.append_row(row_data, value_input_option='RAW')
     row_num = len(worksheet.col_values(1))
 
-    # Actualizar totales verticales
+    # ── Agregar TOTALES al final (siempre una sola vez) ───────────────────────
     _update_totals_row(worksheet, n_questions)
 
     return {
         'row':     row_num,
-        'correct': correct if key else None,
+        'correct': correct if key_n > 0 else None,
         'pct':     pct_str,
         'url':     f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
     }
