@@ -153,7 +153,7 @@ SIPAGRE_2S = {
          'timing_fx': 0.79},
     ],
 
-    'answers_top_f':    0.195,
+    'answers_top_f':    0.200,
     'answers_bottom_f': 0.910,
     'bubble_radius':     9,
     'fill_threshold':   0.12,
