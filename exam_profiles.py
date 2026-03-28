@@ -88,30 +88,29 @@ SIPAGRE_1S = {
     'work_w':  1275,
     'work_h':  1650,
 
-    # Posiciones calibradas con herramienta (paso=0.022, gap timing→A=0.042)
-    # Col 1-2: A B C D (4 opciones)
-    # Col 3-4: A B C D E F G H (8 opciones desde P71)
+    # Posiciones calibradas (paso=0.025, gap timing→A=0.046)
+    # Col 1-2: A B C D  |  Col 3-4: A B C D E F G H
     'columns': [
         # Col 1: P1-P35  — A B C D
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.120, 0.142, 0.164, 0.186],
-         'timing_fx': 0.078},
+         'bubble_fx': [0.066, 0.091, 0.116, 0.141],
+         'timing_fx': 0.020},
         # Col 2: P36-P70  — A B C D
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.334, 0.356, 0.378, 0.400],
-         'timing_fx': 0.292},
-        # Col 3: P71-P105 — A B C D E F G H
-        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.547, 0.569, 0.591, 0.613],
-         'timing_fx': 0.505},
+         'bubble_fx': [0.308, 0.333, 0.358, 0.383],
+         'timing_fx': 0.262},
+        # Col 3: P71-P105 — A B C D
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.550, 0.575, 0.600, 0.625],
+         'timing_fx': 0.504},
         # Col 4: P106-P140 — A B C D E F G H
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.760, 0.782, 0.804, 0.826, 0.848, 0.870, 0.892, 0.914],
-         'timing_fx': 0.718},
+         'bubble_fx': [0.792, 0.817, 0.842, 0.867, 0.892, 0.917, 0.942, 0.967],
+         'timing_fx': 0.746},
     ],
 
-    'answers_top_f':    0.200,
-    'answers_bottom_f': 0.910,
+    'answers_top_f':    0.183,
+    'answers_bottom_f': 0.967,
     'bubble_radius':     9,
     'fill_threshold':   0.12,
     'min_contrast':     0.10,

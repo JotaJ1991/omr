@@ -87,31 +87,98 @@ state = {
 }
 
 
+def _find_fiducials(binary, w, h):
+    """Misma lógica que omr_processor.py — detecta los 4 cuadrados negros."""
+    cnts, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    cands = []
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area < 150 or area > 20000:
+            continue
+        x, y, bw, bh = cv2.boundingRect(c)
+        if bw < 8 or bh < 8:
+            continue
+        asp      = bw / bh if bh else 0
+        solidity = area / (bw * bh) if bw * bh > 0 else 0
+        if 0.4 < asp < 2.5 and solidity > 0.35:
+            cands.append({'cx': x + bw//2, 'cy': y + bh//2,
+                          'area': area, 'w': bw, 'h': bh})
+    return _assign_corners(cands, w, h)
+
+
+def _assign_corners(cands, w, h):
+    if len(cands) < 4:
+        return None
+    mx, my = w / 2, h / 2
+    def closest(lst, px, py):
+        return min(lst, key=lambda c: (c['cx']-px)**2 + (c['cy']-py)**2)
+    q = {
+        'tl': [c for c in cands if c['cx'] < mx and c['cy'] < my],
+        'tr': [c for c in cands if c['cx'] > mx and c['cy'] < my],
+        'br': [c for c in cands if c['cx'] > mx and c['cy'] > my],
+        'bl': [c for c in cands if c['cx'] < mx and c['cy'] > my],
+    }
+    if not all(q.values()):
+        return None
+    tl = closest(q['tl'], 0, 0)
+    tr = closest(q['tr'], w, 0)
+    br = closest(q['br'], w, h)
+    bl = closest(q['bl'], 0, h)
+    pts = [(tl['cx'],tl['cy']), (tr['cx'],tr['cy']),
+           (br['cx'],br['cy']), (bl['cx'],bl['cy'])]
+    width  = max(pts[1][0], pts[2][0]) - min(pts[0][0], pts[3][0])
+    height = max(pts[2][1], pts[3][1]) - min(pts[0][1], pts[1][1])
+    if width < w * 0.3 or height < h * 0.3:
+        return None
+    return pts
+
+
 def correct_perspective(gray):
+    """
+    Detecta fiduciales y corrige perspectiva.
+    No depende del fondo — funciona con cualquier superficie.
+    Devuelve (warped, ok, fiducial_pts_original).
+    fiducial_pts_original: lista de 4 puntos (x,y) en la imagen ORIGINAL
+    para dibujarlos como referencia en el visor.
+    """
     h, w    = gray.shape
-    blurred = cv2.GaussianBlur(gray, (21,21), 0)
-    _, thr  = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY)
-    kernel  = cv2.getStructuringElement(cv2.MORPH_RECT, (15,15))
-    closed  = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel)
-    cnts,_  = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if cnts:
-        c = max(cnts, key=cv2.contourArea)
-        if cv2.contourArea(c) > 0.15*h*w:
-            peri   = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.02*peri, True)
-            pts    = approx.reshape(-1,2).astype(np.float32) if len(approx)==4 \
-                     else cv2.boxPoints(cv2.minAreaRect(c)).astype(np.float32)
-            s    = pts.sum(axis=1); diff = np.diff(pts, axis=1).flatten()
-            tl   = pts[np.argmin(s)];  br = pts[np.argmax(s)]
-            tr   = pts[np.argmin(diff)]; bl = pts[np.argmax(diff)]
-            if np.linalg.norm(tr-tl)>50 and np.linalg.norm(bl-tl)>50:
-                src = np.float32([tl,tr,br,bl])
-                dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
-                M   = cv2.getPerspectiveTransform(src, dst)
-                print('Perspectiva corregida OK')
-                return cv2.warpPerspective(gray, M, (WORK_W,WORK_H)), True
-    print('Hoja no detectada — usando imagen redimensionada')
-    return cv2.resize(gray, (WORK_W,WORK_H)), False
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    kernel  = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+
+    # Estrategia 1: umbral adaptativo local
+    adaptive = cv2.adaptiveThreshold(
+        blurred, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        blockSize=51, C=10
+    )
+    adaptive = cv2.morphologyEx(adaptive, cv2.MORPH_CLOSE, kernel)
+    corners  = _find_fiducials(adaptive, w, h)
+
+    # Estrategia 2: umbral global multi-nivel
+    if corners is None:
+        for thresh_val in [40, 60, 80, 100, 120]:
+            _, thr  = cv2.threshold(blurred, thresh_val, 255, cv2.THRESH_BINARY_INV)
+            thr     = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel)
+            corners = _find_fiducials(thr, w, h)
+            if corners is not None:
+                break
+
+    if corners is not None:
+        src = np.float32(corners)
+        dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+        M   = cv2.getPerspectiveTransform(src, dst)
+        print('✅ Fiduciales detectados — perspectiva corregida')
+        for i, (px, py) in enumerate(corners):
+            labels = ['TL','TR','BR','BL']
+            print(f'   {labels[i]}: ({px}, {py})')
+        return cv2.warpPerspective(gray, M, (WORK_W, WORK_H)), True, corners
+
+    print('⚠️  Fiduciales no detectados — usando imagen redimensionada')
+    print('   Asegúrate de que los 4 cuadrados negros de las esquinas sean visibles')
+    return cv2.resize(gray, (WORK_W, WORK_H)), False, None
 
 
 def _get_scale_and_offsets():
@@ -317,10 +384,29 @@ def main():
     if img_bgr is None:
         print(f'No se pudo abrir: {path}'); sys.exit(1)
 
-    gray, p_ok = correct_perspective(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY))
-    state['img_orig'] = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    gray, p_ok, fid_pts = correct_perspective(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY))
+    canvas = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
-    print(f'\nImagen: {WORK_W}x{WORK_H}  |  Perspectiva: {p_ok}')
+    # Dibujar los fiduciales detectados como referencia visual
+    if fid_pts:
+        labels = ['TL','TR','BR','BL']
+        colors = [(0,220,220),(0,220,220),(0,220,220),(0,220,220)]
+        for i, (px, py) in enumerate(fid_pts):
+            # Transformar punto original al espacio warped
+            src_pts = np.float32(fid_pts)
+            dst_pts = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+            M       = cv2.getPerspectiveTransform(src_pts, dst_pts)
+            pt_w    = cv2.perspectiveTransform(
+                        np.float32([[[px, py]]]), M)[0][0]
+            wx, wy  = int(pt_w[0]), int(pt_w[1])
+            cv2.drawMarker(canvas, (wx, wy), (0,200,200),
+                           cv2.MARKER_CROSS, 30, 2)
+            cv2.putText(canvas, labels[i], (wx+8, wy-8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,200,200), 2)
+
+    state['img_orig'] = canvas
+
+    print(f'\nImagen: {WORK_W}x{WORK_H}  |  Fiduciales: {"✅ detectados" if p_ok else "⚠️  NO detectados — calibración manual necesaria"}')
     print(f'\nPASO 1: {MODE_LABELS["TIMING"]}\n')
 
     cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
