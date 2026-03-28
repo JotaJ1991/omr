@@ -82,89 +82,122 @@ def _binarize(gray, block, c):
 
 
 # ===========================================================================
-# CORRECCIÓN DE PERSPECTIVA  (igual para todos los perfiles)
+# CORRECCIÓN DE PERSPECTIVA — solo fiduciales
 # ===========================================================================
 
-def _find_sheet_corners(gray):
-    h, w    = gray.shape
-    blurred = cv2.GaussianBlur(gray, (21, 21), 0)
-    _, thr  = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY)
-    kernel  = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    closed  = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel)
-    cnts, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
-        return None
-    page = max(cnts, key=cv2.contourArea)
-    if cv2.contourArea(page) < 0.15 * h * w:
-        return None
-    peri   = cv2.arcLength(page, True)
-    approx = cv2.approxPolyDP(page, 0.02 * peri, True)
-    pts    = approx.reshape(-1, 2).astype(np.float32) if len(approx) == 4 \
-             else cv2.boxPoints(cv2.minAreaRect(page)).astype(np.float32)
-    s    = pts.sum(axis=1)
-    diff = np.diff(pts, axis=1).flatten()
-    tl = pts[np.argmin(s)];  br = pts[np.argmax(s)]
-    tr = pts[np.argmin(diff)]; bl = pts[np.argmax(diff)]
-    if np.linalg.norm(tr - tl) < 50 or np.linalg.norm(bl - tl) < 50:
-        return None
-    return tl, tr, br, bl
-
-
 def _correct_perspective(gray, profile):
+    """
+    Detecta los 4 marcadores fiduciales (cuadrados negros en las esquinas)
+    y corrige la perspectiva.  No depende del fondo.
+
+    Estrategias en orden:
+      1. Umbralización adaptativa local  → mejor para iluminación despareja
+      2. Umbralización global multi-nivel → fallback robusto
+      3. Redimensionado sin corrección    → último recurso
+    """
     W, H = profile['work_w'], profile['work_h']
     h, w = gray.shape
 
-    corners = _find_sheet_corners(gray)
-    if corners is not None:
-        tl, tr, br, bl = corners
-        src = np.float32([tl, tr, br, bl])
-        dst = np.float32([[0,0],[W-1,0],[W-1,H-1],[0,H-1]])
-        M   = cv2.getPerspectiveTransform(src, dst)
-        return cv2.warpPerspective(gray, M, (W, H)), True
+    # Preprocesado: suavizar para reducir ruido
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    for thresh_val in [50, 70, 90, 110]:
-        _, thr = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY_INV)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    # ── Estrategia 1: umbral adaptativo ──────────────────────────────────────
+    adaptive = cv2.adaptiveThreshold(
+        blurred, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        blockSize=51, C=10
+    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    adaptive = cv2.morphologyEx(adaptive, cv2.MORPH_CLOSE, kernel)
+    result = _find_fiducials(adaptive, w, h)
+    if result is not None:
+        return _warp(gray, result, W, H), True
+
+    # ── Estrategia 2: umbral global multi-nivel ───────────────────────────────
+    for thresh_val in [40, 60, 80, 100, 120]:
+        _, thr = cv2.threshold(blurred, thresh_val, 255, cv2.THRESH_BINARY_INV)
         thr    = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel)
-        cnts, _ = cv2.findContours(thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cands = []
-        for c in cnts:
-            area = cv2.contourArea(c)
-            if area < 200 or area > 200000:
-                continue
-            x, y, bw, bh = cv2.boundingRect(c)
-            asp = bw / bh if bh else 0
-            if 0.3 < asp < 3.5 and area / (bw * bh) > 0.40:
-                cands.append({'cx': x+bw//2, 'cy': y+bh//2, 'area': area})
-        result = _find_corners_from_cands(cands, w, h)
+        result = _find_fiducials(thr, w, h)
         if result is not None:
-            tl, tr, br, bl = result
-            src = np.float32([tl, tr, br, bl])
-            dst = np.float32([[0,0],[W-1,0],[W-1,H-1],[0,H-1]])
-            M   = cv2.getPerspectiveTransform(src, dst)
-            return cv2.warpPerspective(gray, M, (W, H)), True
+            return _warp(gray, result, W, H), True
 
     return cv2.resize(gray, (W, H)), False
 
 
-def _find_corners_from_cands(cands, w, h):
+def _find_fiducials(binary, w, h):
+    """
+    Busca los 4 fiduciales en los cuadrantes de la imagen binaria.
+    Criterios relajados para funcionar con cualquier fondo.
+    """
+    cnts, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+
+    cands = []
+    for c in cnts:
+        area = cv2.contourArea(c)
+        # Rango de área: fiducial de 8×8mm en imagen ~1200px ≈ 200-15000px²
+        if area < 150 or area > 20000:
+            continue
+        x, y, bw, bh = cv2.boundingRect(c)
+        if bw < 8 or bh < 8:
+            continue
+        asp      = bw / bh if bh else 0
+        solidity = area / (bw * bh) if bw * bh > 0 else 0
+        # Forma: razonablemente cuadrada y sólida
+        if 0.4 < asp < 2.5 and solidity > 0.35:
+            cands.append({'cx': x + bw//2, 'cy': y + bh//2,
+                          'area': area, 'w': bw, 'h': bh})
+
+    return _assign_corners(cands, w, h)
+
+
+def _assign_corners(cands, w, h):
+    """
+    Asigna los 4 candidatos a esquinas TL, TR, BR, BL buscando
+    el mejor candidato en cada cuadrante.
+    Requiere al menos 1 candidato por cuadrante.
+    """
     if len(cands) < 4:
         return None
-    mx, my = w/2, h/2
-    def best(lst, px, py):
-        return min(lst, key=lambda c: (c['cx']-px)**2+(c['cy']-py)**2)
+
+    mx, my = w / 2, h / 2
+
+    def closest(lst, px, py):
+        return min(lst, key=lambda c: (c['cx']-px)**2 + (c['cy']-py)**2)
+
     q = {
-        'tl': [c for c in cands if c['cx']<mx and c['cy']<my],
-        'tr': [c for c in cands if c['cx']>mx and c['cy']<my],
-        'br': [c for c in cands if c['cx']>mx and c['cy']>my],
-        'bl': [c for c in cands if c['cx']<mx and c['cy']>my],
+        'tl': [c for c in cands if c['cx'] < mx and c['cy'] < my],
+        'tr': [c for c in cands if c['cx'] > mx and c['cy'] < my],
+        'br': [c for c in cands if c['cx'] > mx and c['cy'] > my],
+        'bl': [c for c in cands if c['cx'] < mx and c['cy'] > my],
     }
     if not all(q.values()):
         return None
-    tl = best(q['tl'],0,0); tr = best(q['tr'],w,0)
-    br = best(q['br'],w,h); bl = best(q['bl'],0,h)
-    return ([tl['cx'],tl['cy']], [tr['cx'],tr['cy']],
-            [br['cx'],br['cy']], [bl['cx'],bl['cy']])
+
+    tl = closest(q['tl'], 0, 0)
+    tr = closest(q['tr'], w, 0)
+    br = closest(q['br'], w, h)
+    bl = closest(q['bl'], 0, h)
+
+    # Verificar que forman un cuadrilátero razonable
+    pts = [(tl['cx'],tl['cy']), (tr['cx'],tr['cy']),
+           (br['cx'],br['cy']), (bl['cx'],bl['cy'])]
+    width  = max(pts[1][0], pts[2][0]) - min(pts[0][0], pts[3][0])
+    height = max(pts[2][1], pts[3][1]) - min(pts[0][1], pts[1][1])
+    if width < w * 0.3 or height < h * 0.3:
+        return None
+
+    return pts
+
+
+def _warp(gray, corners, W, H):
+    tl, tr, br, bl = corners
+    src = np.float32([tl, tr, br, bl])
+    dst = np.float32([[0,0],[W-1,0],[W-1,H-1],[0,H-1]])
+    M   = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(gray, M, (W, H))
 
 
 # ===========================================================================
