@@ -110,7 +110,7 @@ SIPAGRE_1S = {
     ],
 
     'answers_top_f':    0.177,
-    'answers_bottom_f': 0.96,
+    'answers_bottom_f': 0.965,
     'bubble_radius':     9,
     'fill_threshold':   0.06,
     'min_contrast':     0.05,
