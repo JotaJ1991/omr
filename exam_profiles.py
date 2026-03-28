@@ -97,8 +97,8 @@ SIPAGRE_1S = {
          'timing_fx': 0.020},
         # Col 2: P36-P70  — A B C D
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.308, 0.333, 0.358, 0.383],
-         'timing_fx': 0.262},
+         'bubble_fx': [0.309, 0.334, 0.359, 0.384],
+         'timing_fx': 0.263},
         # Col 3: P71-P105 — A B C D
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
          'bubble_fx': [0.550, 0.575, 0.600, 0.625],
