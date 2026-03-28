@@ -109,8 +109,8 @@ SIPAGRE_1S = {
          'timing_fx': 0.746},
     ],
 
-    'answers_top_f':    0.195,
-    'answers_bottom_f': 0.95,
+    'answers_top_f':    0.19,
+    'answers_bottom_f': 0.97,
     'bubble_radius':     9,
     'fill_threshold':   0.12,
     'min_contrast':     0.10,
