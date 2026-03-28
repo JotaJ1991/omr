@@ -143,11 +143,11 @@ SIPAGRE_2S = {
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
          'bubble_fx': [0.334, 0.356, 0.378, 0.400],
          'timing_fx': 0.292},
-        # Col 3: P71-P105 — A B C D E F G H
+        # Col 3: P71-P105 — A B C D E F G H  (8 burbujas físicas)
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.547, 0.569, 0.591, 0.613],
+         'bubble_fx': [0.547, 0.569, 0.591, 0.613, 0.635, 0.657, 0.679, 0.701],
          'timing_fx': 0.505},
-        # Col 4: P106-P140 — A B C D  (solo 4 opciones)
+        # Col 4: P106-P140 — A B C D  (solo 4 burbujas físicas)
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D'],
          'bubble_fx': [0.760, 0.782, 0.804, 0.826],
          'timing_fx': 0.718},

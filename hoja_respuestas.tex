@@ -1,0 +1,234 @@
+\documentclass[letterpaper]{article}
+\usepackage[top=1.1cm, bottom=0.9cm, left=1.2cm, right=1.1cm]{geometry}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usepackage{multicol}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\pagestyle{empty}
+
+%───────────────────────────────────────────────────────────────────────────────
+% GEOMETRIA DE LA GRILLA (todo en pt, 1mm = 2.8346pt)
+%
+% Ancho hoja carta: 216mm = 612pt
+% Margenes: izq 1.2cm + der 1.1cm = 2.3cm = 65.2pt
+% Area de texto: 612 - 65.2 = 546.8pt
+%
+% columnsep = 5pt  →  4 separadores = 20pt
+% Ancho por columna = (546.8 - 20) / 5 = 105.4pt
+%
+% Cada fila:  TM  +  gap  +  Nwidth  +  gap  +  4×Bdia  +  3×Bsep
+%              6  +   1   +    14    +   2   +  4×19.0  +  3×2
+%            = 6 + 1 + 14 + 2 + 76 + 6 = 105pt  ← encaja exacto
+%───────────────────────────────────────────────────────────────────────────────
+\setlength{\columnsep}{5pt}
+\setlength{\columnseprule}{0.3pt}
+
+% Medidas de la fila
+\newlength{\TMw}    \setlength{\TMw}{6pt}    % ancho del timing mark
+\newlength{\Nw}     \setlength{\Nw}{14pt}    % ancho fijo del numero (1-3 digitos)
+\newlength{\Bdia}   \setlength{\Bdia}{19pt}  % celda de cada burbuja (ancho = alto)
+\newlength{\Bsep}   \setlength{\Bsep}{2pt}   % separacion entre celdas de burbuja
+\newlength{\Brad}   \setlength{\Brad}{9pt}   % radio dibujado (< Bdia/2 = 9.5)
+\newlength{\Rowsep} \setlength{\Rowsep}{0pt} % espacio extra entre filas
+
+% Offset horizontal acumulado desde el inicio de la linea hasta el
+% borde izquierdo de la primera burbuja:
+%   TMw(6) + gap(1) + Nw(14) + gap(2) = 23pt
+% El CENTRO de la primera burbuja esta en: 23 + Bdia/2 = 23 + 9.5 = 32.5pt
+
+%───────────────────────────────────────────────────────────────────────────────
+% MACRO: burbuja OMR
+%───────────────────────────────────────────────────────────────────────────────
+\newcommand{\B}{%
+  \makebox[\Bdia][c]{%
+    \tikz[baseline=-3.5pt]{%
+      \filldraw[fill=black!10, draw=black!60, line width=0.6pt]
+        (0,0) circle (\Brad);}%
+  }%
+}
+
+%───────────────────────────────────────────────────────────────────────────────
+% MACRO: timing mark (rectangulo negro solido)
+%───────────────────────────────────────────────────────────────────────────────
+\newcommand{\TM}{%
+  \makebox[\TMw][c]{%
+    \tikz[baseline=-4pt]{\fill[black](0,-5pt) rectangle (\TMw,5pt);}%
+  }%
+}
+
+%───────────────────────────────────────────────────────────────────────────────
+% MACRO: fila de pregunta
+% Estructura: [TM][1pt][  Nw  ][2pt][B][2pt][B][2pt][B][2pt][B]
+% El numero usa \makebox[\Nw][r] → siempre alineado a la derecha dentro
+% de un cuadro de ancho fijo.  Las burbujas quedan en X fija para 1, 2 o 3 digitos.
+%───────────────────────────────────────────────────────────────────────────────
+\newcommand{\Q}[1]{%
+  \noindent
+  \TM
+  \hspace{1pt}%
+  \makebox[\Nw][r]{\scriptsize\textbf{#1.}}%
+  \hspace{2pt}%
+  \B\hspace{\Bsep}\B\hspace{\Bsep}\B\hspace{\Bsep}\B%
+  \par\vspace{\Rowsep}%
+}
+
+%───────────────────────────────────────────────────────────────────────────────
+% MACRO: encabezado A B C D
+% El indent = TMw + 1 + Nw + 2 = 23pt coloca la primera letra exactamente
+% encima del centro de la primera burbuja (23 + Bdia/2 = 32.5pt en ambos casos).
+%───────────────────────────────────────────────────────────────────────────────
+\newcommand{\HDR}{%
+  \noindent
+  \hspace{\TMw}\hspace{1pt}\hspace{\Nw}\hspace{2pt}%
+  \makebox[\Bdia][c]{\footnotesize\textbf{A}}%
+  \hspace{\Bsep}%
+  \makebox[\Bdia][c]{\footnotesize\textbf{B}}%
+  \hspace{\Bsep}%
+  \makebox[\Bdia][c]{\footnotesize\textbf{C}}%
+  \hspace{\Bsep}%
+  \makebox[\Bdia][c]{\footnotesize\textbf{D}}%
+  \par\vspace{2pt}%
+}
+
+%───────────────────────────────────────────────────────────────────────────────
+% MACRO: burbuja pequena para grilla de ID
+%───────────────────────────────────────────────────────────────────────────────
+\newcommand{\Bs}{%
+  \tikz[baseline=-2pt]{%
+    \filldraw[fill=black!10, draw=black!55, line width=0.4pt]
+      (0,0) circle (3.5pt);}%
+}
+
+%───────────────────────────────────────────────────────────────────────────────
+% MACRO: columna de digito para la grilla de identificacion
+%───────────────────────────────────────────────────────────────────────────────
+\newcommand{\DIG}[1]{%
+  \begin{minipage}[t]{11pt}\centering
+    {\tiny\textbf{#1}}\par\vspace{1pt}%
+    \Bs\par\vspace{0.5pt}%  0
+    \Bs\par\vspace{0.5pt}%  1
+    \Bs\par\vspace{0.5pt}%  2
+    \Bs\par\vspace{0.5pt}%  3
+    \Bs\par\vspace{0.5pt}%  4
+    \Bs\par\vspace{0.5pt}%  5
+    \Bs\par\vspace{0.5pt}%  6
+    \Bs\par\vspace{0.5pt}%  7
+    \Bs\par\vspace{0.5pt}%  8
+    \Bs%                    9
+  \end{minipage}%
+  \hspace{2pt}%
+}
+
+%───────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+%── MARCADORES FIDUCIALES EN LAS 4 ESQUINAS ──────────────────────────────────
+% Cuadrados negros 8x8mm a 8mm del borde de la hoja.
+% El algoritmo OMR los detecta para corregir perspectiva y rotacion.
+\begin{tikzpicture}[remember picture, overlay]
+  \fill[black] ($(current page.north west)+(8mm,-8mm)$)  rectangle ++(8mm,-8mm);
+  \fill[black] ($(current page.north east)+(-8mm,-8mm)$) rectangle ++(-8mm,-8mm);
+  \fill[black] ($(current page.south west)+(8mm,8mm)$)   rectangle ++(8mm,8mm);
+  \fill[black] ($(current page.south east)+(-8mm,8mm)$)  rectangle ++(-8mm,8mm);
+\end{tikzpicture}
+
+\vspace*{8mm}
+
+%── ENCABEZADO ───────────────────────────────────────────────────────────────
+\noindent
+\begin{minipage}[t]{0.55\linewidth}
+  {\large\textbf{HOJA DE RESPUESTAS}}\\[2pt]
+  {\footnotesize\textbf{Instruccion:}
+  Rellene \textbf{completamente} la burbuja con lapiz.
+  Borre completamente si se equivoca.}\\[5pt]
+  \textbf{Nombre:}\hrulefill\\[4pt]
+  \textbf{Curso:}\underline{\hspace{2.4cm}}\quad
+  \textbf{Fecha:}\underline{\hspace{2.4cm}}
+\end{minipage}%
+\hfill
+\begin{minipage}[t]{0.42\linewidth}
+  \raggedleft
+  {\footnotesize\textbf{Numero de identificacion (10 digitos)}}\\[2pt]
+  {\tiny (marque un digito por columna)}\\[2pt]
+  \DIG{1}\DIG{2}\DIG{3}\DIG{4}\DIG{5}%
+  \DIG{6}\DIG{7}\DIG{8}\DIG{9}\DIG{10}%
+\end{minipage}
+
+\vspace{4pt}
+\hrule height 0.9pt
+\vspace{2pt}
+
+%── LEYENDA ──────────────────────────────────────────────────────────────────
+{\footnotesize
+\textbf{Correcto:~}%
+\tikz[baseline=-2pt]{\filldraw[fill=black!82,draw=black](0,0)circle(4.5pt);}%
+\quad
+\textbf{Incorrecto:~}%
+\tikz[baseline=-2pt]{%
+  \filldraw[fill=black!10,draw=black!55,line width=0.5pt](0,0)circle(4.5pt);
+  \draw[line width=0.8pt,black!60](-3pt,-3pt)--(3pt,3pt);}%
+\hspace{4pt}%
+\tikz[baseline=-2pt]{%
+  \filldraw[fill=black!10,draw=black!55,line width=0.5pt](0,0)circle(4.5pt);
+  \draw[line width=0.8pt,black!60](-3pt,0)--(3pt,0);}%
+\hspace{4pt}%
+\tikz[baseline=-2pt]{%
+  \filldraw[fill=black!30,draw=black!55,line width=0.5pt](0,0)circle(4.5pt);}~%
+{\tiny incompleta}%
+\quad
+\tikz[baseline=-2pt]{\fill[black](0,-3pt)rectangle(5pt,3pt);}~%
+{\tiny = marca de fila, no escriba encima}%
+}
+
+\vspace{2pt}
+\hrule height 0.5pt
+\vspace{4pt}
+
+%── BLOQUE DE RESPUESTAS ─────────────────────────────────────────────────────
+% 5 columnas × 25 preguntas = 125 preguntas
+% Cada fila: [timing mark][numero fijo][burbuja A][B][C][D]
+\begin{multicols}{5}
+
+\HDR
+\Q{1}\Q{2}\Q{3}\Q{4}\Q{5}
+\Q{6}\Q{7}\Q{8}\Q{9}\Q{10}
+\Q{11}\Q{12}\Q{13}\Q{14}\Q{15}
+\Q{16}\Q{17}\Q{18}\Q{19}\Q{20}
+\Q{21}\Q{22}\Q{23}\Q{24}\Q{25}
+
+\columnbreak\HDR
+\Q{26}\Q{27}\Q{28}\Q{29}\Q{30}
+\Q{31}\Q{32}\Q{33}\Q{34}\Q{35}
+\Q{36}\Q{37}\Q{38}\Q{39}\Q{40}
+\Q{41}\Q{42}\Q{43}\Q{44}\Q{45}
+\Q{46}\Q{47}\Q{48}\Q{49}\Q{50}
+
+\columnbreak\HDR
+\Q{51}\Q{52}\Q{53}\Q{54}\Q{55}
+\Q{56}\Q{57}\Q{58}\Q{59}\Q{60}
+\Q{61}\Q{62}\Q{63}\Q{64}\Q{65}
+\Q{66}\Q{67}\Q{68}\Q{69}\Q{70}
+\Q{71}\Q{72}\Q{73}\Q{74}\Q{75}
+
+\columnbreak\HDR
+\Q{76}\Q{77}\Q{78}\Q{79}\Q{80}
+\Q{81}\Q{82}\Q{83}\Q{84}\Q{85}
+\Q{86}\Q{87}\Q{88}\Q{89}\Q{90}
+\Q{91}\Q{92}\Q{93}\Q{94}\Q{95}
+\Q{96}\Q{97}\Q{98}\Q{99}\Q{100}
+
+\columnbreak\HDR
+\Q{101}\Q{102}\Q{103}\Q{104}\Q{105}
+\Q{106}\Q{107}\Q{108}\Q{109}\Q{110}
+\Q{111}\Q{112}\Q{113}\Q{114}\Q{115}
+\Q{116}\Q{117}\Q{118}\Q{119}\Q{120}
+\Q{121}\Q{122}\Q{123}\Q{124}\Q{125}
+
+\end{multicols}
+
+\end{document}
