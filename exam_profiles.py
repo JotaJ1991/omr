@@ -137,8 +137,8 @@ SIPAGRE_2S = {
     'columns': [
         # Col 1: P1-P35  — A B C D
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.120, 0.142, 0.164, 0.186],
-         'timing_fx': 0.078},
+         'bubble_fx': [0.118, 0.140, 0.162, 0.184],
+         'timing_fx': 0.076},
         # Col 2: P36-P70  — A B C D
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
          'bubble_fx': [0.334, 0.356, 0.378, 0.400],
@@ -153,7 +153,7 @@ SIPAGRE_2S = {
          'timing_fx': 0.79},
     ],
 
-    'answers_top_f':    0.200,
+    'answers_top_f':    0.195,
     'answers_bottom_f': 0.910,
     'bubble_radius':     9,
     'fill_threshold':   0.12,
