@@ -1,318 +1,188 @@
 """
-OMR App  —  Calificador JMR  (multi-perfil)
+exam_profiles.py — Perfiles de examen
+======================================
+Cada perfil define la geometría completa de una hoja OMR.
+Para agregar un nuevo tipo: añadir una entrada al dict PROFILES
+y registrarlo en PROFILE_LIST.
+
+Estructura de un perfil
+-----------------------
+  name          str   — Nombre para mostrar en la UI
+  total_q       int   — Número total de preguntas
+  work_w        int   — Ancho canónico (px) tras corrección de perspectiva
+  work_h        int   — Alto canónico (px)
+  columns       list  — Una entrada por columna de respuestas:
+      q_start   int   — Primera pregunta de la columna (1-based)
+      q_end     int   — Última pregunta (incluida)
+      options   list  — Letras válidas, ej. ['A','B','C','D']
+      bubble_fx list  — Fracción X de cada opción respecto a work_w
+      timing_fx float — Fracción X del timing mark de esta columna
+  answers_top_f    float — Fracción Y donde empiezan las filas de respuestas
+  answers_bottom_f float — Fracción Y donde terminan
+  bubble_radius    int   — Radio del ROI de cada burbuja (px)
+  fill_threshold   float — Mínimo fill para considerar una burbuja marcada
+  min_contrast     float — Mínimo contraste fill_max − fill_2nd
+  binarize_block   int   — blockSize para adaptiveThreshold (impar)
+  binarize_c       int   — Constante C para adaptiveThreshold
+  clahe_clip       float — clipLimit CLAHE (0 = sin CLAHE)
+  clahe_grid       tuple — tileGridSize CLAHE
 """
-import os
-import json
-import traceback
-import base64
-from flask import Flask, request, jsonify, render_template, session
-from werkzeug.utils import secure_filename
-from omr_processor import process_exam_image
-from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
-from sheets_connector import (
-    save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
-    list_sheets, create_sheet
-)
 
-app = Flask(__name__)
-app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['UPLOAD_FOLDER']      = 'uploads'
+# ---------------------------------------------------------------------------
+# JMR-125  —  Hoja original 5 columnas × 25 filas, opciones A-D
+# ---------------------------------------------------------------------------
+JMR_125 = {
+    'id':    'JMR125',
+    'name':  'JMR — 125 preguntas (5 col × 25)',
+    'total_q': 125,
+    'work_w':  1275,
+    'work_h':  1650,
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
-DEFAULT_SHEET      = 'Respuestas'
+    # Cada columna: q_start, q_end, options, bubble_fx, timing_fx
+    'columns': [
+        {'q_start':   1, 'q_end':  25, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.110, 0.145, 0.180, 0.215], 'timing_fx': 0.056},
+        {'q_start':  26, 'q_end':  50, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.290, 0.325, 0.360, 0.395], 'timing_fx': 0.236},
+        {'q_start':  51, 'q_end':  75, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.470, 0.505, 0.540, 0.575], 'timing_fx': 0.419},
+        {'q_start':  76, 'q_end': 100, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.650, 0.685, 0.720, 0.755], 'timing_fx': 0.601},
+        {'q_start': 101, 'q_end': 125, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.830, 0.865, 0.900, 0.935], 'timing_fx': 0.789},
+    ],
 
-def allowed_file(f):
-    return '.' in f and f.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def active_sheet():
-    return session.get('active_sheet', DEFAULT_SHEET)
-
-def active_profile_id():
-    return session.get('profile_id', DEFAULT_PROFILE_ID)
-
-
-# ── Página principal ──────────────────────────────────────────────────────────
-
-@app.route('/')
-def index():
-    return render_template('index.html',
-                           profiles=PROFILE_LIST,
-                           default_profile=DEFAULT_PROFILE_ID)
+    'answers_top_f':    0.35,
+    'answers_bottom_f': 0.87,
+    'bubble_radius':    10,
+    'fill_threshold':   0.12,
+    'min_contrast':     0.10,
+    'binarize_block':   25,
+    'binarize_c':        8,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+}
 
 
-# ── Hojas ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# SIPAGRE-140  —  4 columnas × 35 filas; cols 1-3: A-D, col 4: A-H
+#
+# NOTA: Las posiciones X son ESTIMADAS basadas en la estructura del LaTeX.
+# Deben calibrarse con fotos reales antes de usar en producción.
+#
+# LaTeX layout (letterpaper 215.9 × 279.4 mm, márgenes 1.1/0.9/1.2/1.1 cm):
+#   Área útil ≈ 193.6 × 267.4 mm, 4 columnas con columnsep=6pt≈2.1mm
+#   Ancho por columna ≈ (193.6 − 3×2.1) / 4 ≈ 46.8 mm
+#   TMw=6pt, Nw=14pt, Bdia=12pt, Bsep=1.5pt
+#   Col1 inicio X ≈ 12mm / 193.6mm ≈ 0.062 (fracción del área útil)
+#   TM en col i: 0.062 + i * (46.8+2.1)/193.6
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 1S SIPAGRE-140  —  4 col × 35 filas
+#   Col 1-2: A-D  |  Col 3-4: A-H
+# ---------------------------------------------------------------------------
+SIPAGRE_1S = {
+    'id':    '1SSIPAGRE',
+    'name':  '1S SIPAGRE — 140 preguntas',
+    'total_q': 140,
+    'work_w':  1275,
+    'work_h':  1650,
 
-@app.route('/active_sheet', methods=['GET'])
-def get_active_sheet():
-    try:    sheets = list_sheets()
-    except: sheets = []
-    return jsonify({'active': active_sheet(), 'sheets': sheets})
+    # Posiciones calibradas (paso=0.025, gap timing→A=0.046)
+    # Col 1-2: A B C D  |  Col 3-4: A B C D E F G H
+    'columns': [
+        # Col 1: P1-P35  — A B C D
+        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.066, 0.091, 0.116, 0.141],
+         'timing_fx': 0.020},
+        # Col 2: P36-P70  — A B C D
+        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.308, 0.333, 0.358, 0.383],
+         'timing_fx': 0.262},
+        # Col 3: P71-P105 — A B C D
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.550, 0.575, 0.600, 0.625],
+         'timing_fx': 0.504},
+        # Col 4: P106-P140 — A B C D E F G H
+        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.792, 0.817, 0.842, 0.867, 0.892, 0.917, 0.942, 0.967],
+         'timing_fx': 0.746},
+    ],
 
-@app.route('/active_sheet', methods=['POST'])
-def set_active_sheet():
-    data = request.get_json(silent=True) or {}
-    name = data.get('name', '').strip()
-    if not name:
-        return jsonify({'success': False, 'error': 'Nombre vacío'}), 400
-    session['active_sheet'] = name
-    session.modified = True
-    return jsonify({'success': True, 'active': name})
-
-@app.route('/sheets', methods=['GET'])
-def sheets_list():
-    try:    return jsonify({'success': True, 'sheets': list_sheets()})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/sheets', methods=['POST'])
-def sheets_create():
-    data = request.get_json(silent=True) or {}
-    name = data.get('name', '').strip()
-    if not name:
-        return jsonify({'success': False, 'error': 'Nombre vacío'}), 400
-    result = create_sheet(name)
-    if result['success']:
-        session['active_sheet'] = name
-        session.modified = True
-        result['active'] = name
-    return jsonify(result)
-
-
-# ── Perfil de examen ──────────────────────────────────────────────────────────
-
-@app.route('/profile', methods=['GET'])
-def get_profile_route():
-    pid     = active_profile_id()
-    profile = get_profile(pid)
-    return jsonify({
-        'active_id':   pid,
-        'active_name': profile['name'],
-        'total_q':     profile['total_q'],
-        'profiles':    PROFILE_LIST,
-        # Opciones por pregunta — útil para la UI de clave
-        'options_per_q': _build_options_per_q(profile),
-    })
-
-@app.route('/profile', methods=['POST'])
-def set_profile_route():
-    data = request.get_json(silent=True) or {}
-    pid  = data.get('profile_id', '').strip()
-    p    = get_profile(pid)
-    if p['id'] != pid:   # fallback ocurrió → ID inválido
-        return jsonify({'success': False, 'error': f'Perfil "{pid}" no existe.'}), 400
-    session['profile_id'] = pid
-    session.modified = True
-    profile = get_profile(pid)
-    return jsonify({
-        'success':       True,
-        'active_id':     pid,
-        'active_name':   profile['name'],
-        'total_q':       profile['total_q'],
-        'options_per_q': _build_options_per_q(profile),
-    })
-
-def _build_options_per_q(profile) -> list:
-    """Lista de longitud total_q con las opciones válidas de cada pregunta."""
-    result = []
-    for col in profile['columns']:
-        n = col['q_end'] - col['q_start'] + 1
-        result.extend([col['options']] * n)
-    return result
+    'answers_top_f':    0.183,
+    'answers_bottom_f': 0.967,
+    'bubble_radius':     9,
+    'fill_threshold':   0.12,
+    'min_contrast':     0.10,
+    'binarize_block':   25,
+    'binarize_c':        8,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+}
 
 
-# ── Procesar imagen ───────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# 2S SIPAGRE-140  —  4 col × 35 filas
+#   Col 1-2: A-D  |  Col 3: A-H  |  Col 4: A-D
+#   Misma geometría que 1S SIPAGRE, solo cambian las opciones de col 3 y 4
+# ---------------------------------------------------------------------------
+SIPAGRE_2S = {
+    'id':    '2SSIPAGRE',
+    'name':  '2S SIPAGRE — 140 preguntas',
+    'total_q': 140,
+    'work_w':  1275,
+    'work_h':  1650,
 
-@app.route('/process', methods=['POST'])
-def process():
-    if 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'No se recibió imagen'}), 400
+    'columns': [
+        # Col 1: P1-P35  — A B C D
+        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.118, 0.140, 0.162, 0.184],
+         'timing_fx': 0.076},
+        # Col 2: P36-P70  — A B C D
+        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.332, 0.354, 0.376, 0.398],
+         'timing_fx': 0.290},
+        # Col 3: P71-P105 — A B C D E F G H  (8 burbujas físicas)
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.547, 0.569, 0.591, 0.613, 0.635, 0.657, 0.679, 0.701],
+         'timing_fx': 0.505},
+        # Col 4: P106-P140 — A B C D  (solo 4 burbujas físicas)
+        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.833, 0.855, 0.875, 0.899],
+         'timing_fx': 0.790},
+    ],
 
-    file = request.files['image']
-    if not file.filename or not allowed_file(file.filename):
-        return jsonify({'success': False,
-                        'error': 'Formato no soportado. Usa JPG, PNG o WEBP'}), 400
-
-    pid         = request.form.get('profile_id', active_profile_id())
-    profile     = get_profile(pid)
-    total_q     = profile['total_q']
-
-    current_raw = request.form.get('current_answers', '')
-    try:
-        current = json.loads(current_raw) if current_raw else []
-    except Exception:
-        current = []
-
-    try:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        result = process_exam_image(filepath, profile_id=pid, debug=True)
-
-        # Leer imagen anotada y eliminar archivos temporales
-        debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
-        img_b64 = None
-        if os.path.exists(debug_path):
-            with open(debug_path, 'rb') as f:
-                img_b64 = base64.b64encode(f.read()).decode()
-            os.remove(debug_path)
-        if os.path.exists(filepath):
-            os.remove(filepath)
-
-        if not result['success']:
-            return jsonify({'success': False, 'error': result['error']}), 422
-
-        new_answers = result['answers']
-
-        if current and len(current) == total_q:
-            merged = current[:]
-            filled = []
-            for i in range(total_q):
-                if merged[i] == '?' and new_answers[i] != '?':
-                    merged[i] = new_answers[i]
-                    filled.append(i + 1)
-        else:
-            merged = new_answers
-            filled = [i + 1 for i, a in enumerate(merged) if a != '?']
-
-        detected   = len([a for a in merged if a != '?'])
-        missing    = total_q - detected
-        new_filled = len(filled) if current else 0
-
-        return jsonify({
-            'success':     True,
-            'answers':     merged,
-            'confidence':  result['confidence'],
-            'detected':    detected,
-            'missing':     missing,
-            'new_filled':  new_filled,
-            'filled_qs':   filled[:20],
-            'total_q':     total_q,
-            'profile_id':  pid,
-            'debug_image': img_b64,
-        })
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': f'Error interno: {str(e)}'}), 500
+    'answers_top_f':    0.198,
+    'answers_bottom_f': 0.910,
+    'bubble_radius':     9,
+    'fill_threshold':   0.12,
+    'min_contrast':     0.10,
+    'binarize_block':   25,
+    'binarize_c':        8,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+}
 
 
-# ── Guardar en Sheets ─────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Registro central
+# ---------------------------------------------------------------------------
+PROFILES = {
+    JMR_125['id']:    JMR_125,
+    SIPAGRE_1S['id']: SIPAGRE_1S,
+    SIPAGRE_2S['id']: SIPAGRE_2S,
+}
 
-@app.route('/save', methods=['POST'])
-def save():
-    data = request.get_json(silent=True) or {}
+# Lista ordenada para la UI
+PROFILE_LIST = [
+    {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
+    {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
+    {'id': JMR_125['id'],    'name': JMR_125['name']},
+]
 
-    student_name = data.get('student_name', '').strip()
-    exam_id      = data.get('exam_id', '').strip()
-    answers      = data.get('answers', [])
-    sheet_name   = data.get('sheet_name', active_sheet())
-
-    if not student_name:
-        return jsonify({'success': False,
-                        'error': 'El nombre del estudiante es obligatorio.'}), 400
-    n = len(answers)
-    if n < 1 or n > 200:
-        return jsonify({'success': False,
-                        'error': 'Número de respuestas inválido.'}), 400
-
-    try:
-        sheets_result = save_to_sheets(
-            student_name=student_name,
-            exam_id=exam_id,
-            answers=answers,
-            sheet_name=sheet_name
-        )
-        detected = len([a for a in answers if a not in ('?', '')])
-        correct  = sheets_result.get('correct')
-        pct      = sheets_result.get('pct', '')
-
-        if correct is not None:
-            msg = f'Guardado en "{sheet_name}" — {correct}/{n} correctas ({pct})'
-        else:
-            msg = f'Guardado en "{sheet_name}" — {detected}/{n} detectadas.'
-
-        return jsonify({
-            'success':    True,
-            'row':        sheets_result.get('row'),
-            'sheets_url': sheets_result.get('url'),
-            'detected':   detected,
-            'correct':    correct,
-            'pct':        pct,
-            'message':    msg
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': f'Error al guardar: {str(e)}'}), 500
+DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
 
 
-@app.route('/get_key', methods=['GET'])
-def get_key():
-    """Retorna la clave guardada en la hoja activa."""
-    sheet_name = request.args.get('sheet', active_sheet())
-    try:
-        result = get_answer_key(sheet_name)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e), 'answers': []})
-
-
-@app.route('/save_key', methods=['POST'])
-def save_key():
-    data       = request.get_json(silent=True) or {}
-    answers    = data.get('answers', [])
-    sheet_name = data.get('sheet_name', active_sheet())
-
-    if not answers:
-        return jsonify({'success': False, 'error': 'No se recibieron respuestas.'}), 400
-    try:
-        result = save_answer_key(answers, sheet_name)
-        return jsonify(result)
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# ── Resultados ────────────────────────────────────────────────────────────────
-
-@app.route('/results')
-def results():
-    sheet_name = request.args.get('sheet', active_sheet())
-    try:
-        data = get_sheet_data(sheet_name)
-        return jsonify({'success': True, 'data': data, 'sheet': sheet_name})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
-
-
-@app.route('/debug_image', methods=['POST'])
-def debug_image():
-    if 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'No se recibió imagen'}), 400
-    file     = request.files['image']
-    pid      = request.form.get('profile_id', active_profile_id())
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'debug_' + filename)
-    file.save(filepath)
-
-    result     = process_exam_image(filepath, profile_id=pid, debug=True)
-    debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
-    img_b64    = None
-
-    if os.path.exists(debug_path):
-        with open(debug_path, 'rb') as f:
-            img_b64 = base64.b64encode(f.read()).decode()
-        os.remove(debug_path)
-    if os.path.exists(filepath):
-        os.remove(filepath)
-
-    return jsonify({
-        'success':     result['success'],
-        'answers':     result.get('answers', []),
-        'debug_image': img_b64
-    })
-
-
-if __name__ == '__main__':
-    os.makedirs('uploads', exist_ok=True)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+def get_profile(profile_id: str) -> dict:
+    """Retorna el perfil por ID. Fallback al perfil por defecto."""
+    return PROFILES.get(profile_id, PROFILES[DEFAULT_PROFILE_ID])

@@ -1,1283 +1,491 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Calificador JMR</title>
-<style>
-  :root {
-    --primary: #2563eb; --primary-dark: #1d4ed8;
-    --success: #16a34a; --danger: #dc2626; --warning: #d97706;
-    --bg: #f1f5f9; --card: #ffffff; --text: #1e293b;
-    --muted: #64748b; --border: #e2e8f0; --radius: 12px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         background: var(--bg); color: var(--text); min-height: 100vh; }
+"""
+calibrar_sipagre.py — Herramienta de calibración interactiva para SIPAGRE-140
+==============================================================================
+Uso:
+    python calibrar_sipagre.py foto.jpg
 
-  header { background: var(--primary); color: white; padding: 16px 20px;
-           text-align: center; box-shadow: 0 2px 8px rgba(37,99,235,.4); }
-  header h1 { font-size: 1.3rem; font-weight: 700; }
-  header p  { font-size: .8rem; opacity: .85; margin-top: 2px; }
+Controles:
+    Clic izquierdo  → registrar punto en el modo actual
+    TAB             → avanzar al siguiente modo manualmente
+    Z               → deshacer último clic
+    R               → reiniciar todos los puntos
+    S               → guardar/imprimir parámetros calibrados
+    +  /  =         → zoom in
+    -               → zoom out
+    0               → restablecer zoom (ver imagen completa)
+    Flechas         → desplazar la vista cuando hay zoom
+    Q  /  ESC       → salir
 
-  main { max-width: 600px; margin: 0 auto; padding: 16px; }
+Flujo de 6 pasos (el script avanza solo al completar cada uno):
+    1. TIMING      — clic en el timing mark (rect negro) fila 1 de cada columna → 4 clics
+    2. TOP/BOTTOM  — clic en timing mark fila 1 y fila 35 de cualquier columna  → 2 clics
+    3. Col 1 A-D   — clic en el centro de A B C D de cualquier fila col 1       → 4 clics
+    4. Col 2 A-D   — idem columna 2                                              → 4 clics
+    5. Col 3 A-D   — idem columna 3                                              → 4 clics
+    6. Col 4 A-H   — clic en A B C D E F G H de cualquier fila col 4            → 8 clics
 
-  .card { background: var(--card); border-radius: var(--radius); padding: 20px;
-          margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px;
-             display: flex; align-items: center; gap: 8px; }
+Al pulsar S se genera sipagre_params_calibrados.txt listo para pegar
+en exam_profiles.py.
 
-  label { display: block; font-size: .85rem; font-weight: 500;
-          margin-bottom: 5px; color: var(--muted); }
+Requiere: pip install opencv-python numpy
+"""
 
-  input[type="text"], select {
-    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border);
-    border-radius: 8px; font-size: .95rem; margin-bottom: 12px;
-    background: white; color: var(--text);
-    appearance: none; -webkit-appearance: none; transition: border-color .2s;
-  }
-  input[type="text"]:focus, select:focus { outline: none; border-color: var(--primary); }
-  input.required-empty { border-color: var(--danger) !important; }
+import cv2
+import numpy as np
+import sys
+import os
+from datetime import datetime
 
-  /* ── Selector hoja ── */
-  .sheet-selector { display: flex; gap: 8px; align-items: stretch; margin-bottom: 12px; }
-  .sheet-selector select { margin-bottom: 0; flex: 1;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
-  .btn-icon { padding: 10px 12px; border: 1.5px solid var(--border);
-              border-radius: 8px; background: white; cursor: pointer;
-              font-size: 1.1rem; display: flex; align-items: center;
-              transition: border-color .2s, background .2s; }
-  .btn-icon:hover { border-color: var(--primary); background: #eff6ff; }
+COLUMNS_DEF = [
+    {'id': 0, 'name': 'Col 1 (P1-35)',    'options': ['A','B','C','D'],                    'q_start':   1, 'q_end':  35},
+    {'id': 1, 'name': 'Col 2 (P36-70)',   'options': ['A','B','C','D'],                    'q_start':  36, 'q_end':  70},
+    {'id': 2, 'name': 'Col 3 (P71-105)',  'options': ['A','B','C','D'],                    'q_start':  71, 'q_end': 105},
+    {'id': 3, 'name': 'Col 4 (P106-140)', 'options': ['A','B','C','D','E','F','G','H'],    'q_start': 106, 'q_end': 140},
+]
 
-  .sheet-badge { display: inline-flex; align-items: center; gap: 6px;
-    background: #eff6ff; color: var(--primary); border: 1.5px solid #bfdbfe;
-    border-radius: 99px; padding: 4px 12px; font-size: .8rem;
-    font-weight: 600; margin-bottom: 14px; }
-  .sheet-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); }
+WORK_W = 1275
+WORK_H = 1650
 
-  /* ── Modal ── */
-  .modal-overlay { display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,.45); z-index: 100;
-    align-items: center; justify-content: center; }
-  .modal-overlay.show { display: flex; }
-  .modal { background: white; border-radius: var(--radius); padding: 24px;
-    width: min(400px, calc(100vw - 32px)); box-shadow: 0 8px 32px rgba(0,0,0,.2); }
-  .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
-  .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
+MODES = ['TIMING', 'TOP_BOTTOM', 'BUBBLES_C0', 'BUBBLES_C1', 'BUBBLES_C2', 'BUBBLES_C3']
 
-  /* ── Capture ── */
-  .capture-zone { border: 2.5px dashed var(--border); border-radius: var(--radius);
-    min-height: 200px; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 10px;
-    cursor: pointer; background: #f8fafc;
-    transition: border-color .2s, background .2s; position: relative; overflow: hidden; }
-  .capture-zone:hover  { border-color: var(--primary); background: #eff6ff; }
-  .capture-zone.active { border-color: var(--primary); border-style: solid; }
-  .capture-zone img { width: 100%; height: 100%; object-fit: contain;
-                      border-radius: calc(var(--radius) - 2px); }
-  .capture-zone .placeholder { text-align: center; color: var(--muted); padding: 20px; }
-  .capture-zone .placeholder .icon { font-size: 3rem; margin-bottom: 8px; }
-  .capture-zone .placeholder p    { font-size: .9rem; }
-  .capture-zone .placeholder small { font-size: .75rem; opacity: .7; }
-  input[type="file"] { display: none; }
-
-
-
-
-  /* ── Selector número de preguntas ── */
-  .q-selector {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
-  }
-  .q-selector label { font-size: .85rem; font-weight: 500;
-    color: var(--muted); white-space: nowrap; margin-bottom: 0; }
-  .q-selector input[type="number"] {
-    width: 80px; padding: 8px 10px; border: 1.5px solid var(--border);
-    border-radius: 8px; font-size: .95rem; font-weight: 600;
-    text-align: center; margin-bottom: 0;
-  }
-  .q-selector input[type="number"]:focus { border-color: var(--primary); outline:none; }
-  .q-badge {
-    background: #eff6ff; color: var(--primary);
-    border: 1.5px solid #bfdbfe; border-radius: 99px;
-    padding: 3px 10px; font-size: .78rem; font-weight: 600;
-  }
-
-  /* ── Botones ── */
-  .btn-group { display: flex; gap: 10px; margin-top: 14px; }
-  button { flex: 1; padding: 13px; border: none; border-radius: 8px;
-    font-size: 1rem; font-weight: 600; cursor: pointer;
-    transition: opacity .15s, transform .1s;
-    display: flex; align-items: center; justify-content: center; gap: 6px; }
-  button:active { transform: scale(.97); }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  .btn-primary   { background: var(--primary); color: white; }
-  .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
-  .btn-secondary { background: var(--border); color: var(--text); }
-  .btn-camera    { background: #0f172a; color: white; }
-  .btn-success   { background: var(--success); color: white; }
-  .btn-danger    { background: var(--danger); color: white; }
-  .btn-warning   { background: var(--warning); color: white; }
-
-  /* ── Status ── */
-  .status { display: none; padding: 14px 16px; border-radius: 8px;
-    font-size: .9rem; font-weight: 500; margin-top: 12px;
-    align-items: flex-start; gap: 10px; }
-  .status.show    { display: flex; }
-  .status.loading { background: #eff6ff; color: var(--primary); }
-  .status.success { background: #f0fdf4; color: var(--success); }
-  .status.error   { background: #fef2f2; color: var(--danger); }
-  .status.warning { background: #fffbeb; color: var(--warning); }
-  .spinner { width: 20px; height: 20px; min-width: 20px; border: 2.5px solid currentColor;
-    border-top-color: transparent; border-radius: 50%;
-    animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── Banner respuestas incompletas ── */
-  .incomplete-banner {
-    background: #fffbeb; border: 1.5px solid #fcd34d;
-    border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
-    font-size: .88rem; color: #92400e;
-  }
-  .incomplete-banner strong { display: block; margin-bottom: 6px; font-size: .95rem; }
-  .incomplete-banner .missing-count {
-    font-size: 1.6rem; font-weight: 800; color: var(--warning);
-    display: inline-block; margin-right: 6px;
-  }
-
-  /* ── Banner nueva foto detectó respuestas ── */
-  .found-banner {
-    background: #f0fdf4; border: 1.5px solid #86efac;
-    border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
-    font-size: .88rem; color: #14532d;
-  }
-  .found-banner strong { display: block; margin-bottom: 4px; }
-
-  /* ── Grid respuestas ── */
-  .answers-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
-
-  /* ── Imagen anotada del escaneo ── */
-  .scan-image-wrap {
-    margin-top: 14px; border-radius: 8px; overflow: hidden;
-    border: 1.5px solid var(--border); display: none;
-  }
-  .scan-image-wrap.show { display: block; }
-  .scan-image-wrap img  { width: 100%; display: block; }
-  .scan-image-legend {
-    background: #f8fafc; padding: 6px 10px;
-    font-size: .72rem; color: var(--muted); line-height: 1.6;
-  }
-  .answer-chip { display: flex; align-items: center; gap: 4px;
-    background: #f8fafc; border: 1.5px solid var(--border);
-    border-radius: 6px; padding: 3px 7px; font-size: .78rem;
-    font-weight: 600; min-width: 52px; }
-  .answer-chip .qnum { color: var(--muted); font-weight: 400; }
-  .answer-chip.A { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
-  .answer-chip.B { border-color: #10b981; color: #065f46; background: #f0fdf4; }
-  .answer-chip.C { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
-  .answer-chip.D { border-color: #ef4444; color: #991b1b; background: #fef2f2; }
-  .answer-chip.unknown { border-color: #cbd5e1; color: #94a3b8; background: #f1f5f9; }
-  /* Morado: respuestas recién encontradas en la foto más reciente */
-  .answer-chip.new-found { border-color: #a855f7; background: #faf5ff;
-    color: #6b21a8; animation: pop .35s ease; }
-  @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.22)} 100%{transform:scale(1)} }
-
-  /* ── Stats ── */
-  .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-top: 14px; }
-  .stat-box { background: #f8fafc; border-radius: 8px; padding: 12px 8px; text-align: center; }
-  .stat-box .val { font-size: 1.5rem; font-weight: 700; }
-  .stat-box .lbl { font-size: .72rem; color: var(--muted); margin-top: 2px; }
-  .confidence-bar  { height: 6px; background: var(--border);
-    border-radius: 99px; margin-top: 8px; overflow: hidden; }
-  .confidence-fill { height: 100%; border-radius: 99px; transition: width .5s ease; }
-
-  /* ── Tabs ── */
-  .tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
-  .tab  { flex: 1; padding: 10px; text-align: center; font-size: .85rem;
-    font-weight: 600; cursor: pointer; color: var(--muted);
-    border-bottom: 2.5px solid transparent; margin-bottom: -2px; transition: color .2s; }
-  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  /* ── Historial ── */
-  .history-item { border: 1.5px solid var(--border); border-radius: 8px;
-    padding: 12px; margin-bottom: 8px; font-size: .85rem; }
-  .history-item .name { font-weight: 600; }
-  .history-item .meta { color: var(--muted); font-size: .78rem; margin-top: 3px; }
-  .results-sheet-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
-  .results-sheet-bar select { margin-bottom: 0; flex: 1; }
-  .results-sheet-bar button { flex: none; padding: 10px 16px; font-size: .85rem; }
-
-  /* ── Progress bar respuestas ── */
-  .progress-wrap { margin: 10px 0 4px; }
-  .progress-bar { height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 99px;
-    background: var(--success); transition: width .4s ease; }
-  .progress-label { font-size: .75rem; color: var(--muted); margin-top: 4px; text-align: right; }
-
-  /* ── Tarjetas de perfil de examen ── */
-  .profile-option {
-    border: 2px solid var(--border); border-radius: 10px;
-    padding: 12px 14px; cursor: pointer;
-    transition: border-color .15s, background .15s;
-  }
-  .profile-option:hover    { border-color: var(--primary); background: #eff6ff; }
-  .profile-option.active-profile {
-    border-color: var(--primary); background: #eff6ff;
-  }
-
-  /* ── Panel clave de respuestas ── */
-  .key-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-    gap: 5px; margin: 12px 0; }
-  .key-chip { display: flex; align-items: center; gap: 3px;
-    border: 1.5px solid var(--border); border-radius: 6px;
-    padding: 3px 5px; font-size: .78rem; font-weight: 600; }
-  .key-chip .qnum { color: var(--muted); font-weight: 400; font-size: .72rem; }
-  .key-chip select {
-    border: none; background: transparent; font-size: .8rem; font-weight: 700;
-    color: #1d4ed8; padding: 0; cursor: pointer; width: 32px;
-    -webkit-appearance: none; text-align: center;
-  }
-  .key-chip.filled { border-color: #3b82f6; background: #eff6ff; }
-  .key-status { font-size: .82rem; color: var(--muted); margin-bottom: 8px; }
-  .key-status strong { color: var(--primary); }
-  .btn-key-save { background: #1d4ed8; color: white; }
-  .btn-key-save:hover { opacity: .88; }
-  .btn-key-clear { background: #f1f5f9; color: #64748b; }
-  /* Mostrar nota de correctas al guardar */
-  .score-note { background: #f0fdf4; border: 1.5px solid #86efac;
-    border-radius: 8px; padding: 10px 14px; margin-top: 10px;
-    font-size: .88rem; color: #166534; display: none; }
-  .score-note.show { display: block; }
-</style>
-</head>
-<body>
-
-<header>
-  <h1>📝 Calificador JMR</h1>
-  <p>125 preguntas · Selección múltiple</p>
-</header>
-
-<main>
-
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
-    <div class="tab" onclick="switchTab('key'); initKeyPanel()">🔑 Clave</div>
-    <div class="tab" onclick="switchTab('results'); loadResults()">📊 Resultados</div>
-    <div class="tab" onclick="switchTab('config')">⚙️ Config</div>
-  </div>
-
-  <!-- ══ TAB ESCANEAR ══════════════════════════════════════════════════════ -->
-  <div id="tab-scan" class="tab-content active">
-
-    <!-- 1. Curso/grupo -->
-    <div class="card">
-      <h2>📋 Curso / Grupo</h2>
-      <div class="sheet-badge">
-        <span class="dot"></span>
-        <span id="active-badge-text">Cargando…</span>
-      </div>
-      <label>Seleccionar hoja existente</label>
-      <div class="sheet-selector">
-        <select id="sheet-select" onchange="selectSheet(this.value)">
-          <option value="">— cargando hojas —</option>
-        </select>
-        <button class="btn-icon" title="Recargar" onclick="loadSheets()">🔄</button>
-        <button class="btn-icon" title="Nueva hoja" onclick="showNewSheetModal()">➕</button>
-      </div>
-    </div>
-
-    <!-- 2. Datos estudiante -->
-    <div class="card">
-      <h2>👤 Datos del estudiante</h2>
-      <label for="student-name">
-        Nombre completo <span style="color:var(--danger)">*</span>
-      </label>
-      <input type="text" id="student-name"
-             placeholder="Requerido antes de guardar"
-             oninput="this.classList.remove('required-empty')">
-      <label for="student-id">ID / Cédula (opcional)</label>
-      <input type="text" id="student-id" placeholder="Ej: 1234567890">
-    </div>
-
-    <!-- 3. Captura -->
-    <div class="card" id="scan-card">
-      <h2 id="scan-title">📷 Hoja de respuestas</h2>
-
-      <!-- Número de preguntas -->
-      <div class="q-selector">
-        <label for="num-questions">Preguntas:</label>
-        <input type="number" id="num-questions" value="125" min="1" max="125"
-               oninput="updateNumQuestions(this.value)">
-        <span class="q-badge" id="q-badge">125 preguntas</span>
-      </div>
-
-      <div class="capture-zone" id="capture-zone"
-           onclick="document.getElementById('file-input').click()">
-        <div class="placeholder" id="placeholder">
-          <div class="icon">📄</div>
-          <p>Toca aquí para tomar foto o seleccionar imagen</p>
-          <small>JPG, PNG o WEBP · Máx. 16MB</small>
-        </div>
-        <img id="preview-img" style="display:none;" alt="Vista previa">
-      </div>
-      <input type="file" id="file-input" accept="image/*" capture="environment">
-
-      <div class="btn-group">
-        <button class="btn-camera" onclick="document.getElementById('file-input').click()">
-          📷 Cámara
-        </button>
-        <button class="btn-primary" id="btn-process" onclick="processPhoto()" disabled>
-          🔍 Analizar
-        </button>
-      </div>
-
-      <div class="status" id="status-box">
-        <div class="spinner" id="spinner"></div>
-        <span id="status-text"></span>
-      </div>
-    </div>
-
-    <!-- 4. Panel de resultado (oculto hasta 1er escaneo) -->
-    <div id="result-panel" style="display:none;">
-
-      <!-- Banner de respuestas faltantes -->
-      <div class="incomplete-banner" id="incomplete-banner" style="display:none;">
-        <strong>⚠️ Respuestas no detectadas</strong>
-        <div>
-          <span class="missing-count" id="missing-count">0</span>
-          preguntas no se leyeron correctamente.
-        </div>
-        <div style="margin-top:8px;font-size:.82rem;">
-          Puedes tomar otra foto para completar las que faltan,
-          o guardar con las respuestas detectadas hasta ahora.
-        </div>
-      </div>
-
-      <!-- Banner "encontró respuestas nuevas" -->
-      <div class="found-banner" id="found-banner" style="display:none;">
-        <strong>✅ ¡Se encontraron respuestas adicionales!</strong>
-        <span id="found-text"></span>
-      </div>
-
-      <!-- Stats -->
-      <div class="card">
-        <h2 id="result-title">✅ Respuestas detectadas</h2>
-
-        <div class="stats-row" id="stats-row"></div>
-
-        <!-- Barra de progreso -->
-        <div class="progress-wrap">
-          <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-          </div>
-          <div class="progress-label" id="progress-label"></div>
-        </div>
-
-        <div style="margin-top:14px;">
-          <div style="display:flex; align-items:center; justify-content:space-between;
-                      margin-bottom:6px;">
-            <span style="font-weight:600;font-size:.9rem;">Respuestas detectadas</span>
-            <span style="font-size:.75rem;color:var(--muted);">
-              <span style="background:#eff6ff;border:1px solid #bfdbfe;
-                           border-radius:4px;padding:1px 5px;">?</span> = no detectada
-            </span>
-          </div>
-          <div class="answers-grid" id="answers-grid"></div>
-        </div>
-
-        <!-- Imagen anotada del escaneo -->
-        <div class="scan-image-wrap" id="scan-image-wrap">
-          <img id="scan-debug-img" src="" alt="Imagen anotada">
-          <div class="scan-image-legend">
-            🟢 A &nbsp;🔵 B &nbsp;🔷 C &nbsp;🟣 D &nbsp;
-            🟠 E &nbsp;🟦 F &nbsp;🟤 G &nbsp;🔹 H &nbsp;
-            ⚪ no detectada &nbsp;·&nbsp;
-            <span style="color:#1d7aff">━</span> zona de respuestas
-          </div>
-        </div>
-
-        <!-- Botones de acción -->
-        <div class="btn-group" style="margin-top:16px;" id="action-btns">
-          <!-- se renderizan dinámicamente -->
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /tab-scan -->
-
-  <!-- ══ TAB CLAVE DE RESPUESTAS ══════════════════════════════════════════════ -->
-  <div id="tab-key" class="tab-content">
-    <div class="card">
-      <h2>🔑 Clave de respuestas</h2>
-      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
-        Define las respuestas correctas para la hoja activa.
-        Se guardan en la fila 2 del Sheets. Al escanear estudiantes,
-        el sistema calculará automáticamente correctas y porcentaje.
-      </p>
-
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-        <label style="font-size:.85rem;font-weight:500;color:var(--muted);">Preguntas:</label>
-        <input type="number" id="key-num-q" value="125" min="1" max="125"
-          style="width:70px;padding:6px 8px;border:1.5px solid var(--border);
-                 border-radius:7px;font-size:.9rem;font-weight:600;text-align:center;"
-          oninput="buildKeyGrid(this.value)">
-        <span class="key-status" id="key-status">0 de 125 definidas</span>
-      </div>
-
-      <div class="key-grid" id="key-grid"></div>
-
-      <div class="btn-group" style="margin-top:14px;">
-        <button class="btn-key-clear" onclick="clearKeyGrid()">🗑️ Limpiar</button>
-        <button class="btn-key-save"  onclick="saveKey()">💾 Guardar clave</button>
-      </div>
-      <div class="score-note" id="key-saved-note">
-        ✅ Clave guardada correctamente en la hoja activa.
-      </div>
-    </div>
-  </div><!-- /tab-key -->
-
-  <!-- ══ TAB RESULTADOS ════════════════════════════════════════════════════ -->
-  <div id="tab-results" class="tab-content">
-    <div class="card">
-      <h2>📊 Exámenes guardados</h2>
-      <div class="results-sheet-bar">
-        <select id="results-sheet-select" onchange="loadResults()">
-          <option value="">— selecciona hoja —</option>
-        </select>
-        <button class="btn-primary" onclick="loadResults()">🔄 Cargar</button>
-      </div>
-      <div id="results-list">
-        <p style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;">
-          Selecciona una hoja y toca Cargar
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══ TAB AYUDA ══════════════════════════════════════════════════════════ -->
-  <div id="tab-config" class="tab-content">
-
-    <!-- ── Tipo de evaluación ── -->
-    <div class="card">
-      <h2>📋 Tipo de evaluación</h2>
-      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
-        Selecciona el formato de hoja de respuestas que vas a escanear.
-        El cambio aplica al próximo escaneo.
-      </p>
-      <div id="profile-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-      <div class="score-note" id="profile-saved-note" style="margin-top:10px;">
-        ✅ Tipo de evaluación actualizado.
-      </div>
-    </div>
-
-    <!-- ── Ayuda: foto ── -->
-    <div class="card">
-      <h2>📌 Cómo tomar la foto</h2>
-      <div style="display:flex;flex-direction:column;gap:12px;font-size:.9rem;">
-        <div style="display:flex;gap:10px;align-items:flex-start;">
-          <span style="font-size:1.5rem;">1️⃣</span>
-          <div><strong>Coloca la hoja sobre superficie plana</strong><br>
-          <span style="color:var(--muted);">Evita arrugas y dobleces. Fondo oscuro mejora la detección</span></div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:flex-start;">
-          <span style="font-size:1.5rem;">2️⃣</span>
-          <div><strong>Ilumina bien y activa el flash</strong><br>
-          <span style="color:var(--muted);">Luz pareja sin sombras. Activa el flash manualmente</span></div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:flex-start;">
-          <span style="font-size:1.5rem;">3️⃣</span>
-          <div><strong>Encuadra toda la hoja</strong><br>
-          <span style="color:var(--muted);">Los 4 marcadores negros de las esquinas deben verse completos</span></div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:flex-start;">
-          <span style="font-size:1.5rem;">4️⃣</span>
-          <div><strong>Mantén la cámara paralela</strong><br>
-          <span style="color:var(--muted);">Directamente arriba. La app corrige ángulos leves</span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Ayuda: flujo ── -->
-    <div class="card">
-      <h2>💾 Flujo de trabajo</h2>
-      <div style="display:flex;flex-direction:column;gap:10px;font-size:.88rem;color:var(--muted);">
-        <div>📷 <strong style="color:var(--text);">Analizar</strong> — procesa la imagen sin guardar nada.</div>
-        <div>📷➕ <strong style="color:var(--text);">Otra foto</strong> — agrega fotos adicionales para completar respuestas no detectadas.</div>
-        <div>🔑 <strong style="color:var(--text);">Clave</strong> — define las respuestas correctas antes de escanear. El sistema calculará el puntaje automáticamente.</div>
-        <div>💾 <strong style="color:var(--text);">Guardar</strong> — escribe el nombre del estudiante y confirma. Solo entonces se guarda en Sheets.</div>
-        <div>🗑️ <strong style="color:var(--text);">Descartar</strong> — cancela el escaneo actual sin guardar nada.</div>
-        <div>🔄 <strong style="color:var(--text);">Nuevo escaneo</strong> — limpia todo para el siguiente estudiante.</div>
-      </div>
-    </div>
-
-    <!-- ── Diagnóstico ── -->
-    <div class="card">
-      <h2>🔬 Diagnóstico OMR</h2>
-      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
-        Envía una imagen para visualizar las detecciones del algoritmo.
-      </p>
-      <input type="file" id="debug-input" accept="image/*" onchange="debugImage(this)">
-      <button class="btn-secondary" onclick="document.getElementById('debug-input').click()">
-        🔍 Imagen de diagnóstico
-      </button>
-      <div id="debug-result" style="margin-top:12px;"></div>
-    </div>
-
-  </div><!-- /tab-config -->
-
-</main>
-
-<!-- Modal nueva hoja -->
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <h3>➕ Nueva hoja</h3>
-    <label>Nombre del curso o grupo</label>
-    <input type="text" id="new-sheet-name"
-           placeholder="Ej: Grado 10A, Matemáticas…"
-           onkeydown="if(event.key==='Enter') createNewSheet()">
-    <div class="modal-btns">
-      <button class="btn-secondary" onclick="hideNewSheetModal()">Cancelar</button>
-      <button class="btn-success"   onclick="createNewSheet()">✅ Crear y seleccionar</button>
-    </div>
-    <div id="modal-error"
-         style="color:var(--danger);font-size:.85rem;margin-top:10px;display:none;"></div>
-  </div>
-</div>
-
-<script>
-// ═══════════════════════════════════════════════════════════════════════════
-// ESTADO GLOBAL
-// ═══════════════════════════════════════════════════════════════════════════
-let state = {
-  answers:        Array(125).fill('?'),
-  confidence:     0,
-  photoCount:     0,
-  activeSheet:    '',
-  sheetsUrl:      '',
-  lastNewFilled:  [],
-  numQuestions:   125,       // preguntas activas en esta sesión
-  profileId:      'JMR125',  // perfil activo
-  profileTotalQ:  125,       // total_q del perfil
-  optionsPerQ:    [],        // opciones válidas por pregunta (del perfil)
-};
-
-// ── Inicialización ─────────────────────────────────────────────────────────
-(async function init() {
-  await loadSheets();
-  await loadProfile();
-})();
-
-// ══ PREVISUALIZACIÓN DE ARCHIVO ════════════════════════════════════════════
-function _onFileSelected(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = document.getElementById('preview-img');
-    img.src = ev.target.result;
-    img.style.display = 'block';
-    document.getElementById('placeholder').style.display = 'none';
-    document.getElementById('capture-zone').classList.add('active');
-    document.getElementById('btn-process').disabled = false;
-    setStatus('', '');
-  };
-  reader.readAsDataURL(file);
+MODE_LABELS = {
+    'TIMING':     '1/6 TIMING: clic en rect negro fila-1 de cada columna (4 clics de izq a der)',
+    'TOP_BOTTOM': '2/6 TOP/BOT: clic en timing mark fila-1 y fila-35 de cualquier columna (2 clics)',
+    'BUBBLES_C0': '3/6 Col1 A-D: clic en centro de A B C D en cualquier fila de col 1 (4 clics)',
+    'BUBBLES_C1': '4/6 Col2 A-D: clic en centro de A B C D en cualquier fila de col 2 (4 clics)',
+    'BUBBLES_C2': '5/6 Col3 A-D: clic en centro de A B C D en cualquier fila de col 3 (4 clics)',
+    'BUBBLES_C3': '6/6 Col4 A-H: clic en A B C D E F G H en cualquier fila de col 4 (8 clics)',
 }
 
-// ══ NÚMERO DE PREGUNTAS ════════════════════════════════════════════════════
-function updateNumQuestions(val) {
-  const maxQ = state.profileTotalQ || 125;
-  let n = parseInt(val, 10);
-  if (isNaN(n) || n < 1) n = 1;
-  if (n > maxQ)          n = maxQ;
-  state.numQuestions = n;
-  document.getElementById('num-questions').value = n;
-  document.getElementById('q-badge').textContent =
-    n === maxQ ? `${maxQ} preguntas` : `${n} de ${maxQ}`;
-  // Si ya hay un escaneo activo, re-renderizar el grid con el nuevo límite
-  if (state.photoCount > 0) rerenderGrid();
+MODE_EXPECTED = {'TIMING':4,'TOP_BOTTOM':2,'BUBBLES_C0':4,'BUBBLES_C1':4,'BUBBLES_C2':4,'BUBBLES_C3':8}
+
+COLORS = {
+    'TIMING':     (0,220,220),
+    'TOP_BOTTOM': (30,165,255),
+    'BUBBLES_C0': (50,220,50),
+    'BUBBLES_C1': (50,50,230),
+    'BUBBLES_C2': (200,50,200),
+    'BUBBLES_C3': (0,200,180),
 }
 
-function rerenderGrid() {
-  const n      = state.numQuestions;
-  const newSet = new Set(state.lastNewFilled.map(q => q - 1));
-  const grid   = document.getElementById('answers-grid');
-  grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
-    const cls   = ans === '?' ? 'unknown' : ans;
-    const extra = newSet.has(i) ? ' new-found' : '';
-    return `<div class="answer-chip ${cls}${extra}">
-      <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
-    </div>`;
-  }).join('');
-  // Recalcular faltantes y actualizar banners/botones
-  const detected = state.answers.slice(0, n).filter(a => a !== '?').length;
-  const missing  = n - detected;
-  document.getElementById('missing-count').textContent = missing;
-  document.getElementById('incomplete-banner').style.display = missing > 0 ? 'block' : 'none';
-  const pct = Math.round(detected / n * 100);
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('progress-label').textContent =
-    `${detected} / ${n} preguntas (${pct}%)`;
-  renderActionButtons(missing);
+HUD_H    = 90
+WIN_NAME = 'Calibrador SIPAGRE-140  |  S=guardar  TAB=modo  Z=deshacer  +/-=zoom  0=encajar  Q=salir'
+
+state = {
+    'mode':              'TIMING',
+    'timing_clicks':     [],
+    'top_bottom_clicks': [],
+    'bubble_clicks':     {0:[], 1:[], 2:[], 3:[]},
+    'history':           [],
+    'img_orig':          None,
+    'zoom':              1.0,
+    'pan_x':             0.0,
+    'pan_y':             0.0,
+    'win_w':             1200,
+    'win_h':             900,
+    'base_scale':        1.0,
 }
 
-// ── Tabs ───────────────────────────────────────────────────────────────────
-function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) =>
-    t.classList.toggle('active', ['scan','key','results','config'][i] === tab));
-  document.querySelectorAll('.tab-content').forEach(tc =>
-    tc.classList.remove('active'));
-  document.getElementById('tab-' + tab).classList.add('active');
-}
 
-// ══ PERFILES DE EXAMEN ════════════════════════════════════════════════════
+def _find_fiducials(binary, w, h):
+    """Misma lógica que omr_processor.py — detecta los 4 cuadrados negros."""
+    cnts, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    cands = []
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area < 150 or area > 20000:
+            continue
+        x, y, bw, bh = cv2.boundingRect(c)
+        if bw < 8 or bh < 8:
+            continue
+        asp      = bw / bh if bh else 0
+        solidity = area / (bw * bh) if bw * bh > 0 else 0
+        if 0.4 < asp < 2.5 and solidity > 0.35:
+            cands.append({'cx': x + bw//2, 'cy': y + bh//2,
+                          'area': area, 'w': bw, 'h': bh})
+    return _assign_corners(cands, w, h)
 
-async function loadProfile() {
-  try {
-    const resp = await fetch('/profile');
-    const data = await resp.json();
-    applyProfile(data);
-    renderProfileList(data);
-  } catch(e) {
-    console.warn('No se pudo cargar perfil:', e);
-  }
-}
 
-function applyProfile(data) {
-  state.profileId     = data.active_id;
-  state.profileTotalQ = data.total_q;
-  state.optionsPerQ   = data.options_per_q || [];
-
-  // Sincronizar numQuestions al total del perfil activo
-  state.numQuestions = data.total_q;
-  const qInput = document.getElementById('num-questions');
-  qInput.max   = data.total_q;
-  qInput.value = data.total_q;
-  document.getElementById('q-badge').textContent = `${data.total_q} preguntas`;
-
-  // Resetear answers al tamaño del perfil
-  state.answers = Array(data.total_q).fill('?');
-
-  // Mostrar nombre del perfil activo en el encabezado del card de escaneo
-  const badge = document.getElementById('active-profile-badge');
-  if (badge) badge.textContent = data.active_name;
-
-  // Actualizar subtítulo del header principal
-  const sub = document.querySelector('header p');
-  if (sub) sub.textContent = data.active_name;
-}
-
-function renderProfileList(data) {
-  const container = document.getElementById('profile-list');
-  if (!container) return;
-  container.innerHTML = (data.profiles || []).map(p => {
-    const isActive = p.id === data.active_id;
-    return `<div class="profile-option${isActive ? ' active-profile' : ''}"
-                 onclick="selectProfile('${p.id}')">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:1.4rem;">${isActive ? '✅' : '⬜'}</span>
-        <div>
-          <div style="font-weight:600;font-size:.92rem;">${p.name}</div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function selectProfile(pid) {
-  if (pid === state.profileId) return;
-  try {
-    const resp = await fetch('/profile', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({profile_id: pid})
-    });
-    const data = await resp.json();
-    if (data.success) {
-      applyProfile(data);
-      renderProfileList(data);
-      // Resetear escaneo activo si lo hay
-      if (state.photoCount > 0) resetScan();
-      document.getElementById('profile-saved-note').classList.add('show');
-      setTimeout(() =>
-        document.getElementById('profile-saved-note').classList.remove('show'), 3000);
-    } else {
-      alert('Error al cambiar perfil: ' + data.error);
+def _assign_corners(cands, w, h):
+    if len(cands) < 4:
+        return None
+    mx, my = w / 2, h / 2
+    def closest(lst, px, py):
+        return min(lst, key=lambda c: (c['cx']-px)**2 + (c['cy']-py)**2)
+    q = {
+        'tl': [c for c in cands if c['cx'] < mx and c['cy'] < my],
+        'tr': [c for c in cands if c['cx'] > mx and c['cy'] < my],
+        'br': [c for c in cands if c['cx'] > mx and c['cy'] > my],
+        'bl': [c for c in cands if c['cx'] < mx and c['cy'] > my],
     }
-  } catch(e) {
-    alert('Error de conexión al cambiar perfil.');
-  }
-}
+    if not all(q.values()):
+        return None
+    tl = closest(q['tl'], 0, 0)
+    tr = closest(q['tr'], w, 0)
+    br = closest(q['br'], w, h)
+    bl = closest(q['bl'], 0, h)
+    pts = [(tl['cx'],tl['cy']), (tr['cx'],tr['cy']),
+           (br['cx'],br['cy']), (bl['cx'],bl['cy'])]
+    width  = max(pts[1][0], pts[2][0]) - min(pts[0][0], pts[3][0])
+    height = max(pts[2][1], pts[3][1]) - min(pts[0][1], pts[1][1])
+    if width < w * 0.3 or height < h * 0.3:
+        return None
+    return pts
 
-// ══ CLAVE DE RESPUESTAS ════════════════════════════════════════════════════
 
-let keyAnswers = new Array(125).fill('');   // clave en memoria
+def correct_perspective(gray):
+    """
+    Detecta fiduciales y corrige perspectiva.
+    No depende del fondo — funciona con cualquier superficie.
+    Devuelve (warped, ok, fiducial_pts_original).
+    fiducial_pts_original: lista de 4 puntos (x,y) en la imagen ORIGINAL
+    para dibujarlos como referencia en el visor.
+    """
+    h, w    = gray.shape
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    kernel  = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
 
-function initKeyPanel() {
-  const maxQ = state.profileTotalQ;
-  document.getElementById('key-num-q').max   = maxQ;
-  document.getElementById('key-num-q').value = maxQ;
-  // Asegurar que el array tiene el tamaño correcto
-  if (keyAnswers.length !== maxQ) {
-    keyAnswers = new Array(maxQ).fill('');
-  }
-  buildKeyGrid(maxQ);
-  // Cargar clave guardada desde la hoja activa
-  if (state.activeSheet) loadSavedKey();
-}
+    # Estrategia 1: umbral adaptativo local
+    adaptive = cv2.adaptiveThreshold(
+        blurred, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        blockSize=51, C=10
+    )
+    adaptive = cv2.morphologyEx(adaptive, cv2.MORPH_CLOSE, kernel)
+    corners  = _find_fiducials(adaptive, w, h)
 
-async function loadSavedKey() {
-  try {
-    const resp = await fetch(`/get_key?sheet=${encodeURIComponent(state.activeSheet)}`);
-    const data = await resp.json();
-    if (data.success && data.answers && data.answers.length > 0) {
-      // Rellenar keyAnswers con los valores guardados
-      const maxQ = state.profileTotalQ;
-      keyAnswers  = new Array(maxQ).fill('');
-      data.answers.forEach((v, i) => {
-        if (i < maxQ) keyAnswers[i] = v || '';
-      });
-      const n = parseInt(document.getElementById('key-num-q').value) || maxQ;
-      buildKeyGrid(n);
+    # Estrategia 2: umbral global multi-nivel
+    if corners is None:
+        for thresh_val in [40, 60, 80, 100, 120]:
+            _, thr  = cv2.threshold(blurred, thresh_val, 255, cv2.THRESH_BINARY_INV)
+            thr     = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel)
+            corners = _find_fiducials(thr, w, h)
+            if corners is not None:
+                break
 
-      // Mostrar indicador de que se cargó
-      const note = document.getElementById('key-saved-note');
-      note.textContent = `✅ Clave cargada desde "${state.activeSheet}" (${data.answers.filter(v=>v).length} respuestas)`;
-      note.classList.add('show');
-      setTimeout(() => note.classList.remove('show'), 3500);
-    }
-  } catch(e) {
-    console.warn('No se pudo cargar la clave:', e);
-  }
-}
+    if corners is not None:
+        src = np.float32(corners)
+        dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+        M   = cv2.getPerspectiveTransform(src, dst)
+        print('✅ Fiduciales detectados — perspectiva corregida')
+        for i, (px, py) in enumerate(corners):
+            labels = ['TL','TR','BR','BL']
+            print(f'   {labels[i]}: ({px}, {py})')
+        return cv2.warpPerspective(gray, M, (WORK_W, WORK_H)), True, corners
 
-function buildKeyGrid(val) {
-  let n = parseInt(val, 10);
-  if (isNaN(n) || n < 1)  n = 1;
-  if (n > state.profileTotalQ) n = state.profileTotalQ;
-  document.getElementById('key-num-q').value = n;
-  document.getElementById('key-num-q').max   = state.profileTotalQ;
+    print('⚠️  Fiduciales no detectados — usando imagen redimensionada')
+    print('   Asegúrate de que los 4 cuadrados negros de las esquinas sean visibles')
+    return cv2.resize(gray, (WORK_W, WORK_H)), False, None
 
-  // Ajustar el array de clave
-  if (keyAnswers.length < n) {
-    keyAnswers = keyAnswers.concat(new Array(n - keyAnswers.length).fill(''));
-  }
 
-  const grid = document.getElementById('key-grid');
-  grid.innerHTML = Array.from({length: n}, (_, i) => {
-    const v       = keyAnswers[i] || '';
-    const filled  = v ? ' filled' : '';
-    // Opciones para esta pregunta según el perfil
-    const opts    = (state.optionsPerQ && state.optionsPerQ[i])
-                    ? state.optionsPerQ[i]
-                    : ['A','B','C','D'];
-    const options = opts.map(o =>
-      `<option value="${o}" ${v===o?'selected':''}>${o}</option>`
-    ).join('');
-    return `<div class="key-chip${filled}" id="kc-${i}">
-      <span class="qnum">${i+1}.</span>
-      <select onchange="setKeyAnswer(${i}, this.value)">
-        <option value="" ${v===''?'selected':''}>—</option>
-        ${options}
-      </select>
-    </div>`;
-  }).join('');
+def _get_scale_and_offsets():
+    img_h, img_w = state['img_orig'].shape[:2]
+    scale    = state['base_scale'] * state['zoom']
+    view_w   = state['win_w']
+    view_h   = state['win_h'] - HUD_H
+    excess_x = max(0, img_w*scale - view_w)
+    excess_y = max(0, img_h*scale - view_h)
+    ox = state['pan_x'] * excess_x
+    oy = state['pan_y'] * excess_y
+    return scale, ox, oy
 
-  updateKeyStatus(n);
-}
 
-function setKeyAnswer(idx, val) {
-  keyAnswers[idx] = val;
-  const chip = document.getElementById(`kc-${idx}`);
-  if (chip) chip.className = 'key-chip' + (val ? ' filled' : '');
-  const n = parseInt(document.getElementById('key-num-q').value) || 125;
-  updateKeyStatus(n);
-}
+def display_to_img(dx, dy):
+    scale, ox, oy = _get_scale_and_offsets()
+    img_h, img_w  = state['img_orig'].shape[:2]
+    nx = max(0.0, min(1.0, (dx + ox) / (img_w * scale)))
+    ny = max(0.0, min(1.0, (dy + oy) / (img_h * scale)))
+    return nx, ny
 
-function updateKeyStatus(n) {
-  const defined = keyAnswers.slice(0, n).filter(v => v !== '').length;
-  const el = document.getElementById('key-status');
-  el.innerHTML = `<strong>${defined}</strong> de ${n} definidas`;
-}
 
-function clearKeyGrid() {
-  const maxQ = state.profileTotalQ;
-  const n    = parseInt(document.getElementById('key-num-q').value) || maxQ;
-  keyAnswers  = new Array(maxQ).fill('');
-  buildKeyGrid(n);
-  document.getElementById('key-saved-note').classList.remove('show');
-}
+def render():
+    img_h, img_w = state['img_orig'].shape[:2]
+    scale, ox, oy = _get_scale_and_offsets()
 
-async function saveKey() {
-  const n    = parseInt(document.getElementById('key-num-q').value) || 125;
-  const data = keyAnswers.slice(0, n);
-  const defined = data.filter(v => v !== '').length;
+    disp_w = max(1, int(img_w * scale))
+    disp_h = max(1, int(img_h * scale))
+    canvas = cv2.resize(state['img_orig'], (disp_w, disp_h), interpolation=cv2.INTER_LINEAR)
 
-  if (defined === 0) {
-    alert('Define al menos una respuesta correcta antes de guardar.');
-    return;
-  }
+    # Factor de escala para radio y fuente de anotaciones
+    ann_r    = max(6,  int(10 * scale))
+    ann_font = max(0.35, 0.45 * scale)
 
-  const sheetName = state.activeSheet;
-  if (!sheetName) {
-    alert('Selecciona una hoja primero (tab Escanear → Curso/Grupo).');
-    return;
-  }
+    def draw_pt(nx, ny, color, label):
+        px = int(nx * img_w * scale)
+        py = int(ny * img_h * scale)
+        cv2.circle(canvas, (px, py), ann_r, color, 2)
+        cv2.circle(canvas, (px, py), 3,     color, -1)
+        cv2.putText(canvas, label, (px+ann_r+2, py+4),
+                    cv2.FONT_HERSHEY_SIMPLEX, ann_font, color, 1, cv2.LINE_AA)
 
-  try {
-    const resp = await fetch('/save_key', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ answers: data, sheet_name: sheetName })
-    });
-    const result = await resp.json();
-    if (result.success) {
-      const note = document.getElementById('key-saved-note');
-      note.textContent = '✅ Clave guardada correctamente en la hoja activa.';
-      note.classList.add('show');
-      setTimeout(() => note.classList.remove('show'), 4000);
-    } else {
-      alert('Error al guardar clave: ' + result.error);
-    }
-  } catch(e) {
-    alert('Error de conexión al guardar la clave.');
-  }
-}
+    for i,(nx,ny) in enumerate(state['timing_clicks']):
+        draw_pt(nx, ny, COLORS['TIMING'], f'TM{i+1}')
+    for i,(nx,ny) in enumerate(state['top_bottom_clicks']):
+        draw_pt(nx, ny, COLORS['TOP_BOTTOM'], 'TOP' if i==0 else 'BOT')
+    for col_id, clicks in state['bubble_clicks'].items():
+        clr  = COLORS[f'BUBBLES_C{col_id}']
+        opts = COLUMNS_DEF[col_id]['options']
+        for oi,(nx,ny) in enumerate(clicks):
+            draw_pt(nx, ny, clr, opts[oi] if oi<len(opts) else '?')
 
-// ══ HOJAS ══════════════════════════════════════════════════════════════════
-async function loadSheets() {
-  try {
-    const resp = await fetch('/active_sheet');
-    const data = await resp.json();
-    state.activeSheet = data.active;
-    updateActiveBadge(data.active);
+    # Recortar viewport
+    view_w = state['win_w']
+    view_h = state['win_h'] - HUD_H
+    x1 = int(ox); y1 = int(oy)
+    x2 = min(x1 + view_w, disp_w)
+    y2 = min(y1 + view_h, disp_h)
+    view = canvas[y1:y2, x1:x2]
 
-    const opts = data.sheets.length
-      ? data.sheets.map(s =>
-          `<option value="${s}" ${s===data.active?'selected':''}>${s}</option>`).join('')
-      : '<option value="">— sin hojas —</option>';
+    # Padding si imagen es menor que ventana
+    ph = view_h - view.shape[0]
+    pw = view_w - view.shape[1]
+    if ph > 0 or pw > 0:
+        view = cv2.copyMakeBorder(view, 0, ph, 0, pw, cv2.BORDER_CONSTANT, value=(15,15,15))
 
-    document.getElementById('sheet-select').innerHTML        = opts;
-    document.getElementById('results-sheet-select').innerHTML = opts;
-  } catch(e) { console.error(e); }
-}
+    # HUD
+    hud = np.zeros((HUD_H, view_w, 3), dtype=np.uint8)
+    hud[:] = (28,28,28)
+    mode    = state['mode']
+    cur     = _mode_count(mode)
+    exp     = MODE_EXPECTED[mode]
+    bar_w   = int((view_w-20) * cur / exp)
 
-function updateActiveBadge(name) {
-  document.getElementById('active-badge-text').textContent =
-    name ? `Guardando en: ${name}` : 'Sin hoja seleccionada';
-}
+    cv2.putText(hud, MODE_LABELS[mode], (10,20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.50, (255,255,255), 1, cv2.LINE_AA)
+    cv2.putText(hud, f'Clics: {cur}/{exp}', (10,42),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.44, COLORS[mode], 1, cv2.LINE_AA)
+    cv2.rectangle(hud, (10,50), (view_w-10,58), (60,60,60), -1)
+    if bar_w > 0:
+        cv2.rectangle(hud, (10,50), (10+bar_w,58), COLORS[mode], -1)
 
-async function selectSheet(name) {
-  if (!name) return;
-  const resp = await fetch('/active_sheet', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({name})
-  });
-  const data = await resp.json();
-  if (data.success) {
-    state.activeSheet = name;
-    updateActiveBadge(name);
-    document.getElementById('results-sheet-select').value = name;
-  }
-}
+    seg = (view_w-20) // len(MODES)
+    for i,m in enumerate(MODES):
+        color = (50,200,50) if _mode_complete(m) else (90,90,90)
+        x0 = 10 + i*seg
+        cv2.rectangle(hud, (x0,62),(x0+seg-3,72), color, -1)
+        lbl = m.replace('BUBBLES_','C').replace('TOP_BOTTOM','TOP')[:5]
+        cv2.putText(hud, lbl, (x0+2,71), cv2.FONT_HERSHEY_SIMPLEX, 0.28,(255,255,255),1)
 
-function showNewSheetModal() {
-  document.getElementById('new-sheet-name').value = '';
-  document.getElementById('modal-error').style.display = 'none';
-  document.getElementById('modal-overlay').classList.add('show');
-  setTimeout(() => document.getElementById('new-sheet-name').focus(), 100);
-}
-function hideNewSheetModal() {
-  document.getElementById('modal-overlay').classList.remove('show');
-}
-async function createNewSheet() {
-  const name  = document.getElementById('new-sheet-name').value.trim();
-  const errEl = document.getElementById('modal-error');
-  if (!name) { errEl.textContent='Escribe un nombre.'; errEl.style.display='block'; return; }
-  const btn = document.querySelector('#modal-overlay .btn-success');
-  btn.disabled = true; btn.textContent = 'Creando…'; errEl.style.display='none';
-  try {
-    const resp = await fetch('/sheets', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name})
-    });
-    const data = await resp.json();
-    if (data.success) {
-      state.activeSheet = data.active;
-      hideNewSheetModal();
-      await loadSheets();
-      updateActiveBadge(state.activeSheet);
-    } else {
-      errEl.textContent = data.error || 'Error al crear la hoja.';
-      errEl.style.display = 'block';
-    }
-  } catch(e) {
-    errEl.textContent = 'Error de conexión.'; errEl.style.display='block';
-  } finally {
-    btn.disabled=false; btn.textContent='✅ Crear y seleccionar';
-  }
-}
-document.getElementById('modal-overlay').addEventListener('click', function(e){
-  if(e.target===this) hideNewSheetModal();
-});
+    cv2.putText(hud, 'TAB=sig  Z=deshacer  R=reiniciar  S=guardar  +/-=zoom  0=encajar  flechas=mover  Q=salir',
+                (10,84), cv2.FONT_HERSHEY_SIMPLEX, 0.34, (150,150,150), 1, cv2.LINE_AA)
 
-// ══ PREVISUALIZACIÓN ═══════════════════════════════════════════════════════
-document.getElementById('file-input').addEventListener('change', _onFileSelected);
+    cv2.imshow(WIN_NAME, np.vstack([hud, view]))
 
-// ══ PROCESAR FOTO (sin guardar) ════════════════════════════════════════════
-async function processPhoto() {
-  const fileInput = document.getElementById('file-input');
-  const imageFile = fileInput.files[0];
 
-  if (!imageFile) {
-    setStatus('error','Selecciona una imagen primero'); return;
-  }
-  if (!state.activeSheet) {
-    setStatus('error','Selecciona o crea una hoja primero'); return;
-  }
+def _mode_count(m):
+    if m == 'TIMING':     return len(state['timing_clicks'])
+    if m == 'TOP_BOTTOM': return len(state['top_bottom_clicks'])
+    return len(state['bubble_clicks'][int(m[-1])])
 
-  const isFirstPhoto = state.photoCount === 0;
-  const label = isFirstPhoto ? 'Analizando hoja de respuestas…'
-                             : 'Buscando respuestas faltantes…';
-  setStatus('loading', label);
-  document.getElementById('btn-process').disabled = true;
+def _mode_complete(m):
+    return _mode_count(m) >= MODE_EXPECTED[m]
 
-  const fd = new FormData();
-  fd.append('image', imageFile);
-  fd.append('profile_id', state.profileId);
-  // Enviar respuestas acumuladas (vacío en primera foto)
-  if (!isFirstPhoto) {
-    fd.append('current_answers', JSON.stringify(state.answers));
-  }
 
-  try {
-    const resp = await fetch('/process', { method:'POST', body:fd });
-    const data = await resp.json();
+def mouse_cb(event, sx, sy, flags, param):
+    if event != cv2.EVENT_LBUTTONDOWN:
+        return
+    dy = sy - HUD_H
+    if dy < 0:
+        return
+    nx, ny = display_to_img(sx, dy)
+    mode   = state['mode']
+    if _mode_count(mode) >= MODE_EXPECTED[mode]:
+        print(f'  Modo {mode} completo. Pulsa TAB para continuar.')
+        return
 
-    if (!data.success) {
-      setStatus('error', '❌ ' + data.error);
-      document.getElementById('btn-process').disabled = false;
-      return;
-    }
+    if mode == 'TIMING':
+        state['timing_clicks'].append((nx,ny))
+        state['history'].append(('TIMING',))
+        print(f'  TM{len(state["timing_clicks"])}: x={nx:.4f}  y={ny:.4f}')
+    elif mode == 'TOP_BOTTOM':
+        state['top_bottom_clicks'].append((nx,ny))
+        state['history'].append(('TOP_BOTTOM',))
+        print(f'  {"TOP" if len(state["top_bottom_clicks"])==1 else "BOTTOM"}: x={nx:.4f}  y={ny:.4f}')
+    else:
+        col_id = int(mode[-1])
+        clicks = state['bubble_clicks'][col_id]
+        clicks.append((nx,ny))
+        state['history'].append(('BUBBLE', col_id))
+        opt = COLUMNS_DEF[col_id]['options'][len(clicks)-1]
+        print(f'  Col{col_id+1} {opt}: x={nx:.4f}  y={ny:.4f}')
 
-    state.answers    = data.answers;
-    state.confidence = data.confidence;
-    state.photoCount++;
-    state.lastNewFilled = isFirstPhoto ? [] : (data.filled_qs || []);
-    // Actualizar total_q si el perfil cambió
-    if (data.total_q) state.profileTotalQ = data.total_q;
+    if _mode_complete(mode):
+        idx = MODES.index(mode)
+        if idx < len(MODES)-1:
+            state['mode'] = MODES[idx+1]
+            print(f'\nPaso {mode} completo -> {state["mode"]}')
+            print(f'  {MODE_LABELS[state["mode"]]}\n')
+        else:
+            print('\nTodos los pasos completos. Pulsa S para guardar.')
 
-    setStatus('','');
-    renderResult(data, isFirstPhoto);
 
-    // Limpiar el input para la próxima foto
-    document.getElementById('file-input').value = '';
-    document.getElementById('preview-img').style.display = 'none';
-    document.getElementById('placeholder').style.display = 'flex';
-    document.getElementById('capture-zone').classList.remove('active');
-    document.getElementById('btn-process').disabled = true;
+def compute_and_save(image_path):
+    tf = {i: round(state['timing_clicks'][i][0], 4)
+          for i in range(len(state['timing_clicks']))}
 
-  } catch(err) {
-    setStatus('error','Error de conexión. ¿El servidor está activo?');
-    document.getElementById('btn-process').disabled = false;
-  }
-}
+    if len(state['top_bottom_clicks']) >= 2:
+        ys    = sorted(c[1] for c in state['top_bottom_clicks'])
+        step  = (ys[1] - ys[0]) / 34
+        top_f = round(max(0.0, ys[0] - step*0.6), 4)
+        bot_f = round(min(1.0, ys[1] + step*0.6), 4)
+    else:
+        top_f, bot_f = 0.28, 0.97
 
-// ══ RENDER DEL PANEL DE RESULTADO ══════════════════════════════════════════
-function renderResult(data, isFirstPhoto) {
-  const n        = state.numQuestions;   // preguntas activas
-  // Recalcular detected/missing sobre las primeras N respuestas
-  const detected  = state.answers.slice(0, n).filter(a => a !== '?').length;
-  const missing   = n - detected;
-  const newFilled = data.new_filled || 0;
+    col_lines = []
+    for col in COLUMNS_DEF:
+        i      = col['id']
+        clicks = state['bubble_clicks'][i]
+        opts   = col['options']
+        tx     = tf.get(i, '???')
+        xs     = [round(c[0],4) for c in sorted(clicks, key=lambda c: c[0])] if clicks else None
+        bx_str = str(xs) if xs else '[SIN CALIBRAR]'
+        col_lines.append(
+            f"        # {col['name']}\n"
+            f"        {{'q_start': {col['q_start']:3d}, 'q_end': {col['q_end']:3d}, "
+            f"'options': {opts},\n"
+            f"         'bubble_fx': {bx_str},\n"
+            f"         'timing_fx': {tx}}},"
+        )
 
-  // ── Banners ──
-  const incompleteBanner = document.getElementById('incomplete-banner');
-  const foundBanner      = document.getElementById('found-banner');
+    block = (
+        '\n# ' + '='*71 + '\n'
+        f'# PARAMETROS SIPAGRE-140  —  {datetime.now().strftime("%Y-%m-%d %H:%M")}\n'
+        f'# Fuente: {os.path.basename(image_path)}\n'
+        '# Pega en SIPAGRE_140 de exam_profiles.py\n'
+        '# ' + '='*71 + '\n\n'
+        "    'columns': [\n"
+        + '\n'.join(col_lines) + '\n'
+        "    ],\n\n"
+        f"    'answers_top_f':    {top_f},\n"
+        f"    'answers_bottom_f': {bot_f},\n\n"
+        '# ' + '='*71 + '\n'
+    )
 
-  if (!isFirstPhoto && newFilled > 0) {
-    document.getElementById('found-text').textContent =
-      ` Se completaron ${newFilled} pregunta${newFilled>1?'s':''} en esta foto.`;
-    foundBanner.style.display = 'block';
-    setTimeout(() => foundBanner.style.display='none', 5000);
-  } else {
-    foundBanner.style.display = 'none';
-  }
+    print(block)
+    out = 'sipagre_params_calibrados.txt'
+    with open(out, 'w', encoding='utf-8') as f:
+        f.write(block)
+    print(f'Guardado: {os.path.abspath(out)}')
+    cv2.imwrite('sipagre_calibracion_anotada.jpg', state['img_orig'])
+    print('Imagen anotada: sipagre_calibracion_anotada.jpg')
 
-  if (missing > 0) {
-    document.getElementById('missing-count').textContent = missing;
-    incompleteBanner.style.display = 'block';
-  } else {
-    incompleteBanner.style.display = 'none';
-  }
 
-  // ── Título dinámico ──
-  const titleEl = document.getElementById('result-title');
-  if (missing === 0) {
-    titleEl.innerHTML = `✅ Todas las respuestas detectadas`;
-  } else {
-    titleEl.innerHTML = `📋 Respuestas — foto ${state.photoCount}`;
-  }
+def main():
+    if len(sys.argv) < 2:
+        print('Uso: python calibrar_sipagre.py <foto.jpg>')
+        sys.exit(1)
+    path = sys.argv[1]
+    if not os.path.exists(path):
+        print(f'Archivo no encontrado: {path}'); sys.exit(1)
+    img_bgr = cv2.imread(path)
+    if img_bgr is None:
+        print(f'No se pudo abrir: {path}'); sys.exit(1)
 
-  // ── Stats ──
-  const conf = data.confidence;
-  document.getElementById('stats-row').innerHTML = `
-    <div class="stat-box">
-      <div class="val" style="color:var(--success)">${detected}</div>
-      <div class="lbl">Detectadas</div>
-    </div>
-    <div class="stat-box">
-      <div class="val" style="color:var(--warning)">${missing}</div>
-      <div class="lbl">Faltantes</div>
-    </div>
-    <div class="stat-box">
-      <div class="val" style="color:var(--primary)">${Math.round(conf)}%</div>
-      <div class="lbl">Confianza</div>
-    </div>`;
+    gray, p_ok, fid_pts = correct_perspective(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY))
+    canvas = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
-  // ── Barra progreso ──
-  const pct    = Math.round(detected / n * 100);
-  const pColor = pct===100 ? 'var(--success)' : pct>=80 ? 'var(--warning)' : 'var(--danger)';
-  document.getElementById('progress-fill').style.background = pColor;
-  setTimeout(() => document.getElementById('progress-fill').style.width = pct+'%', 50);
-  document.getElementById('progress-label').textContent =
-    `${detected} / ${n} preguntas (${pct}%)`;
+    # Dibujar los fiduciales detectados como referencia visual
+    if fid_pts:
+        labels = ['TL','TR','BR','BL']
+        colors = [(0,220,220),(0,220,220),(0,220,220),(0,220,220)]
+        for i, (px, py) in enumerate(fid_pts):
+            # Transformar punto original al espacio warped
+            src_pts = np.float32(fid_pts)
+            dst_pts = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
+            M       = cv2.getPerspectiveTransform(src_pts, dst_pts)
+            pt_w    = cv2.perspectiveTransform(
+                        np.float32([[[px, py]]]), M)[0][0]
+            wx, wy  = int(pt_w[0]), int(pt_w[1])
+            cv2.drawMarker(canvas, (wx, wy), (0,200,200),
+                           cv2.MARKER_CROSS, 30, 2)
+            cv2.putText(canvas, labels[i], (wx+8, wy-8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,200,200), 2)
 
-  // ── Grid de respuestas (solo las N activas) ──
-  const newSet = new Set(state.lastNewFilled.map(q => q - 1));
-  const grid   = document.getElementById('answers-grid');
-  grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
-    const cls   = ans === '?' ? 'unknown' : ans;
-    const extra = (!isFirstPhoto && newSet.has(i)) ? ' new-found' : '';
-    return `<div class="answer-chip ${cls}${extra}">
-      <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
-    </div>`;
-  }).join('');
+    state['img_orig'] = canvas
 
-  // ── Botones de acción ──
-  renderActionButtons(missing);
+    print(f'\nImagen: {WORK_W}x{WORK_H}  |  Fiduciales: {"✅ detectados" if p_ok else "⚠️  NO detectados — calibración manual necesaria"}')
+    print(f'\nPASO 1: {MODE_LABELS["TIMING"]}\n')
 
-  // ── Imagen anotada del escaneo ──
-  const imgWrap = document.getElementById('scan-image-wrap');
-  const imgEl   = document.getElementById('scan-debug-img');
-  if (data.debug_image) {
-    imgEl.src = `data:image/jpeg;base64,${data.debug_image}`;
-    imgWrap.classList.add('show');
-  } else {
-    imgWrap.classList.remove('show');
-  }
+    cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
 
-  // Mostrar panel
-  document.getElementById('result-panel').style.display = 'block';
-  document.getElementById('result-panel').scrollIntoView({behavior:'smooth'});
-}
+    # Usar tamaño de pantalla si está disponible, sino valores conservadores
+    try:
+        import tkinter as tk
+        root = tk.Tk(); root.withdraw()
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        root.destroy()
+        win_w = min(sw - 60, 1400)
+        win_h = min(sh - 80, 900)
+    except Exception:
+        win_w, win_h = 1200, 850
 
-function renderActionButtons(missing) {
-  const btns = document.getElementById('action-btns');
-  if (missing > 0) {
-    // Hay faltantes: otra foto, guardar igual, o descartar
-    btns.innerHTML = `
-      <button class="btn-danger"   onclick="confirmDiscard()" title="Descartar y empezar de cero">
-        🗑️
-      </button>
-      <button class="btn-camera" onclick="takeAnotherPhoto()">
-        📷 Otra foto
-      </button>
-      <button class="btn-success" onclick="confirmSave()">
-        💾 Guardar
-      </button>`;
-  } else {
-    // Todo detectado: guardar, descartar o nuevo escaneo
-    btns.innerHTML = `
-      <button class="btn-danger"   onclick="confirmDiscard()" title="Descartar y empezar de cero">
-        🗑️
-      </button>
-      <button class="btn-success" onclick="confirmSave()">
-        💾 Guardar en Sheets
-      </button>`;
-  }
-}
+    cv2.resizeWindow(WIN_NAME, win_w, win_h)
+    state['win_w'] = win_w
+    state['win_h'] = win_h
 
-function confirmDiscard() {
-  if (confirm('¿Descartar este escaneo? No se guardará nada.')) {
-    resetScan();
-  }
-}
+    img_h, img_w = state['img_orig'].shape[:2]
+    state['base_scale'] = min(win_w / img_w, (win_h - HUD_H) / img_h)
+    state['zoom'] = 1.0
 
-function takeAnotherPhoto() {
-  // Hace scroll al área de captura y la activa
-  document.getElementById('scan-title').textContent =
-    `📷 Foto ${state.photoCount + 1} — completa las faltantes`;
-  document.getElementById('scan-card').scrollIntoView({behavior:'smooth'});
-  setTimeout(() => document.getElementById('file-input').click(), 400);
-}
+    cv2.setMouseCallback(WIN_NAME, mouse_cb)
 
-// ══ GUARDAR EN SHEETS ══════════════════════════════════════════════════════
-async function confirmSave() {
-  const name = document.getElementById('student-name').value.trim();
-  const id   = document.getElementById('student-id').value.trim();
+    while True:
+        render()
 
-  // Validar nombre obligatorio
-  if (!name) {
-    document.getElementById('student-name').classList.add('required-empty');
-    document.getElementById('student-name').focus();
-    document.getElementById('student-name').scrollIntoView({behavior:'smooth', block:'center'});
-    setStatus('error', '⚠️ El nombre del estudiante es obligatorio antes de guardar.');
-    return;
-  }
+        # Detectar redimensionado manual de la ventana
+        try:
+            rect = cv2.getWindowImageRect(WIN_NAME)
+            if rect[2] > 200 and rect[3] > 200:
+                if abs(rect[2] - state['win_w']) > 5 or abs(rect[3] - state['win_h']) > 5:
+                    state['win_w'] = rect[2]
+                    state['win_h'] = rect[3]
+                    state['base_scale'] = min(
+                        state['win_w'] / img_w,
+                        (state['win_h'] - HUD_H) / img_h
+                    )
+        except Exception:
+            pass
 
-  setStatus('loading', `Guardando en "${state.activeSheet}"…`);
+        key = cv2.waitKey(30) & 0xFF
 
-  // Deshabilitar botón para evitar doble guardado
-  document.querySelectorAll('#action-btns button').forEach(b => b.disabled=true);
+        if key in (ord('q'), 27):
+            break
+        elif key == ord('s'):
+            compute_and_save(path)
+        elif key == ord('r'):
+            state.update({'timing_clicks':[],'top_bottom_clicks':[],
+                          'bubble_clicks':{0:[],1:[],2:[],3:[]},'history':[],
+                          'mode':'TIMING','zoom':1.0,'pan_x':0.0,'pan_y':0.0})
+            print('Reiniciado')
+        elif key == ord('z'):
+            if state['history']:
+                last = state['history'].pop()
+                if last[0]=='TIMING':        state['timing_clicks'].pop()
+                elif last[0]=='TOP_BOTTOM':  state['top_bottom_clicks'].pop()
+                else:                        state['bubble_clicks'][last[1]].pop()
+                print('Deshecho')
+        elif key == 9:
+            idx = MODES.index(state['mode'])
+            state['mode'] = MODES[(idx+1) % len(MODES)]
+            print(f'Modo: {state["mode"]}  —  {MODE_LABELS[state["mode"]]}')
+        elif key in (ord('+'), ord('=')):
+            state['zoom'] = min(state['zoom']*1.25, 8.0)
+        elif key == ord('-'):
+            state['zoom'] = max(state['zoom']/1.25, 0.5)
+        elif key == ord('0'):
+            state['zoom']=1.0; state['pan_x']=0.0; state['pan_y']=0.0
+        elif key == 82:  state['pan_y'] = max(0.0, state['pan_y']-0.05)
+        elif key == 84:  state['pan_y'] = min(1.0, state['pan_y']+0.05)
+        elif key == 81:  state['pan_x'] = max(0.0, state['pan_x']-0.05)
+        elif key == 83:  state['pan_x'] = min(1.0, state['pan_x']+0.05)
 
-  try {
-    const resp = await fetch('/save', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        student_name: name,
-        exam_id:      id,
-        answers:      state.answers.slice(0, state.numQuestions),
-        sheet_name:   state.activeSheet
-      })
-    });
-    const data = await resp.json();
+    cv2.destroyAllWindows()
+    print('Finalizado.')
 
-    if (!data.success) {
-      setStatus('error', '❌ ' + data.error);
-      document.querySelectorAll('#action-btns button').forEach(b => b.disabled=false);
-      return;
-    }
 
-    state.sheetsUrl = data.sheets_url || '';
-
-    // Mostrar puntaje si hay clave definida
-    let msg = `✅ ${data.message}`;
-    if (data.correct !== null && data.correct !== undefined) {
-      const n = state.numQuestions;
-      msg += `  |  🎯 ${data.correct}/${n} correctas (${data.pct})`;
-    }
-    setStatus('success', msg);
-
-    // Reemplazar botones tras guardar exitosamente
-    document.getElementById('action-btns').innerHTML = `
-      <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo escaneo</button>
-      <button class="btn-primary"   onclick="openSheets()">📊 Ver en Sheets</button>`;
-
-  } catch(err) {
-    setStatus('error','Error de conexión al guardar.');
-    document.querySelectorAll('#action-btns button').forEach(b => b.disabled=false);
-  }
-}
-
-function openSheets() {
-  if (state.sheetsUrl) window.open(state.sheetsUrl, '_blank');
-  else alert('URL no disponible. Configura SPREADSHEET_ID en el servidor.');
-}
-
-// ══ RESET ══════════════════════════════════════════════════════════════════
-function resetScan() {
-  state.answers       = Array(state.profileTotalQ).fill('?');
-  state.confidence    = 0;
-  state.photoCount    = 0;
-  state.lastNewFilled = [];
-  state.sheetsUrl     = '';
-
-  document.getElementById('file-input').value = '';
-  document.getElementById('preview-img').style.display = 'none';
-  document.getElementById('placeholder').style.display = 'flex';
-  document.getElementById('capture-zone').classList.remove('active');
-  document.getElementById('btn-process').disabled = true;
-  document.getElementById('student-name').value = '';
-  document.getElementById('student-id').value   = '';
-  document.getElementById('result-panel').style.display  = 'none';
-  document.getElementById('incomplete-banner').style.display = 'none';
-  document.getElementById('found-banner').style.display      = 'none';
-  document.getElementById('scan-image-wrap').classList.remove('show');
-  document.getElementById('scan-debug-img').src = '';
-  document.getElementById('scan-title').textContent = '📷 Hoja de respuestas';
-  // Restaurar número de preguntas al total del perfil activo
-  const totalQ = state.profileTotalQ || 125;
-  state.numQuestions = totalQ;
-  document.getElementById('num-questions').max   = totalQ;
-  document.getElementById('num-questions').value = totalQ;
-  document.getElementById('q-badge').textContent = `${totalQ} preguntas`;
-  setStatus('','');
-  window.scrollTo({top:0, behavior:'smooth'});
-}
-
-// ══ UTILIDADES ═════════════════════════════════════════════════════════════
-function setStatus(type, msg) {
-  const box = document.getElementById('status-box');
-  box.className = 'status';
-  if (!type) return;
-  box.classList.add('show', type);
-  document.getElementById('spinner').style.display = type==='loading' ? 'block' : 'none';
-  document.getElementById('status-text').textContent = msg;
-}
-
-// ══ RESULTADOS ═════════════════════════════════════════════════════════════
-async function loadResults() {
-  const sel  = document.getElementById('results-sheet-select');
-  const name = sel.value || state.activeSheet;
-  if (!name) return;
-  const list = document.getElementById('results-list');
-  list.innerHTML = '<p style="text-align:center;padding:20px;">Cargando…</p>';
-  try {
-    const resp = await fetch(`/results?sheet=${encodeURIComponent(name)}`);
-    const data = await resp.json();
-    if (!data.success || !data.data.length) {
-      list.innerHTML=`<p style="color:var(--muted);text-align:center;padding:20px;">
-        Sin datos en "${name}"</p>`; return;
-    }
-    list.innerHTML = data.data.slice().reverse().slice(0,50).map(row=>`
-      <div class="history-item">
-        <div class="name">${row.Nombre||'—'}</div>
-        <div class="meta">
-          ID: ${row.ID_Estudiante||'—'} &nbsp;·&nbsp;
-          ${row.Fecha||''} ${row.Hora||''} &nbsp;·&nbsp;
-          <strong>${row.Total_Respondidas??'?'}</strong>/125 respondidas
-        </div>
-      </div>`).join('');
-  } catch(e) {
-    list.innerHTML=`<p style="color:var(--danger);padding:16px;">
-      Error cargando datos.</p>`;
-  }
-}
-
-// ══ DEBUG ══════════════════════════════════════════════════════════════════
-async function debugImage(input) {
-  const file = input.files[0]; if(!file) return;
-  const result = document.getElementById('debug-result');
-  result.innerHTML = '<p style="color:var(--muted)">Procesando…</p>';
-  const fd = new FormData();
-  fd.append('image', file);
-  fd.append('profile_id', state.profileId);   // usar perfil activo
-  try {
-    const resp = await fetch('/debug_image',{method:'POST',body:fd});
-    const data = await resp.json();
-    if (data.debug_image) {
-      const n = data.answers ? data.answers.length : 0;
-      const detected = data.answers ? data.answers.filter(a => a !== '?').length : 0;
-      result.innerHTML=`
-        <p style="font-size:.82rem;color:var(--muted);margin-bottom:6px;">
-          Perfil: <strong>${state.profileId}</strong> ·
-          Detectadas: <strong>${detected}/${n}</strong>
-        </p>
-        <img src="data:image/jpeg;base64,${data.debug_image}"
-          style="width:100%;border-radius:8px;">
-        <p style="color:var(--muted);font-size:.78rem;margin-top:6px;">
-          Verde=A · Azul=B · Cian=C · Morado=D · Naranja=E · Verde agua=F · Magenta=G · Azul claro=H · Gris=no detectada</p>`;
-    } else {
-      result.innerHTML=`<p style="color:var(--danger)">Sin imagen de diagnóstico. Respuestas: ${JSON.stringify(data.answers?.slice(0,10))}…</p>`;
-    }
-  } catch(e) {
-    result.innerHTML='<p style="color:var(--danger)">Error de conexión</p>';
-  }
-}
-</script>
-</body>
-</html>
+if __name__ == '__main__':
+    main()
