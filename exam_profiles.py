@@ -83,8 +83,8 @@ JMR_125 = {
 # ---------------------------------------------------------------------------
 SIPAGRE_1S = {
     'id':    '1SSIPAGRE',
-    'name':  '1S SIPAGRE — 140 preguntas',
-    'total_q': 140,
+    'name':  '1S SIPAGRE — 120 preguntas',
+    'total_q': 120,
     'work_w':  1275,
     'work_h':  1650,
 
@@ -103,17 +103,18 @@ SIPAGRE_1S = {
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
          'bubble_fx': [0.551, 0.575, 0.600, 0.625],
          'timing_fx': 0.504},
-        # Col 4: P106-P140 — A B C D E F G H
-        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.792, 0.817, 0.842, 0.867, 0.892, 0.916, 0.941, 0.966],
+        # Col 4: P106-P120 — A B C D E F G H
+        {'q_start': 106, 'q_end': 120, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.791, 0.816, 0.841, 0.866, 0.891, 0.915, 0.940, 0.964],
          'timing_fx': 0.746},
     ],
 
     'answers_top_f':    0.176,
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
-    'fill_threshold':   0.01,
-    'min_contrast':     0.04,
+    'snap_range':        3,
+    'fill_threshold':   0.02,
+    'min_contrast':     0.01,
     'binarize_block':   25,
     'binarize_c':        4,
     'clahe_clip':        3.5,

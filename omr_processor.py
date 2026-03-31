@@ -39,7 +39,7 @@ def process_exam_image(image_path: str,
                                profile['binarize_block'],
                                profile['binarize_c'])
     y_rows, n_rows = _detect_rows(binary, profile)
-    answers, confs = _read_answers(binary, y_rows, profile)
+    answers, confs = _read_answers(binary, warped, y_rows, profile)
 
     if debug:
         _save_debug(warped, binary, answers, y_rows, profile, image_path)
@@ -275,16 +275,64 @@ def _detect_rows(binary, profile):
 
 
 # ===========================================================================
-# LECTURA DE BURBUJAS
+# LECTURA DE BURBUJAS — v11 (medición dual: binaria + escala de grises)
 # ===========================================================================
 
-def _read_answers(binary, y_rows, profile):
-    h, w      = binary.shape
-    answers   = []
-    confs     = []
-    radius    = profile['bubble_radius']
-    threshold = profile['fill_threshold']
-    contrast  = profile['min_contrast']
+def _make_circle_mask(radius):
+    """Máscara circular: mide fill solo dentro del círculo, ignora esquinas."""
+    size = radius * 2
+    mask = np.zeros((size, size), dtype=np.uint8)
+    cv2.circle(mask, (radius, radius), radius, 255, -1)
+    return mask
+
+
+def _measure_fill(binary, cx, cy, radius, circle_mask):
+    """Mide el fill de una burbuja usando máscara circular (imagen binaria)."""
+    h, w = binary.shape
+    y1, y2 = max(0, cy - radius), min(h, cy + radius)
+    x1, x2 = max(0, cx - radius), min(w, cx + radius)
+    roi  = binary[y1:y2, x1:x2]
+    my1 = y1 - (cy - radius)
+    mx1 = x1 - (cx - radius)
+    mask = circle_mask[my1:my1 + roi.shape[0], mx1:mx1 + roi.shape[1]]
+    if mask.size == 0 or roi.size == 0:
+        return 0.0
+    pixels = roi[mask > 0]
+    return float(np.sum(pixels > 127)) / pixels.size if pixels.size else 0.0
+
+
+def _measure_darkness(gray, cx, cy, radius, circle_mask):
+    """
+    Mide la oscuridad de una burbuja en escala de grises (0-1).
+    Más oscuro = más marcado. Invertimos para que mayor = más marcado,
+    igual que fill en binaria.
+    """
+    h, w = gray.shape
+    y1, y2 = max(0, cy - radius), min(h, cy + radius)
+    x1, x2 = max(0, cx - radius), min(w, cx + radius)
+    roi  = gray[y1:y2, x1:x2]
+    my1 = y1 - (cy - radius)
+    mx1 = x1 - (cx - radius)
+    mask = circle_mask[my1:my1 + roi.shape[0], mx1:mx1 + roi.shape[1]]
+    if mask.size == 0 or roi.size == 0:
+        return 0.0
+    pixels = roi[mask > 0]
+    if pixels.size == 0:
+        return 0.0
+    # Invertir: 255 (blanco/vacío) → 0, 0 (negro/marcado) → 1
+    return 1.0 - float(np.mean(pixels)) / 255.0
+
+
+def _read_answers(binary, gray, y_rows, profile):
+    h, w         = binary.shape
+    answers      = []
+    confs        = []
+    radius       = profile['bubble_radius']
+    threshold    = profile['fill_threshold']
+    min_contrast = profile['min_contrast']
+    snap         = profile.get('snap_range', 3)
+    edge_margin  = radius + 4
+    circle_mask  = _make_circle_mask(radius)
 
     for col in profile['columns']:
         xs      = [int(fx * w) for fx in col['bubble_fx']]
@@ -293,34 +341,99 @@ def _read_answers(binary, y_rows, profile):
 
         for row_idx in range(n_rows):
             y = y_rows[row_idx] if row_idx < len(y_rows) else 0
-            fills = []
+            fills     = []
+            darks     = []
             for x in xs:
-                y1  = max(0, y - radius)
-                y2  = min(h, y + radius)
-                x1  = max(0, x - radius)
-                x2  = min(w, x + radius)
-                roi = binary[y1:y2, x1:x2]
-                fills.append(
-                    float(np.sum(roi > 127)) / roi.size if roi.size else 0.0
-                )
-            ans, conf = _pick_answer(fills, options, threshold, contrast)
+                best_fill = 0.0
+                best_dark = 0.0
+                found_any = False
+                for dy in range(-snap, snap + 1, 2):
+                    for dx in range(-snap, snap + 1, 2):
+                        cy_, cx_ = y + dy, x + dx
+                        if (cx_ - radius < edge_margin or
+                            cx_ + radius > w - edge_margin or
+                            cy_ - radius < edge_margin or
+                            cy_ + radius > h - edge_margin):
+                            continue
+                        found_any = True
+                        f = _measure_fill(binary, cx_, cy_, radius, circle_mask)
+                        d = _measure_darkness(gray, cx_, cy_, radius, circle_mask)
+                        if f > best_fill:
+                            best_fill = f
+                        if d > best_dark:
+                            best_dark = d
+                if not found_any:
+                    best_fill = _measure_fill(binary, x, y, radius, circle_mask)
+                    best_dark = _measure_darkness(gray, x, y, radius, circle_mask)
+                fills.append(best_fill)
+                darks.append(best_dark)
+            ans, conf = _pick_answer(fills, darks, options, threshold, min_contrast)
             answers.append(ans)
             confs.append(conf)
 
     return answers, confs
 
 
-def _pick_answer(fills, options, threshold, min_contrast):
-    mx = max(fills)
-    mi = fills.index(mx)
-    if mx < threshold:
-        return '?', 0.0
+def _z_score(values, idx):
+    """Z-score del valor en idx respecto al resto."""
+    mx     = values[idx]
+    others = [v for j, v in enumerate(values) if j != idx]
+    if not others:
+        return 0.0
+    mean_o = sum(others) / len(others)
+    std_o  = (sum((v - mean_o)**2 for v in others) / len(others))**0.5
+    if std_o > 1e-6:
+        return (mx - mean_o) / std_o
+    return 50.0 if mx > mean_o + 0.003 else 0.0
+
+
+def _pick_answer(fills, darks, options, threshold, min_contrast):
+    """
+    Decide la respuesta con 4 criterios en orden óptimo.
+    Usa medición DUAL: binaria (fills) + escala de grises (darks).
+
+    Orden de prioridad:
+      1. Z-SCORE BINARIO — el más robusto para marcas normales/fuertes.
+      2. ABSOLUTO + CONTRASTE — clásico, rápido con buenas marcas.
+      3. Z-SCORE GRISES — detecta marcas SUAVES que la binarización
+         no captura. Mide oscuridad relativa en la imagen original.
+      4. DOMINANTE — rescate: una burbuja concentra la mayoría del fill.
+
+    Si ninguno se cumple → '?' (sin respuesta detectada).
+    """
+    mx_f     = max(fills)
+    mi_f     = fills.index(mx_f)
     sf       = sorted(fills, reverse=True)
     contrast = sf[0] - sf[1]
-    if contrast < min_contrast:
-        return '?', 5.0
-    conf = min(100.0, (contrast / (sf[0] + 1e-6)) * 130)
-    return options[mi], round(conf, 1)
+
+    # ── Criterio 1: Z-score binario ──────────────────────────────────────────
+    z_bin = _z_score(fills, mi_f)
+    if z_bin >= 2.0 and mx_f > 0.003:
+        conf = min(100.0, z_bin * 25)
+        return options[mi_f], round(conf, 1)
+
+    # ── Criterio 2: Absoluto + contraste ─────────────────────────────────────
+    if mx_f >= threshold and contrast >= min_contrast:
+        conf = min(100.0, (contrast / (mx_f + 1e-6)) * 130)
+        return options[mi_f], round(conf, 1)
+
+    # ── Criterio 3: Z-score en escala de grises (marcas suaves) ──────────────
+    mx_d = max(darks)
+    mi_d = darks.index(mx_d)
+    z_gray = _z_score(darks, mi_d)
+    if z_gray >= 2.5 and mx_d > 0.25:
+        conf = min(90.0, z_gray * 20)
+        return options[mi_d], round(conf, 1)
+
+    # ── Criterio 4: Candidato dominante ──────────────────────────────────────
+    total_fill = sum(fills)
+    if (total_fill > 0.005
+            and mx_f / (total_fill + 1e-6) > 0.55
+            and sf[0] >= sf[1] * 1.8):
+        conf = min(100.0, (mx_f / (total_fill + 1e-6)) * 80)
+        return options[mi_f], round(conf, 1)
+
+    return '?', 0.0
 
 
 # ===========================================================================
