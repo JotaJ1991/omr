@@ -176,7 +176,43 @@
   .answer-chip.B { border-color: #10b981; color: #065f46; background: #f0fdf4; }
   .answer-chip.C { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
   .answer-chip.D { border-color: #ef4444; color: #991b1b; background: #fef2f2; }
+  .answer-chip.E { border-color: #8b5cf6; color: #5b21b6; background: #f5f3ff; }
+  .answer-chip.F { border-color: #ec4899; color: #9d174d; background: #fdf2f8; }
+  .answer-chip.G { border-color: #14b8a6; color: #115e59; background: #f0fdfa; }
+  .answer-chip.H { border-color: #f97316; color: #9a3412; background: #fff7ed; }
   .answer-chip.unknown { border-color: #cbd5e1; color: #94a3b8; background: #f1f5f9; }
+  .answer-chip { cursor: pointer; position: relative; transition: transform .1s, box-shadow .1s; }
+  .answer-chip:hover { transform: scale(1.08); box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  .answer-chip.edited { outline: 2px solid #a855f7; outline-offset: 1px; }
+
+  /* ── Popup selector de respuesta ── */
+  .ans-popup {
+    position: fixed; z-index: 1000;
+    background: #fff; border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    display: flex; gap: 4px; flex-wrap: wrap; max-width: 240px;
+  }
+  .ans-popup-btn {
+    border: 1.5px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: .82rem; font-weight: 700;
+    cursor: pointer; background: #f8fafc; min-width: 32px; text-align: center;
+    transition: transform .1s;
+  }
+  .ans-popup-btn:hover { transform: scale(1.12); }
+  .ans-popup-btn.A { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; }
+  .ans-popup-btn.B { border-color: #10b981; color: #065f46; background: #f0fdf4; }
+  .ans-popup-btn.C { border-color: #f59e0b; color: #92400e; background: #fffbeb; }
+  .ans-popup-btn.D { border-color: #ef4444; color: #991b1b; background: #fef2f2; }
+  .ans-popup-btn.E { border-color: #8b5cf6; color: #5b21b6; background: #f5f3ff; }
+  .ans-popup-btn.F { border-color: #ec4899; color: #9d174d; background: #fdf2f8; }
+  .ans-popup-btn.G { border-color: #14b8a6; color: #115e59; background: #f0fdfa; }
+  .ans-popup-btn.H { border-color: #f97316; color: #9a3412; background: #fff7ed; }
+  .ans-popup-btn.clear { border-color: #cbd5e1; color: #94a3b8; font-weight: 400; font-size: .72rem; }
+  .ans-popup-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 999; background: transparent;
+  }
+
   /* Morado: respuestas recién encontradas en la foto más reciente */
   .answer-chip.new-found { border-color: #a855f7; background: #faf5ff;
     color: #6b21a8; animation: pop .35s ease; }
@@ -561,6 +597,7 @@ let state = {
   profileId:      'JMR125',  // perfil activo
   profileTotalQ:  125,       // total_q del perfil
   optionsPerQ:    [],        // opciones válidas por pregunta (del perfil)
+  edited:         {},        // {index: true} preguntas editadas manualmente
 };
 
 // ── Inicialización ─────────────────────────────────────────────────────────
@@ -586,6 +623,75 @@ function _onFileSelected(e) {
   reader.readAsDataURL(file);
 }
 
+// ══ EDICIÓN MANUAL DE RESPUESTAS ═══════════════════════════════════════════
+
+function openAnswerPopup(event, qIndex) {
+  event.stopPropagation();
+  closeAnswerPopup();
+
+  // Obtener opciones válidas para esta pregunta
+  const opts = (state.optionsPerQ && state.optionsPerQ[qIndex])
+               ? state.optionsPerQ[qIndex]
+               : ['A','B','C','D'];
+
+  // Overlay para cerrar al hacer click fuera
+  const overlay = document.createElement('div');
+  overlay.className = 'ans-popup-overlay';
+  overlay.onclick = closeAnswerPopup;
+  document.body.appendChild(overlay);
+
+  // Popup
+  const popup = document.createElement('div');
+  popup.className = 'ans-popup';
+  popup.id = 'ans-popup';
+
+  // Botones de opciones
+  opts.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = `ans-popup-btn ${opt}`;
+    btn.textContent = opt;
+    btn.onclick = () => setManualAnswer(qIndex, opt);
+    popup.appendChild(btn);
+  });
+
+  // Botón borrar (poner '?')
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'ans-popup-btn clear';
+  clearBtn.textContent = 'Borrar';
+  clearBtn.onclick = () => setManualAnswer(qIndex, '?');
+  popup.appendChild(clearBtn);
+
+  document.body.appendChild(popup);
+
+  // Posicionar cerca del chip clickeado
+  const rect = event.currentTarget.getBoundingClientRect();
+  let top  = rect.bottom + 4;
+  let left = rect.left;
+  // Ajustar si se sale de pantalla
+  if (top + 50 > window.innerHeight) top = rect.top - 50;
+  if (left + 240 > window.innerWidth) left = window.innerWidth - 250;
+  popup.style.top  = top + 'px';
+  popup.style.left = left + 'px';
+}
+
+function closeAnswerPopup() {
+  const popup   = document.getElementById('ans-popup');
+  const overlay = document.querySelector('.ans-popup-overlay');
+  if (popup)   popup.remove();
+  if (overlay) overlay.remove();
+}
+
+function setManualAnswer(qIndex, value) {
+  state.answers[qIndex] = value;
+  if (value === '?') {
+    delete state.edited[qIndex];
+  } else {
+    state.edited[qIndex] = true;
+  }
+  closeAnswerPopup();
+  rerenderGrid();
+}
+
 // ══ NÚMERO DE PREGUNTAS ════════════════════════════════════════════════════
 function updateNumQuestions(val) {
   const maxQ = state.profileTotalQ || 125;
@@ -605,9 +711,10 @@ function rerenderGrid() {
   const newSet = new Set(state.lastNewFilled.map(q => q - 1));
   const grid   = document.getElementById('answers-grid');
   grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
-    const cls   = ans === '?' ? 'unknown' : ans;
-    const extra = newSet.has(i) ? ' new-found' : '';
-    return `<div class="answer-chip ${cls}${extra}">
+    const cls    = ans === '?' ? 'unknown' : ans;
+    const extra  = newSet.has(i) ? ' new-found' : '';
+    const edited = (state.edited && state.edited[i]) ? ' edited' : '';
+    return `<div class="answer-chip ${cls}${extra}${edited}" onclick="openAnswerPopup(event, ${i})">
       <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
     </div>`;
   }).join('');
@@ -1049,9 +1156,10 @@ function renderResult(data, isFirstPhoto) {
   const newSet = new Set(state.lastNewFilled.map(q => q - 1));
   const grid   = document.getElementById('answers-grid');
   grid.innerHTML = state.answers.slice(0, n).map((ans, i) => {
-    const cls   = ans === '?' ? 'unknown' : ans;
-    const extra = (!isFirstPhoto && newSet.has(i)) ? ' new-found' : '';
-    return `<div class="answer-chip ${cls}${extra}">
+    const cls    = ans === '?' ? 'unknown' : ans;
+    const extra  = (!isFirstPhoto && newSet.has(i)) ? ' new-found' : '';
+    const edited = (state.edited && state.edited[i]) ? ' edited' : '';
+    return `<div class="answer-chip ${cls}${extra}${edited}" onclick="openAnswerPopup(event, ${i})">
       <span class="qnum">${i + 1}.</span> ${ans === '?' ? '—' : ans}
     </div>`;
   }).join('');
