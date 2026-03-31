@@ -112,11 +112,11 @@ SIPAGRE_1S = {
     'answers_top_f':    0.183,
     'answers_bottom_f': 0.967,
     'bubble_radius':     9,
-    'fill_threshold':   0.12,
-    'min_contrast':     0.10,
+    'fill_threshold':   0.01,
+    'min_contrast':     0.04,
     'binarize_block':   25,
-    'binarize_c':        8,
-    'clahe_clip':        2.5,
+    'binarize_c':        4,
+    'clahe_clip':        3.5,
     'clahe_grid':       (8, 8),
 }
 
