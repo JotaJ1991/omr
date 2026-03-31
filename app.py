@@ -11,7 +11,7 @@ from omr_processor import process_exam_image
 from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
-    list_sheets, create_sheet
+    list_sheets, create_sheet, generate_sipagre_results
 )
 
 app = Flask(__name__)
@@ -283,6 +283,21 @@ def results():
         return jsonify({'success': True, 'data': data, 'sheet': sheet_name})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/sipagre_results', methods=['POST'])
+def sipagre_results():
+    """Genera la hoja de Resultados SIPAGRE combinando 1S y 2S."""
+    data = request.get_json(silent=True) or {}
+    sheet_1s       = data.get('sheet_1s', '1S SIPAGRE')
+    sheet_2s       = data.get('sheet_2s', '2S SIPAGRE')
+    results_sheet  = data.get('results_sheet', 'Resultados SIPAGRE')
+    try:
+        result = generate_sipagre_results(sheet_1s, sheet_2s, results_sheet)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
 @app.route('/debug_image', methods=['POST'])

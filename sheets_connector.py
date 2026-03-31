@@ -391,3 +391,209 @@ def get_sheet_data(sheet_name: str) -> list:
         return spreadsheet.worksheet(sheet_name).get_all_records()
     except Exception:
         return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESULTADOS SIPAGRE — combina 1S y 2S por ID de estudiante
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Definición de materias: (nombre, [(sesion, p_inicio_0based, p_fin_0based)], puntos)
+SIPAGRE_SUBJECTS = [
+    ('Matematica',       [('1S', 0, 24),  ('2S', 25, 49)],  2.0),
+    ('Lectura Critica',  [('1S', 25, 65)],                   2.4),
+    ('Sociales',         [('1S', 66, 90), ('2S', 0, 24)],    2.0),
+    ('Naturales',        [('1S', 91, 119),('2S', 50, 78)],   1.7),
+    ('Ingles',           [('2S', 79, 133)],                   1.8),
+]
+
+
+def _count_correct_range(answers, key, start, end):
+    """Cuenta respuestas correctas en rango [start, end] (0-based, inclusivo)."""
+    count = 0
+    for i in range(start, min(end + 1, len(answers), len(key))):
+        a = answers[i].strip() if i < len(answers) else ''
+        k = key[i].strip() if i < len(key) else ''
+        if k not in ('', '?', '\u2014') and a == k:
+            count += 1
+    return count
+
+
+def _extract_students(worksheet):
+    """
+    Extrae dict {id_estudiante: {'name': str, 'answers': list}} de una hoja.
+    Salta fila 1 (encabezado), fila 2 (clave) y fila TOTALES.
+    """
+    all_rows = worksheet.get_all_values()
+    students = {}
+    for row in all_rows[2:]:
+        if not row or len(row) < 5:
+            continue
+        name = row[2].strip() if len(row) > 2 else ''
+        sid  = row[3].strip() if len(row) > 3 else ''
+        if not sid or name in (KEY_ROW_NAME, '--- TOTALES ---'):
+            continue
+        answers = row[COL_OFFSET:]
+        # Limpiar: quitar columnas de resumen al final si las tiene
+        # (buscar donde empiezan las no-letra)
+        clean = []
+        for a in answers:
+            a = a.strip()
+            if a in ('', '?', '\u2014', '-'):
+                clean.append('')
+            elif len(a) == 1 and a.upper() in 'ABCDEFGH':
+                clean.append(a.upper())
+            else:
+                break  # llegamos a Respondidas/Correctas/Porcentaje
+        students[sid] = {'name': name, 'answers': clean}
+    return students
+
+
+def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
+                             results_sheet: str = 'Resultados SIPAGRE') -> dict:
+    """
+    Combina las sesiones 1S y 2S SIPAGRE por ID de estudiante.
+    Calcula puntajes por materia y puntaje general.
+    Escribe los resultados en una hoja nueva/existente.
+    """
+    spreadsheet = _open_spreadsheet()
+
+    # Leer hojas fuente
+    try:
+        ws_1s = spreadsheet.worksheet(sheet_1s)
+    except Exception:
+        return {'success': False, 'error': f'Hoja "{sheet_1s}" no encontrada.'}
+    try:
+        ws_2s = spreadsheet.worksheet(sheet_2s)
+    except Exception:
+        return {'success': False, 'error': f'Hoja "{sheet_2s}" no encontrada.'}
+
+    # Leer claves
+    key_1s = _get_answer_key(ws_1s)
+    key_2s = _get_answer_key(ws_2s)
+    if not key_1s:
+        return {'success': False,
+                'error': f'La hoja "{sheet_1s}" no tiene clave de respuestas.'}
+    if not key_2s:
+        return {'success': False,
+                'error': f'La hoja "{sheet_2s}" no tiene clave de respuestas.'}
+
+    # Extraer estudiantes
+    students_1s = _extract_students(ws_1s)
+    students_2s = _extract_students(ws_2s)
+
+    # Unir por ID — incluir estudiantes que estén en al menos una sesión
+    all_ids = set(students_1s.keys()) | set(students_2s.keys())
+    if not all_ids:
+        return {'success': False, 'error': 'No se encontraron estudiantes.'}
+
+    # Calcular resultados
+    results = []
+    for sid in sorted(all_ids):
+        s1 = students_1s.get(sid)
+        s2 = students_2s.get(sid)
+        name = (s1 or s2)['name']
+        ans_1s = s1['answers'] if s1 else []
+        ans_2s = s2['answers'] if s2 else []
+
+        scores = {}
+        for subj_name, ranges, points in SIPAGRE_SUBJECTS:
+            correct = 0
+            total_q = 0
+            for session, start, end in ranges:
+                if session == '1S':
+                    correct += _count_correct_range(ans_1s, key_1s, start, end)
+                else:
+                    correct += _count_correct_range(ans_2s, key_2s, start, end)
+                total_q += (end - start + 1)
+            scores[subj_name] = {
+                'correct': correct,
+                'total':   total_q,
+                'points':  round(correct * points, 2),
+            }
+
+        mat  = scores['Matematica']['points']
+        lect = scores['Lectura Critica']['points']
+        soc  = scores['Sociales']['points']
+        nat  = scores['Naturales']['points']
+        ing  = scores['Ingles']['points']
+        general = round(5 * ((mat*3 + lect*3 + soc*3 + nat*3) / 13), 2)
+
+        results.append({
+            'id':       sid,
+            'name':     name,
+            'mat':      mat,
+            'mat_c':    scores['Matematica']['correct'],
+            'mat_t':    scores['Matematica']['total'],
+            'lect':     lect,
+            'lect_c':   scores['Lectura Critica']['correct'],
+            'lect_t':   scores['Lectura Critica']['total'],
+            'soc':      soc,
+            'soc_c':    scores['Sociales']['correct'],
+            'soc_t':    scores['Sociales']['total'],
+            'nat':      nat,
+            'nat_c':    scores['Naturales']['correct'],
+            'nat_t':    scores['Naturales']['total'],
+            'ing':      ing,
+            'ing_c':    scores['Ingles']['correct'],
+            'ing_t':    scores['Ingles']['total'],
+            'general':  general,
+            'has_1s':   sid in students_1s,
+            'has_2s':   sid in students_2s,
+        })
+
+    # Crear/sobrescribir hoja de resultados
+    try:
+        ws_res = spreadsheet.worksheet(results_sheet)
+        ws_res.clear()
+    except Exception:
+        ws_res = spreadsheet.add_worksheet(
+            title=results_sheet, rows=len(results) + 5, cols=20)
+
+    # Encabezado
+    header = [
+        'ID Estudiante', 'Nombre', '1S', '2S',
+        'Mat Correctas', 'Mat Total', 'Matematica',
+        'Lect Correctas', 'Lect Total', 'Lectura Critica',
+        'Soc Correctas', 'Soc Total', 'Sociales',
+        'Nat Correctas', 'Nat Total', 'Naturales',
+        'Ing Correctas', 'Ing Total', 'Ingles',
+        'Puntaje General'
+    ]
+    ws_res.update('A1:T1', [header], value_input_option='RAW')
+
+    # Datos
+    rows = []
+    for r in results:
+        rows.append([
+            r['id'], r['name'],
+            'Si' if r['has_1s'] else 'No',
+            'Si' if r['has_2s'] else 'No',
+            r['mat_c'],  r['mat_t'],  r['mat'],
+            r['lect_c'], r['lect_t'], r['lect'],
+            r['soc_c'],  r['soc_t'],  r['soc'],
+            r['nat_c'],  r['nat_t'],  r['nat'],
+            r['ing_c'],  r['ing_t'],  r['ing'],
+            r['general'],
+        ])
+
+    if rows:
+        end_col = _col_letter(len(header) - 1)
+        end_row = len(rows) + 1
+        ws_res.update(f'A2:{end_col}{end_row}', rows, value_input_option='RAW')
+
+    # Formato encabezado
+    try:
+        ws_res.format('A1:T1', {
+            'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
+            'textFormat': {'bold': True,
+                           'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
+            'horizontalAlignment': 'CENTER'
+        })
+    except Exception:
+        pass
+
+    return {
+        'success':  True,
+        'students': len(results),
+        'url':      f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
+    }

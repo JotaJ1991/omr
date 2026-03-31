@@ -490,6 +490,32 @@
         </p>
       </div>
     </div>
+
+    <!-- ── Resultados SIPAGRE ── -->
+    <div class="card">
+      <h2>📋 Resultados SIPAGRE</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Combina las sesiones 1S y 2S para calcular puntajes por materia y puntaje general.
+        Ambas hojas deben tener la clave de respuestas cargada.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:.78rem;color:var(--muted);">Hoja 1S</label>
+          <input type="text" id="sipagre-1s" value="1S SIPAGRE"
+                 style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;">
+        </div>
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:.78rem;color:var(--muted);">Hoja 2S</label>
+          <input type="text" id="sipagre-2s" value="2S SIPAGRE"
+                 style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;">
+        </div>
+      </div>
+      <button class="btn-success" onclick="generateSipagreResults()" id="btn-sipagre"
+              style="width:100%;padding:13px;font-size:.92rem;">
+        Generar Resultados SIPAGRE
+      </button>
+      <div id="sipagre-status" style="margin-top:10px;"></div>
+    </div>
   </div>
 
   <!-- ══ TAB AYUDA ══════════════════════════════════════════════════════════ -->
@@ -1354,6 +1380,37 @@ async function loadResults() {
     list.innerHTML=`<p style="color:var(--danger);padding:16px;">
       Error cargando datos.</p>`;
   }
+}
+
+// ══ RESULTADOS SIPAGRE ═════════════════════════════════════════════════════
+async function generateSipagreResults() {
+  const btn    = document.getElementById('btn-sipagre');
+  const status = document.getElementById('sipagre-status');
+  btn.disabled = true;
+  btn.textContent = 'Generando...';
+  status.innerHTML = '<p style="color:var(--muted)">Leyendo hojas y calculando puntajes...</p>';
+  try {
+    const resp = await fetch('/sipagre_results', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        sheet_1s: document.getElementById('sipagre-1s').value.trim(),
+        sheet_2s: document.getElementById('sipagre-2s').value.trim(),
+      })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      status.innerHTML = `<p style="color:var(--success);font-weight:600;">
+        Listo: ${data.students} estudiantes procesados.
+        <a href="${data.url}" target="_blank" style="color:#1d4ed8;">Abrir Sheets</a></p>`;
+    } else {
+      status.innerHTML = `<p style="color:var(--danger);">${data.error}</p>`;
+    }
+  } catch(e) {
+    status.innerHTML = '<p style="color:var(--danger);">Error de conexion</p>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Generar Resultados SIPAGRE';
 }
 
 // ══ DEBUG ══════════════════════════════════════════════════════════════════
