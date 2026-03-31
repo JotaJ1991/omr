@@ -93,23 +93,23 @@ SIPAGRE_1S = {
     'columns': [
         # Col 1: P1-P35  — A B C D
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.066, 0.091, 0.116, 0.141],
+         'bubble_fx': [0.069, 0.094, 0.118, 0.143],
          'timing_fx': 0.020},
         # Col 2: P36-P70  — A B C D
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.308, 0.333, 0.358, 0.383],
+         'bubble_fx': [0.310, 0.335, 0.360, 0.385],
          'timing_fx': 0.262},
         # Col 3: P71-P105 — A B C D
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.550, 0.575, 0.600, 0.625],
+         'bubble_fx': [0.551, 0.575, 0.600, 0.625],
          'timing_fx': 0.504},
         # Col 4: P106-P140 — A B C D E F G H
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.792, 0.817, 0.842, 0.867, 0.892, 0.917, 0.942, 0.967],
+         'bubble_fx': [0.792, 0.817, 0.842, 0.867, 0.892, 0.916, 0.941, 0.966],
          'timing_fx': 0.746},
     ],
 
-    'answers_top_f':    0.177,
+    'answers_top_f':    0.176,
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'fill_threshold':   0.01,

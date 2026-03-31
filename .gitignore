@@ -4,3 +4,4 @@ credentials.json
 uploads/
 *.env
 .env
+venv/
