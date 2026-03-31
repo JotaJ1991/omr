@@ -129,38 +129,39 @@ SIPAGRE_1S = {
 # ---------------------------------------------------------------------------
 SIPAGRE_2S = {
     'id':    '2SSIPAGRE',
-    'name':  '2S SIPAGRE — 140 preguntas',
-    'total_q': 140,
+    'name':  '2S SIPAGRE — 134 preguntas',
+    'total_q': 134,
     'work_w':  1275,
     'work_h':  1650,
 
     'columns': [
         # Col 1: P1-P35  — A B C D
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.118, 0.140, 0.162, 0.184],
-         'timing_fx': 0.076},
+         'bubble_fx': [0.068, 0.093, 0.118, 0.143],
+         'timing_fx': 0.02},
         # Col 2: P36-P70  — A B C D
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.332, 0.354, 0.376, 0.398],
-         'timing_fx': 0.290},
-        # Col 3: P71-P105 — A B C D E F G H  (8 burbujas físicas)
+         'bubble_fx': [0.309, 0.333, 0.359, 0.383],
+         'timing_fx': 0.262},
+        # Col 3: P71-P105 — A B C D E F G H
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.547, 0.569, 0.591, 0.613, 0.635, 0.657, 0.679, 0.701],
-         'timing_fx': 0.505},
-        # Col 4: P106-P140 — A B C D  (solo 4 burbujas físicas)
-        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.833, 0.855, 0.875, 0.899],
-         'timing_fx': 0.790},
+         'bubble_fx': [0.551, 0.575, 0.599, 0.624, 0.648, 0.674, 0.698, 0.724],
+         'timing_fx': 0.503},
+        # Col 4: P106-P134 — A B C D
+        {'q_start': 106, 'q_end': 134, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.871, 0.897, 0.921, 0.946],
+         'timing_fx': 0.823},
     ],
 
-    'answers_top_f':    0.198,
-    'answers_bottom_f': 0.910,
+    'answers_top_f':    0.175,
+    'answers_bottom_f': 0.977,
     'bubble_radius':     9,
-    'fill_threshold':   0.12,
-    'min_contrast':     0.10,
+    'snap_range':        3,
+    'fill_threshold':   0.02,
+    'min_contrast':     0.01,
     'binarize_block':   25,
-    'binarize_c':        8,
-    'clahe_clip':        2.5,
+    'binarize_c':        4,
+    'clahe_clip':        3.5,
     'clahe_grid':       (8, 8),
 }
 

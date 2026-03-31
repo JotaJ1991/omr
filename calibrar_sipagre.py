@@ -39,8 +39,8 @@ from datetime import datetime
 COLUMNS_DEF = [
     {'id': 0, 'name': 'Col 1 (P1-35)',    'options': ['A','B','C','D'],                    'q_start':   1, 'q_end':  35},
     {'id': 1, 'name': 'Col 2 (P36-70)',   'options': ['A','B','C','D'],                    'q_start':  36, 'q_end':  70},
-    {'id': 2, 'name': 'Col 3 (P71-105)',  'options': ['A','B','C','D'],                    'q_start':  71, 'q_end': 105},
-    {'id': 3, 'name': 'Col 4 (P106-140)', 'options': ['A','B','C','D','E','F','G','H'],    'q_start': 106, 'q_end': 140},
+    {'id': 2, 'name': 'Col 3 (P71-105)',  'options': ['A','B','C','D','E','F','G','H'],    'q_start':  71, 'q_end': 105},
+    {'id': 3, 'name': 'Col 4 (P106-140)', 'options': ['A','B','C','D'],                    'q_start': 106, 'q_end': 140},
 ]
 
 WORK_W = 1275
@@ -53,11 +53,11 @@ MODE_LABELS = {
     'TOP_BOTTOM': '2/6 TOP/BOT: clic en timing mark fila-1 y fila-35 de cualquier columna (2 clics)',
     'BUBBLES_C0': '3/6 Col1 A-D: clic en centro de A B C D en cualquier fila de col 1 (4 clics)',
     'BUBBLES_C1': '4/6 Col2 A-D: clic en centro de A B C D en cualquier fila de col 2 (4 clics)',
-    'BUBBLES_C2': '5/6 Col3 A-D: clic en centro de A B C D en cualquier fila de col 3 (4 clics)',
-    'BUBBLES_C3': '6/6 Col4 A-H: clic en A B C D E F G H en cualquier fila de col 4 (8 clics)',
+    'BUBBLES_C2': '5/6 Col3 A-H: clic en A B C D E F G H en cualquier fila de col 3 (8 clics)',
+    'BUBBLES_C3': '6/6 Col4 A-D: clic en centro de A B C D en cualquier fila de col 4 (4 clics)',
 }
 
-MODE_EXPECTED = {'TIMING':4,'TOP_BOTTOM':2,'BUBBLES_C0':4,'BUBBLES_C1':4,'BUBBLES_C2':4,'BUBBLES_C3':8}
+MODE_EXPECTED = {'TIMING':4,'TOP_BOTTOM':2,'BUBBLES_C0':4,'BUBBLES_C1':4,'BUBBLES_C2':8,'BUBBLES_C3':4}
 
 COLORS = {
     'TIMING':     (0,220,220),
@@ -170,13 +170,13 @@ def correct_perspective(gray):
         src = np.float32(corners)
         dst = np.float32([[0,0],[WORK_W-1,0],[WORK_W-1,WORK_H-1],[0,WORK_H-1]])
         M   = cv2.getPerspectiveTransform(src, dst)
-        print('✅ Fiduciales detectados — perspectiva corregida')
+        print('[OK] Fiduciales detectados - perspectiva corregida')
         for i, (px, py) in enumerate(corners):
             labels = ['TL','TR','BR','BL']
             print(f'   {labels[i]}: ({px}, {py})')
         return cv2.warpPerspective(gray, M, (WORK_W, WORK_H)), True, corners
 
-    print('⚠️  Fiduciales no detectados — usando imagen redimensionada')
+    print('[WARN] Fiduciales no detectados - usando imagen redimensionada')
     print('   Asegúrate de que los 4 cuadrados negros de las esquinas sean visibles')
     return cv2.resize(gray, (WORK_W, WORK_H)), False, None
 
@@ -406,7 +406,7 @@ def main():
 
     state['img_orig'] = canvas
 
-    print(f'\nImagen: {WORK_W}x{WORK_H}  |  Fiduciales: {"✅ detectados" if p_ok else "⚠️  NO detectados — calibración manual necesaria"}')
+    print(f'\nImagen: {WORK_W}x{WORK_H}  |  Fiduciales: {"[OK] detectados" if p_ok else "[WARN] NO detectados - calibracion manual necesaria"}')
     print(f'\nPASO 1: {MODE_LABELS["TIMING"]}\n')
 
     cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
