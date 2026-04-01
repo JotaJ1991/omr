@@ -511,34 +511,22 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
                 'points':  round(correct * points, 2),
             }
 
-        mat  = scores['Matematica']['points']
-        lect = scores['Lectura Critica']['points']
-        soc  = scores['Sociales']['points']
-        nat  = scores['Naturales']['points']
-        ing  = scores['Ingles']['points']
-        general = round(5 * ((mat*3 + lect*3 + soc*3 + nat*3) / 13), 2)
+        mat  = int(round(scores['Matematica']['points']))
+        lect = int(round(scores['Lectura Critica']['points']))
+        soc  = int(round(scores['Sociales']['points']))
+        nat  = int(round(scores['Naturales']['points']))
+        ing  = int(round(scores['Ingles']['points']))
+        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3) / 13)))
 
         results.append({
             'id':       sid,
             'name':     name,
             'mat':      mat,
-            'mat_c':    scores['Matematica']['correct'],
-            'mat_t':    scores['Matematica']['total'],
             'lect':     lect,
-            'lect_c':   scores['Lectura Critica']['correct'],
-            'lect_t':   scores['Lectura Critica']['total'],
             'soc':      soc,
-            'soc_c':    scores['Sociales']['correct'],
-            'soc_t':    scores['Sociales']['total'],
             'nat':      nat,
-            'nat_c':    scores['Naturales']['correct'],
-            'nat_t':    scores['Naturales']['total'],
             'ing':      ing,
-            'ing_c':    scores['Ingles']['correct'],
-            'ing_t':    scores['Ingles']['total'],
             'general':  general,
-            'has_1s':   sid in students_1s,
-            'has_2s':   sid in students_2s,
         })
 
     # Crear/sobrescribir hoja de resultados
@@ -551,29 +539,19 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
 
     # Encabezado
     header = [
-        'ID Estudiante', 'Nombre', '1S', '2S',
-        'Mat Correctas', 'Mat Total', 'Matematica',
-        'Lect Correctas', 'Lect Total', 'Lectura Critica',
-        'Soc Correctas', 'Soc Total', 'Sociales',
-        'Nat Correctas', 'Nat Total', 'Naturales',
-        'Ing Correctas', 'Ing Total', 'Ingles',
-        'Puntaje General'
+        'ID Estudiante', 'Nombre',
+        'Matematica', 'Lectura Critica', 'Sociales',
+        'Naturales', 'Ingles', 'Puntaje General'
     ]
-    ws_res.update('A1:T1', [header], value_input_option='RAW')
+    ws_res.update('A1:H1', [header], value_input_option='RAW')
 
     # Datos
     rows = []
     for r in results:
         rows.append([
             r['id'], r['name'],
-            'Si' if r['has_1s'] else 'No',
-            'Si' if r['has_2s'] else 'No',
-            r['mat_c'],  r['mat_t'],  r['mat'],
-            r['lect_c'], r['lect_t'], r['lect'],
-            r['soc_c'],  r['soc_t'],  r['soc'],
-            r['nat_c'],  r['nat_t'],  r['nat'],
-            r['ing_c'],  r['ing_t'],  r['ing'],
-            r['general'],
+            r['mat'], r['lect'], r['soc'],
+            r['nat'], r['ing'], r['general'],
         ])
 
     if rows:
@@ -583,7 +561,7 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
 
     # Formato encabezado
     try:
-        ws_res.format('A1:T1', {
+        ws_res.format('A1:H1', {
             'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
             'textFormat': {'bold': True,
                            'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
@@ -595,5 +573,6 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     return {
         'success':  True,
         'students': len(results),
+        'results':  results,
         'url':      f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
     }

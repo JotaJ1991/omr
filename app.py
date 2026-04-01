@@ -5,7 +5,7 @@ import os
 import json
 import traceback
 import base64
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, session, Response
 from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image
 from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
@@ -13,6 +13,7 @@ from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet, generate_sipagre_results
 )
+from pdf_generator import generate_student_pdf, generate_all_pdfs, _calc_percentiles
 
 app = Flask(__name__)
 app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
@@ -298,6 +299,62 @@ def sipagre_results():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
+
+def _get_sipagre_data(sheet_1s, sheet_2s):
+    """Obtiene resultados SIPAGRE sin escribir a Sheets. Retorna lista de dicts."""
+    result = generate_sipagre_results(sheet_1s, sheet_2s, 'Resultados SIPAGRE')
+    if not result['success']:
+        return None, result.get('error', 'Error desconocido')
+    return result['results'], None
+
+
+@app.route('/sipagre_pdf_all', methods=['POST'])
+def sipagre_pdf_all():
+    """Genera PDF con reportes de todos los estudiantes."""
+    data = request.get_json(silent=True) or {}
+    sheet_1s = data.get('sheet_1s', '1S SIPAGRE')
+    sheet_2s = data.get('sheet_2s', '2S SIPAGRE')
+    try:
+        all_results, err = _get_sipagre_data(sheet_1s, sheet_2s)
+        if err:
+            return jsonify({'success': False, 'error': err}), 400
+        pdf_bytes = generate_all_pdfs(all_results)
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': 'attachment; filename=Resultados_SIPAGRE.pdf'}
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/sipagre_pdf_student/<student_id>', methods=['POST'])
+def sipagre_pdf_student(student_id):
+    """Genera PDF para un estudiante individual."""
+    data = request.get_json(silent=True) or {}
+    sheet_1s = data.get('sheet_1s', '1S SIPAGRE')
+    sheet_2s = data.get('sheet_2s', '2S SIPAGRE')
+    try:
+        all_results, err = _get_sipagre_data(sheet_1s, sheet_2s)
+        if err:
+            return jsonify({'success': False, 'error': err}), 400
+        target = next((r for r in all_results if r['id'] == student_id), None)
+        if not target:
+            return jsonify({'success': False, 'error': 'Estudiante no encontrado'}), 404
+        percentiles = _calc_percentiles(all_results)
+        pcts = percentiles.get(student_id, {})
+        pdf_bytes = generate_student_pdf(target, pcts)
+        safe_name = target['name'].replace(' ', '_')[:30]
+        return Response(
+            pdf_bytes,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename=Resultado_{safe_name}.pdf'}
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/debug_image', methods=['POST'])
