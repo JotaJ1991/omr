@@ -530,12 +530,15 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         })
 
     # Crear/sobrescribir hoja de resultados
+    needed_rows = len(results) + 5  # header + datos + promedio + margen
     try:
         ws_res = spreadsheet.worksheet(results_sheet)
         ws_res.clear()
+        if ws_res.row_count < needed_rows:
+            ws_res.resize(rows=needed_rows)
     except Exception:
         ws_res = spreadsheet.add_worksheet(
-            title=results_sheet, rows=len(results) + 5, cols=20)
+            title=results_sheet, rows=needed_rows, cols=20)
 
     # Encabezado
     header = [
