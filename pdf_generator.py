@@ -61,6 +61,11 @@ def _calc_percentiles(all_results):
     if n == 0:
         return {}
 
+    # Asegurar que los valores sean numericos (pueden venir como string del JSON)
+    for r in all_results:
+        for f in fields:
+            r[f] = int(r.get(f, 0) or 0)
+
     # Ordenar valores por campo
     sorted_vals = {}
     for f in fields:

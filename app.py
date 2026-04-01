@@ -286,10 +286,6 @@ def results():
         return jsonify({'success': False, 'error': str(e)})
 
 
-# Cache de resultados SIPAGRE en memoria para evitar recalcular al generar PDFs
-_sipagre_cache = {'results': None}
-
-
 @app.route('/sipagre_results', methods=['POST'])
 def sipagre_results():
     """Genera la hoja de Resultados SIPAGRE combinando 1S y 2S."""
@@ -299,8 +295,6 @@ def sipagre_results():
     results_sheet  = data.get('results_sheet', 'Resultados SIPAGRE')
     try:
         result = generate_sipagre_results(sheet_1s, sheet_2s, results_sheet)
-        if result.get('success') and result.get('results'):
-            _sipagre_cache['results'] = result['results']
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -309,11 +303,12 @@ def sipagre_results():
 
 @app.route('/sipagre_pdf_all', methods=['POST'])
 def sipagre_pdf_all():
-    """Genera PDF con reportes de todos los estudiantes usando cache."""
+    """Genera PDF con los resultados enviados desde el frontend."""
+    data = request.get_json(silent=True) or {}
+    all_results = data.get('results')
+    if not all_results:
+        return jsonify({'success': False, 'error': 'No hay resultados. Genera los resultados primero.'}), 400
     try:
-        all_results = _sipagre_cache.get('results')
-        if not all_results:
-            return jsonify({'success': False, 'error': 'Primero genera los resultados SIPAGRE'}), 400
         pdf_bytes = generate_all_pdfs(all_results)
         return Response(
             pdf_bytes,
@@ -327,16 +322,17 @@ def sipagre_pdf_all():
 
 @app.route('/sipagre_pdf_student/<student_id>', methods=['POST'])
 def sipagre_pdf_student(student_id):
-    """Genera PDF para un estudiante individual usando cache."""
+    """Genera PDF para un estudiante individual con resultados del frontend."""
+    data = request.get_json(silent=True) or {}
+    all_results = data.get('results')
+    if not all_results:
+        return jsonify({'success': False, 'error': 'No hay resultados. Genera los resultados primero.'}), 400
     try:
-        all_results = _sipagre_cache.get('results')
-        if not all_results:
-            return jsonify({'success': False, 'error': 'Primero genera los resultados SIPAGRE'}), 400
-        target = next((r for r in all_results if r['id'] == student_id), None)
+        target = next((r for r in all_results if str(r['id']) == str(student_id)), None)
         if not target:
             return jsonify({'success': False, 'error': 'Estudiante no encontrado'}), 404
         percentiles = _calc_percentiles(all_results)
-        pcts = percentiles.get(student_id, {})
+        pcts = percentiles.get(str(student_id), {})
         pdf_bytes = generate_student_pdf(target, pcts)
         import unicodedata
         nfkd = unicodedata.normalize('NFKD', target['name'])

@@ -1343,6 +1343,8 @@ function setStatus(type, msg) {
 }
 
 // ══ RESULTADOS ═════════════════════════════════════════════════════════════
+let sipagreResults = null;  // cache de resultados en el cliente
+
 // ══ RESULTADOS SIPAGRE ═════════════════════════════════════════════════════
 async function generateSipagreResults() {
   const btn    = document.getElementById('btn-sipagre');
@@ -1361,14 +1363,14 @@ async function generateSipagreResults() {
     });
     const data = await resp.json();
     if (data.success) {
+      sipagreResults = data.results || [];
       status.innerHTML = `<p style="color:var(--success);font-weight:600;">
         Listo: ${data.students} estudiantes procesados.
         <a href="${data.url}" target="_blank" style="color:#1d4ed8;">Abrir Sheets</a></p>`;
-      // Mostrar lista de estudiantes con boton de descarga
       const list = document.getElementById('sipagre-students-list');
-      if (data.results && data.results.length) {
+      if (sipagreResults.length) {
         list.innerHTML = '<p style="font-size:.82rem;color:var(--muted);margin-bottom:8px;"><strong>Descargar reporte individual:</strong></p>' +
-          data.results.map(r => `
+          sipagreResults.map(r => `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid var(--border);font-size:.82rem;">
               <div>
                 <strong>${r.name}</strong>
@@ -1392,6 +1394,11 @@ async function generateSipagreResults() {
 }
 
 async function downloadAllPdfs() {
+  if (!sipagreResults || !sipagreResults.length) {
+    document.getElementById('sipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
+    return;
+  }
   const btn    = document.getElementById('btn-pdf-all');
   const status = document.getElementById('sipagre-status');
   btn.disabled = true;
@@ -1401,10 +1408,7 @@ async function downloadAllPdfs() {
     const resp = await fetch('/sipagre_pdf_all', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        sheet_1s: document.getElementById('sipagre-1s').value.trim(),
-        sheet_2s: document.getElementById('sipagre-2s').value.trim(),
-      })
+      body: JSON.stringify({ results: sipagreResults })
     });
     if (resp.ok) {
       const blob = await resp.blob();
@@ -1426,16 +1430,18 @@ async function downloadAllPdfs() {
 }
 
 async function downloadStudentPdf(studentId) {
+  if (!sipagreResults || !sipagreResults.length) {
+    document.getElementById('sipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
+    return;
+  }
   const status = document.getElementById('sipagre-status');
   status.innerHTML = '<p style="color:var(--muted)">Generando PDF individual...</p>';
   try {
     const resp = await fetch(`/sipagre_pdf_student/${encodeURIComponent(studentId)}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        sheet_1s: document.getElementById('sipagre-1s').value.trim(),
-        sheet_2s: document.getElementById('sipagre-2s').value.trim(),
-      })
+      body: JSON.stringify({ results: sipagreResults })
     });
     if (resp.ok) {
       const blob = await resp.blob();
