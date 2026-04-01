@@ -1460,11 +1460,12 @@ async function downloadAllPdfs() {
       a.click(); URL.revokeObjectURL(url);
       status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
     } else {
-      const data = await resp.json();
-      status.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error generando PDF'}</p>`;
+      let msg = 'Error generando PDF';
+      try { const data = await resp.json(); msg = data.error || msg; } catch(_) { msg = `Error ${resp.status}: ${resp.statusText}`; }
+      status.innerHTML = `<p style="color:var(--danger);">${msg}</p>`;
     }
   } catch(e) {
-    status.innerHTML = '<p style="color:var(--danger);">Error de conexion</p>';
+    status.innerHTML = `<p style="color:var(--danger);">Error de conexion: ${e.message}</p>`;
   }
   btn.disabled = false;
   btn.textContent = 'Descargar Todos PDF';
@@ -1490,11 +1491,12 @@ async function downloadStudentPdf(studentId) {
       a.click(); URL.revokeObjectURL(url);
       status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
     } else {
-      const data = await resp.json();
-      status.innerHTML = `<p style="color:var(--danger);">${data.error}</p>`;
+      let msg = 'Error generando PDF';
+      try { const data = await resp.json(); msg = data.error || msg; } catch(_) { msg = `Error ${resp.status}: ${resp.statusText}`; }
+      status.innerHTML = `<p style="color:var(--danger);">${msg}</p>`;
     }
   } catch(e) {
-    status.innerHTML = '<p style="color:var(--danger);">Error de conexion</p>';
+    status.innerHTML = `<p style="color:var(--danger);">Error de conexion: ${e.message}</p>`;
   }
 }
 
