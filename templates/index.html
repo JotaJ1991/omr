@@ -412,6 +412,17 @@
           <div class="progress-label" id="progress-label"></div>
         </div>
 
+        <!-- Imagen anotada del escaneo (antes de la grilla) -->
+        <div class="scan-image-wrap" id="scan-image-wrap">
+          <img id="scan-debug-img" src="" alt="Imagen anotada">
+          <div class="scan-image-legend">
+            🟢 A &nbsp;🔵 B &nbsp;🔷 C &nbsp;🟣 D &nbsp;
+            🟠 E &nbsp;🟦 F &nbsp;🟤 G &nbsp;🔹 H &nbsp;
+            ⚪ no detectada &nbsp;·&nbsp;
+            <span style="color:#1d7aff">━</span> zona de respuestas
+          </div>
+        </div>
+
         <div style="margin-top:14px;">
           <div style="display:flex; align-items:center; justify-content:space-between;
                       margin-bottom:6px;">
@@ -422,17 +433,6 @@
             </span>
           </div>
           <div class="answers-grid" id="answers-grid"></div>
-        </div>
-
-        <!-- Imagen anotada del escaneo -->
-        <div class="scan-image-wrap" id="scan-image-wrap">
-          <img id="scan-debug-img" src="" alt="Imagen anotada">
-          <div class="scan-image-legend">
-            🟢 A &nbsp;🔵 B &nbsp;🔷 C &nbsp;🟣 D &nbsp;
-            🟠 E &nbsp;🟦 F &nbsp;🟤 G &nbsp;🔹 H &nbsp;
-            ⚪ no detectada &nbsp;·&nbsp;
-            <span style="color:#1d7aff">━</span> zona de respuestas
-          </div>
         </div>
 
         <!-- Botones de acción -->
@@ -637,6 +637,8 @@ function _onFileSelected(e) {
     document.getElementById('capture-zone').classList.add('active');
     document.getElementById('btn-process').disabled = false;
     setStatus('', '');
+    // Auto-procesar inmediatamente al cargar la foto
+    setTimeout(() => processPhoto(), 200);
   };
   reader.readAsDataURL(file);
 }
@@ -1290,6 +1292,12 @@ async function confirmSave() {
     document.getElementById('action-btns').innerHTML = `
       <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo escaneo</button>
       <button class="btn-primary"   onclick="openSheets()">📊 Ver en Sheets</button>`;
+
+    // Auto-iniciar nuevo escaneo tras 2 segundos
+    setTimeout(() => {
+      resetScan();
+      document.getElementById('file-input').click();
+    }, 2000);
 
   } catch(err) {
     setStatus('error','Error de conexión al guardar.');
