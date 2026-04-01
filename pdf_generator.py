@@ -8,7 +8,35 @@ Estructura similar al reporte ICFES Saber 11:
 """
 
 import io
+import unicodedata
 from fpdf import FPDF
+
+
+def _safe_text(text):
+    """Reemplaza caracteres no soportados por Helvetica (latin-1)."""
+    if not isinstance(text, str):
+        text = str(text)
+    # Intentar codificar a latin-1; si falla, normalizar y quitar diacriticos
+    try:
+        text.encode('latin-1')
+        return text
+    except UnicodeEncodeError:
+        # Normalizar NFD y quitar marcas diacriticas
+        nfkd = unicodedata.normalize('NFKD', text)
+        cleaned = ''.join(c for c in nfkd if not unicodedata.combining(c))
+        # Reemplazar caracteres especiales comunes
+        cleaned = cleaned.replace('\u2014', '-')   # em dash
+        cleaned = cleaned.replace('\u2013', '-')   # en dash
+        cleaned = cleaned.replace('\u2018', "'")   # left single quote
+        cleaned = cleaned.replace('\u2019', "'")   # right single quote
+        cleaned = cleaned.replace('\u201c', '"')   # left double quote
+        cleaned = cleaned.replace('\u201d', '"')   # right double quote
+        # Fallback: reemplazar lo que quede fuera de latin-1
+        try:
+            cleaned.encode('latin-1')
+        except UnicodeEncodeError:
+            cleaned = cleaned.encode('latin-1', errors='replace').decode('latin-1')
+        return cleaned
 
 
 SUBJECTS = [
@@ -109,7 +137,7 @@ def generate_student_pdf(student, percentiles):
     pdf.set_font('Helvetica', '', 9)
 
     fields = [
-        ('Apellidos y nombres:', student['name']),
+        ('Apellidos y nombres:', _safe_text(student['name'])),
         ('Identificacion:', student['id']),
     ]
     for label, value in fields:
@@ -205,7 +233,7 @@ def generate_student_pdf(student, percentiles):
     pdf.set_font('Helvetica', 'I', 7)
     pdf.set_text_color(150, 150, 150)
     pdf.set_xy(10, pdf.h - 15)
-    pdf.cell(pw, 5, 'Generado automaticamente — Simulacro SIPAGRE', align='C')
+    pdf.cell(pw, 5, 'Generado automaticamente - Simulacro SIPAGRE', align='C')
 
     return pdf.output()
 
@@ -245,7 +273,7 @@ def generate_all_pdfs(all_results):
         pdf.set_xy(12, y)
         pdf.cell(40, 6, 'Apellidos y nombres:')
         pdf.set_font('Helvetica', 'B', 9)
-        pdf.cell(100, 6, student['name'])
+        pdf.cell(100, 6, _safe_text(student['name']))
         y += 7
         pdf.set_font('Helvetica', '', 9)
         pdf.set_xy(12, y)
@@ -332,6 +360,6 @@ def generate_all_pdfs(all_results):
         pdf.set_font('Helvetica', 'I', 7)
         pdf.set_text_color(150, 150, 150)
         pdf.set_xy(10, pdf.h - 15)
-        pdf.cell(pw, 5, 'Generado automaticamente — Simulacro SIPAGRE', align='C')
+        pdf.cell(pw, 5, 'Generado automaticamente - Simulacro SIPAGRE', align='C')
 
     return pdf.output()

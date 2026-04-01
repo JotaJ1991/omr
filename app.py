@@ -346,7 +346,10 @@ def sipagre_pdf_student(student_id):
         percentiles = _calc_percentiles(all_results)
         pcts = percentiles.get(student_id, {})
         pdf_bytes = generate_student_pdf(target, pcts)
-        safe_name = target['name'].replace(' ', '_')[:30]
+        import unicodedata
+        nfkd = unicodedata.normalize('NFKD', target['name'])
+        safe_name = ''.join(c for c in nfkd if not unicodedata.combining(c))
+        safe_name = safe_name.replace(' ', '_')[:30]
         return Response(
             pdf_bytes,
             mimetype='application/pdf',
