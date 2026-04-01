@@ -105,11 +105,11 @@ SIPAGRE_1S = {
          'timing_fx': 0.504},
         # Col 4: P106-P120 — A B C D E F G H
         {'q_start': 106, 'q_end': 120, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.791, 0.816, 0.841, 0.866, 0.891, 0.915, 0.940, 0.964],
+         'bubble_fx': [0.790, 0.815, 0.840, 0.865, 0.890, 0.914, 0.940, 0.963],
          'timing_fx': 0.746},
     ],
 
-    'answers_top_f':    0.176,
+    'answers_top_f':    0.175,
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'snap_range':        3,
