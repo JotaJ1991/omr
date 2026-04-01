@@ -300,7 +300,7 @@
   <div class="tabs">
     <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
     <div class="tab" onclick="switchTab('key'); initKeyPanel()">🔑 Clave</div>
-    <div class="tab" onclick="switchTab('results'); loadResults()">📊 Resultados</div>
+    <div class="tab" onclick="switchTab('results')">📊 Resultados</div>
     <div class="tab" onclick="switchTab('config')">⚙️ Config</div>
   </div>
 
@@ -476,22 +476,6 @@
 
   <!-- ══ TAB RESULTADOS ════════════════════════════════════════════════════ -->
   <div id="tab-results" class="tab-content">
-    <div class="card">
-      <h2>📊 Exámenes guardados</h2>
-      <div class="results-sheet-bar">
-        <select id="results-sheet-select" onchange="loadResults()">
-          <option value="">— selecciona hoja —</option>
-        </select>
-        <button class="btn-primary" onclick="loadResults()">🔄 Cargar</button>
-      </div>
-      <div id="results-list">
-        <p style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;">
-          Selecciona una hoja y toca Cargar
-        </p>
-      </div>
-    </div>
-
-    <!-- ── Resultados SIPAGRE ── -->
     <div class="card">
       <h2>📋 Resultados SIPAGRE</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
@@ -1000,7 +984,6 @@ async function loadSheets() {
       : '<option value="">— sin hojas —</option>';
 
     document.getElementById('sheet-select').innerHTML        = opts;
-    document.getElementById('results-sheet-select').innerHTML = opts;
   } catch(e) { console.error(e); }
 }
 
@@ -1019,7 +1002,6 @@ async function selectSheet(name) {
   if (data.success) {
     state.activeSheet = name;
     updateActiveBadge(name);
-    document.getElementById('results-sheet-select').value = name;
   }
 }
 
@@ -1361,34 +1343,6 @@ function setStatus(type, msg) {
 }
 
 // ══ RESULTADOS ═════════════════════════════════════════════════════════════
-async function loadResults() {
-  const sel  = document.getElementById('results-sheet-select');
-  const name = sel.value || state.activeSheet;
-  if (!name) return;
-  const list = document.getElementById('results-list');
-  list.innerHTML = '<p style="text-align:center;padding:20px;">Cargando…</p>';
-  try {
-    const resp = await fetch(`/results?sheet=${encodeURIComponent(name)}`);
-    const data = await resp.json();
-    if (!data.success || !data.data.length) {
-      list.innerHTML=`<p style="color:var(--muted);text-align:center;padding:20px;">
-        Sin datos en "${name}"</p>`; return;
-    }
-    list.innerHTML = data.data.slice().reverse().slice(0,50).map(row=>`
-      <div class="history-item">
-        <div class="name">${row.Nombre||'—'}</div>
-        <div class="meta">
-          ID: ${row.ID_Estudiante||'—'} &nbsp;·&nbsp;
-          ${row.Fecha||''} ${row.Hora||''} &nbsp;·&nbsp;
-          <strong>${row.Total_Respondidas??'?'}</strong>/125 respondidas
-        </div>
-      </div>`).join('');
-  } catch(e) {
-    list.innerHTML=`<p style="color:var(--danger);padding:16px;">
-      Error cargando datos.</p>`;
-  }
-}
-
 // ══ RESULTADOS SIPAGRE ═════════════════════════════════════════════════════
 async function generateSipagreResults() {
   const btn    = document.getElementById('btn-sipagre');

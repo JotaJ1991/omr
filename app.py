@@ -286,6 +286,10 @@ def results():
         return jsonify({'success': False, 'error': str(e)})
 
 
+# Cache de resultados SIPAGRE en memoria para evitar recalcular al generar PDFs
+_sipagre_cache = {'results': None}
+
+
 @app.route('/sipagre_results', methods=['POST'])
 def sipagre_results():
     """Genera la hoja de Resultados SIPAGRE combinando 1S y 2S."""
@@ -295,30 +299,21 @@ def sipagre_results():
     results_sheet  = data.get('results_sheet', 'Resultados SIPAGRE')
     try:
         result = generate_sipagre_results(sheet_1s, sheet_2s, results_sheet)
+        if result.get('success') and result.get('results'):
+            _sipagre_cache['results'] = result['results']
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
-def _get_sipagre_data(sheet_1s, sheet_2s):
-    """Obtiene resultados SIPAGRE sin escribir a Sheets. Retorna lista de dicts."""
-    result = generate_sipagre_results(sheet_1s, sheet_2s, 'Resultados SIPAGRE')
-    if not result['success']:
-        return None, result.get('error', 'Error desconocido')
-    return result['results'], None
-
-
 @app.route('/sipagre_pdf_all', methods=['POST'])
 def sipagre_pdf_all():
-    """Genera PDF con reportes de todos los estudiantes."""
-    data = request.get_json(silent=True) or {}
-    sheet_1s = data.get('sheet_1s', '1S SIPAGRE')
-    sheet_2s = data.get('sheet_2s', '2S SIPAGRE')
+    """Genera PDF con reportes de todos los estudiantes usando cache."""
     try:
-        all_results, err = _get_sipagre_data(sheet_1s, sheet_2s)
-        if err:
-            return jsonify({'success': False, 'error': err}), 400
+        all_results = _sipagre_cache.get('results')
+        if not all_results:
+            return jsonify({'success': False, 'error': 'Primero genera los resultados SIPAGRE'}), 400
         pdf_bytes = generate_all_pdfs(all_results)
         return Response(
             pdf_bytes,
@@ -332,14 +327,11 @@ def sipagre_pdf_all():
 
 @app.route('/sipagre_pdf_student/<student_id>', methods=['POST'])
 def sipagre_pdf_student(student_id):
-    """Genera PDF para un estudiante individual."""
-    data = request.get_json(silent=True) or {}
-    sheet_1s = data.get('sheet_1s', '1S SIPAGRE')
-    sheet_2s = data.get('sheet_2s', '2S SIPAGRE')
+    """Genera PDF para un estudiante individual usando cache."""
     try:
-        all_results, err = _get_sipagre_data(sheet_1s, sheet_2s)
-        if err:
-            return jsonify({'success': False, 'error': err}), 400
+        all_results = _sipagre_cache.get('results')
+        if not all_results:
+            return jsonify({'success': False, 'error': 'Primero genera los resultados SIPAGRE'}), 400
         target = next((r for r in all_results if r['id'] == student_id), None)
         if not target:
             return jsonify({'success': False, 'error': 'Estudiante no encontrado'}), 404
