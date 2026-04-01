@@ -981,8 +981,9 @@ async function loadSheets() {
     state.activeSheet = data.active;
     updateActiveBadge(data.active);
 
-    const opts = data.sheets.length
-      ? data.sheets.map(s =>
+    const filtered = data.sheets.filter(s => s !== 'Resultados SIPAGRE');
+    const opts = filtered.length
+      ? filtered.map(s =>
           `<option value="${s}" ${s===data.active?'selected':''}>${s}</option>`).join('')
       : '<option value="">— sin hojas —</option>';
 

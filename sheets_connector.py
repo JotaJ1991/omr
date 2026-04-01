@@ -559,6 +559,27 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         end_row = len(rows) + 1
         ws_res.update(f'A2:{end_col}{end_row}', rows, value_input_option='RAW')
 
+        # Fila de promedios
+        n = len(results)
+        avg_mat  = int(round(sum(r['mat']     for r in results) / n))
+        avg_lect = int(round(sum(r['lect']    for r in results) / n))
+        avg_soc  = int(round(sum(r['soc']     for r in results) / n))
+        avg_nat  = int(round(sum(r['nat']     for r in results) / n))
+        avg_ing  = int(round(sum(r['ing']     for r in results) / n))
+        avg_gen  = int(round(sum(r['general'] for r in results) / n))
+        avg_row = end_row + 1
+        ws_res.update(f'A{avg_row}:H{avg_row}',
+                      [['', 'PROMEDIO', avg_mat, avg_lect, avg_soc, avg_nat, avg_ing, avg_gen]],
+                      value_input_option='RAW')
+        try:
+            ws_res.format(f'A{avg_row}:H{avg_row}', {
+                'backgroundColor': {'red': 0.93, 'green': 0.93, 'blue': 0.93},
+                'textFormat': {'bold': True},
+                'horizontalAlignment': 'CENTER'
+            })
+        except Exception:
+            pass
+
     # Formato encabezado
     try:
         ws_res.format('A1:H1', {
