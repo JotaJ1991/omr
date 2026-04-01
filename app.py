@@ -13,7 +13,7 @@ from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet, generate_sipagre_results
 )
-from pdf_generator import generate_student_pdf, generate_all_pdfs, _calc_percentiles
+# PDF generation moved to browser-side (jsPDF) — no server imports needed
 
 app = Flask(__name__)
 app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
@@ -301,51 +301,7 @@ def sipagre_results():
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
-@app.route('/sipagre_pdf_all', methods=['POST'])
-def sipagre_pdf_all():
-    """Genera PDF con los resultados enviados desde el frontend."""
-    data = request.get_json(silent=True) or {}
-    all_results = data.get('results')
-    if not all_results:
-        return jsonify({'success': False, 'error': 'No hay resultados. Genera los resultados primero.'}), 400
-    try:
-        pdf_bytes = generate_all_pdfs(all_results)
-        return Response(
-            pdf_bytes,
-            mimetype='application/pdf',
-            headers={'Content-Disposition': 'attachment; filename=Resultados_SIPAGRE.pdf'}
-        )
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/sipagre_pdf_student/<student_id>', methods=['POST'])
-def sipagre_pdf_student(student_id):
-    """Genera PDF para un estudiante individual con resultados del frontend."""
-    data = request.get_json(silent=True) or {}
-    all_results = data.get('results')
-    if not all_results:
-        return jsonify({'success': False, 'error': 'No hay resultados. Genera los resultados primero.'}), 400
-    try:
-        target = next((r for r in all_results if str(r['id']) == str(student_id)), None)
-        if not target:
-            return jsonify({'success': False, 'error': 'Estudiante no encontrado'}), 404
-        percentiles = _calc_percentiles(all_results)
-        pcts = percentiles.get(str(student_id), {})
-        pdf_bytes = generate_student_pdf(target, pcts)
-        import unicodedata
-        nfkd = unicodedata.normalize('NFKD', target['name'])
-        safe_name = ''.join(c for c in nfkd if not unicodedata.combining(c))
-        safe_name = safe_name.replace(' ', '_')[:30]
-        return Response(
-            pdf_bytes,
-            mimetype='application/pdf',
-            headers={'Content-Disposition': f'attachment; filename=Resultado_{safe_name}.pdf'}
-        )
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+## Las rutas de PDF se eliminaron — ahora se generan 100% en el navegador con jsPDF
 
 
 @app.route('/debug_image', methods=['POST'])

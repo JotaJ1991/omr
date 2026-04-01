@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Calificador JMR</title>
 <style>
@@ -1393,70 +1394,191 @@ async function generateSipagreResults() {
   btn.textContent = 'Generar Resultados SIPAGRE';
 }
 
-async function downloadAllPdfs() {
-  if (!sipagreResults || !sipagreResults.length) {
-    document.getElementById('sipagre-status').innerHTML =
-      '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
-    return;
-  }
-  const btn    = document.getElementById('btn-pdf-all');
-  const status = document.getElementById('sipagre-status');
-  btn.disabled = true;
-  btn.textContent = 'Generando PDF...';
-  status.innerHTML = '<p style="color:var(--muted)">Generando reportes de todos los estudiantes...</p>';
-  try {
-    const resp = await fetch('/sipagre_pdf_all', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ results: sipagreResults })
+// ── PDF 100% en navegador con jsPDF ──────────────────────────────────────
+const SUBJECTS = [
+  {name:'Lectura Critica', key:'lect'},
+  {name:'Matematicas',     key:'mat'},
+  {name:'Sociales y Ciudadanas', key:'soc'},
+  {name:'Ciencias Naturales',    key:'nat'},
+  {name:'Ingles',          key:'ing'},
+];
+
+function calcPercentiles(results) {
+  const fields = ['mat','lect','soc','nat','ing','general'];
+  const n = results.length;
+  if (!n) return {};
+  const sorted = {};
+  fields.forEach(f => { sorted[f] = results.map(r => Number(r[f])||0).sort((a,b)=>a-b); });
+  const pcts = {};
+  results.forEach(r => {
+    const sid = String(r.id);
+    pcts[sid] = {};
+    fields.forEach(f => {
+      const val = Number(r[f])||0;
+      const count = sorted[f].filter(v => v <= val).length;
+      pcts[sid][f] = Math.round(count / n * 100);
     });
-    if (resp.ok) {
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = 'Resultados_SIPAGRE.pdf';
-      a.click(); URL.revokeObjectURL(url);
-      status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
-    } else {
-      let msg = 'Error generando PDF';
-      try { const data = await resp.json(); msg = data.error || msg; } catch(_) { msg = `Error ${resp.status}: ${resp.statusText}`; }
-      status.innerHTML = `<p style="color:var(--danger);">${msg}</p>`;
-    }
-  } catch(e) {
-    status.innerHTML = `<p style="color:var(--danger);">Error de conexion: ${e.message}</p>`;
-  }
-  btn.disabled = false;
-  btn.textContent = 'Descargar Todos PDF';
+  });
+  return pcts;
 }
 
-async function downloadStudentPdf(studentId) {
+function drawPercentileBar(doc, x, y, w, h, pct) {
+  const midY = y + h/2;
+  doc.setDrawColor(150,150,150);
+  doc.setLineWidth(0.3);
+  doc.line(x, midY, x+w, midY);
+  doc.setFontSize(7);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(100,100,100);
+  doc.text('0', x-2, midY-3);
+  doc.text('100', x+w-3, midY-3);
+  for (let i=0; i<=10; i++) {
+    const tx = x + (w * i/10);
+    doc.line(tx, midY-1.5, tx, midY+1.5);
+  }
+  const px = x + (w * Math.min(Math.max(pct,0),100)/100);
+  doc.setFillColor(30,30,30);
+  doc.triangle(px-2.5, midY+6, px+2.5, midY+6, px, midY+2, 'F');
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.setTextColor(40,40,40);
+  doc.text(String(pct), px-3, midY+11);
+}
+
+function renderStudentPage(doc, student, pcts, addPage) {
+  if (addPage) doc.addPage('letter','p');
+  const pw = 215.9 - 20; // letter width - margins
+
+  // TITULO
+  doc.setFillColor(30,30,30);
+  doc.rect(10, 10, pw, 18, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(14);
+  doc.setTextColor(255,255,255);
+  doc.text('REPORTE DE RESULTADOS ESTUDIANTE', 10+pw/2, 17, {align:'center'});
+  doc.setFontSize(10);
+  doc.text('SIMULACRO SIPAGRE', 10+pw/2, 24, {align:'center'});
+
+  // DATOS
+  let y = 36;
+  doc.setTextColor(40,40,40);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('Apellidos y nombres:', 12, y);
+  doc.setFont('helvetica','bold');
+  doc.text(String(student.name||''), 55, y);
+  y += 6;
+  doc.setFont('helvetica','normal');
+  doc.text('Identificacion:', 12, y);
+  doc.setFont('helvetica','bold');
+  doc.text(String(student.id||''), 55, y);
+
+  // RESULTADOS GLOBALES
+  y += 12;
+  doc.setFillColor(30,30,30);
+  doc.rect(10, y, pw, 8, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.setTextColor(255,255,255);
+  doc.text('RESULTADOS GLOBALES', 10+pw/2, y+6, {align:'center'});
+
+  y += 12;
+  doc.setDrawColor(100,100,100); doc.setLineWidth(0.5);
+  doc.rect(15, y, pw/2-10, 28, 'D');
+  doc.setTextColor(40,40,40);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.text('PUNTAJE GENERAL', 17, y+6);
+  doc.setFont('helvetica','bold'); doc.setFontSize(28);
+  doc.text(String(student.general||0), 15+(pw/2-10)/2, y+22, {align:'center'});
+
+  const pctGen = (pcts||{}).general||0;
+  const px = pw/2+10;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.setTextColor(40,40,40);
+  doc.text('PERCENTIL GENERAL', px, y+5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+  doc.text('Respecto a los evaluados, usted esta aqui.', px, y+10);
+  drawPercentileBar(doc, px+5, y+12, pw/2-20, 14, pctGen);
+
+  // RESULTADOS POR PRUEBA
+  y += 38;
+  doc.setFillColor(30,30,30);
+  doc.rect(10, y, pw, 8, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.setTextColor(255,255,255);
+  doc.text('RESULTADOS POR PRUEBA', 10+pw/2, y+6, {align:'center'});
+
+  y += 12;
+  const cw = [60, 40, pw-100];
+  doc.setFillColor(220,220,220);
+  doc.rect(10, y, pw, 8, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.setTextColor(40,40,40);
+  doc.text('PRUEBA', 10+cw[0]/2, y+5.5, {align:'center'});
+  doc.text('PUNTAJE', 10+cw[0]+cw[1]/2, y+5.5, {align:'center'});
+  doc.text('PERCENTIL', 10+cw[0]+cw[1]+cw[2]/2, y+5.5, {align:'center'});
+  y += 10;
+
+  SUBJECTS.forEach(subj => {
+    const score = Number(student[subj.key])||0;
+    const pct = (pcts||{})[subj.key]||0;
+    doc.setDrawColor(200,200,200);
+    doc.line(10, y+22, 10+pw, y+22);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.setTextColor(40,40,40);
+    doc.text(subj.name, 12, y+10);
+    doc.setFont('helvetica','bold'); doc.setFontSize(14);
+    doc.text(String(score), 10+cw[0]+cw[1]/2, y+12, {align:'center'});
+    drawPercentileBar(doc, 10+cw[0]+cw[1]+8, y+2, cw[2]-16, 14, pct);
+    y += 24;
+  });
+
+  // PIE
+  doc.setFont('helvetica','italic'); doc.setFontSize(7);
+  doc.setTextColor(150,150,150);
+  doc.text('Generado automaticamente - Simulacro SIPAGRE', 10+pw/2, 264, {align:'center'});
+}
+
+function downloadAllPdfs() {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
       '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
     return;
   }
   const status = document.getElementById('sipagre-status');
-  status.innerHTML = '<p style="color:var(--muted)">Generando PDF individual...</p>';
+  const btn = document.getElementById('btn-pdf-all');
+  btn.disabled = true; btn.textContent = 'Generando PDF...';
+  status.innerHTML = '<p style="color:var(--muted)">Generando reportes...</p>';
   try {
-    const resp = await fetch(`/sipagre_pdf_student/${encodeURIComponent(studentId)}`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ results: sipagreResults })
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const pcts = calcPercentiles(sipagreResults);
+    sipagreResults.forEach((st, i) => {
+      renderStudentPage(doc, st, pcts[String(st.id)]||{}, i>0);
     });
-    if (resp.ok) {
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = `Resultado_${studentId}.pdf`;
-      a.click(); URL.revokeObjectURL(url);
-      status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
-    } else {
-      let msg = 'Error generando PDF';
-      try { const data = await resp.json(); msg = data.error || msg; } catch(_) { msg = `Error ${resp.status}: ${resp.statusText}`; }
-      status.innerHTML = `<p style="color:var(--danger);">${msg}</p>`;
-    }
+    doc.save('Resultados_SIPAGRE.pdf');
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
   } catch(e) {
-    status.innerHTML = `<p style="color:var(--danger);">Error de conexion: ${e.message}</p>`;
+    status.innerHTML = `<p style="color:var(--danger);">Error generando PDF: ${e.message}</p>`;
+  }
+  btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
+}
+
+function downloadStudentPdf(studentId) {
+  if (!sipagreResults || !sipagreResults.length) {
+    document.getElementById('sipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
+    return;
+  }
+  const status = document.getElementById('sipagre-status');
+  try {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const pcts = calcPercentiles(sipagreResults);
+    const st = sipagreResults.find(r => String(r.id) === String(studentId));
+    if (!st) { status.innerHTML = '<p style="color:var(--danger);">Estudiante no encontrado.</p>'; return; }
+    renderStudentPage(doc, st, pcts[String(st.id)]||{}, false);
+    doc.save(`Resultado_${studentId}.pdf`);
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
 }
 
