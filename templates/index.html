@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Calificador JMR</title>
 <style>
@@ -1536,6 +1536,11 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.text('Generado automaticamente - Simulacro SIPAGRE', 10+pw/2, 264, {align:'center'});
 }
 
+function getJsPDF() {
+  if (window.jspdf && window.jspdf.jsPDF) return window.jspdf.jsPDF;
+  throw new Error('jsPDF no ha cargado. Recarga la pagina e intenta de nuevo.');
+}
+
 function downloadAllPdfs() {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
@@ -1547,7 +1552,7 @@ function downloadAllPdfs() {
   btn.disabled = true; btn.textContent = 'Generando PDF...';
   status.innerHTML = '<p style="color:var(--muted)">Generando reportes...</p>';
   try {
-    const {jsPDF} = window.jspdf;
+    const jsPDF = getJsPDF();
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
     sipagreResults.forEach((st, i) => {
@@ -1569,8 +1574,8 @@ function downloadStudentPdf(studentId) {
   }
   const status = document.getElementById('sipagre-status');
   try {
-    const {jsPDF} = window.jspdf;
-    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const JsPDF = getJsPDF();
+    const doc = new JsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
     const st = sipagreResults.find(r => String(r.id) === String(studentId));
     if (!st) { status.innerHTML = '<p style="color:var(--danger);">Estudiante no encontrado.</p>'; return; }
