@@ -40,11 +40,11 @@ def _safe_text(text):
 
 
 SUBJECTS = [
-    ('Lectura Critica', 'lect'),
-    ('Matematicas',     'mat'),
-    ('Sociales y Ciudadanas', 'soc'),
-    ('Ciencias Naturales',    'nat'),
-    ('Ingles',          'ing'),
+    ('Matematicas',          'mat'),
+    ('Lectura Critica',      'lect'),
+    ('Sociales y Ciudadanas','soc'),
+    ('Ciencias Naturales',   'nat'),
+    ('Ingles',               'ing'),
 ]
 
 # Puntaje maximo teorico por materia (para escala de percentil)

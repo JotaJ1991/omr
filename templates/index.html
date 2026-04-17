@@ -293,7 +293,7 @@
 
 <header>
   <h1>📝 Calificador JMR</h1>
-  <p>125 preguntas · Selección múltiple</p>
+  <p id="header-subtitle">125 preguntas · Selección múltiple</p>
 </header>
 
 <main>
@@ -792,8 +792,8 @@ function applyProfile(data) {
   if (badge) badge.textContent = data.active_name;
 
   // Actualizar subtítulo del header principal
-  const sub = document.querySelector('header p');
-  if (sub) sub.textContent = data.active_name;
+  const sub = document.getElementById('header-subtitle');
+  if (sub) sub.textContent = `${data.total_q} preguntas · ${data.active_name}`;
 }
 
 function renderProfileList(data) {
@@ -1291,14 +1291,9 @@ async function confirmSave() {
 
     // Reemplazar botones tras guardar exitosamente
     document.getElementById('action-btns').innerHTML = `
-      <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo escaneo</button>
-      <button class="btn-primary"   onclick="openSheets()">📊 Ver en Sheets</button>`;
-
-    // Auto-iniciar nuevo escaneo tras 2 segundos
-    setTimeout(() => {
-      resetScan();
-      document.getElementById('file-input').click();
-    }, 2000);
+      <button class="btn-success" onclick="resetAndScan()" style="flex:2;">📷 Siguiente estudiante</button>
+      <button class="btn-secondary" onclick="resetScan()">🔄 Nuevo</button>
+      <button class="btn-primary"   onclick="openSheets()">📊 Sheets</button>`;
 
   } catch(err) {
     setStatus('error','Error de conexión al guardar.');
@@ -1309,6 +1304,11 @@ async function confirmSave() {
 function openSheets() {
   if (state.sheetsUrl) window.open(state.sheetsUrl, '_blank');
   else alert('URL no disponible. Configura SPREADSHEET_ID en el servidor.');
+}
+
+function resetAndScan() {
+  resetScan();
+  setTimeout(() => document.getElementById('file-input').click(), 200);
 }
 
 // ══ RESET ══════════════════════════════════════════════════════════════════
@@ -1359,6 +1359,7 @@ let sipagreResults = null;  // cache de resultados en el cliente
 async function generateSipagreResults() {
   const btn    = document.getElementById('btn-sipagre');
   const status = document.getElementById('sipagre-status');
+  sipagreResults = null;  // limpiar cache anterior
   btn.disabled = true;
   btn.textContent = 'Generando...';
   status.innerHTML = '<p style="color:var(--muted)">Leyendo hojas y calculando puntajes...</p>';
@@ -1405,11 +1406,11 @@ async function generateSipagreResults() {
 
 // ── PDF 100% en navegador con jsPDF ──────────────────────────────────────
 const SUBJECTS = [
-  {name:'Lectura Critica', key:'lect'},
-  {name:'Matematicas',     key:'mat'},
-  {name:'Sociales y Ciudadanas', key:'soc'},
-  {name:'Ciencias Naturales',    key:'nat'},
-  {name:'Ingles',          key:'ing'},
+  {name:'Matematicas',          key:'mat'},
+  {name:'Lectura Critica',      key:'lect'},
+  {name:'Sociales y Ciudadanas',key:'soc'},
+  {name:'Ciencias Naturales',   key:'nat'},
+  {name:'Ingles',               key:'ing'},
 ];
 
 function calcPercentiles(results) {
