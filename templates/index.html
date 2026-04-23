@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <script src="https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <title>Calificador JMR</title>
 <style>
   :root {
@@ -16,17 +19,108 @@
     --radius: 14px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         background: var(--bg); color: var(--text); min-height: 100vh; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+         background: var(--bg); color: var(--text); min-height: 100vh;
+         overflow-x: hidden; }
 
-  header { background: var(--bg2); color: white; padding: 16px 20px;
-           display: flex; align-items: center; justify-content: space-between;
-           border-bottom: 1px solid var(--card-border);
-           position: sticky; top: 0; z-index: 40; backdrop-filter: blur(20px); }
-  header h1 { font-size: 1.15rem; font-weight: 700; }
-  header p  { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  /* ── LAYOUT DESKTOP ── */
+  .app-layout { display: flex; min-height: 100vh; }
+  :root { --sidebar-w: 72px; }
 
-  main { max-width: 600px; margin: 0 auto; padding: 16px; padding-bottom: 80px; }
+  .sidebar {
+    width: var(--sidebar-w); background: var(--bg2);
+    border-right: 1px solid var(--card-border);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 16px 0; position: fixed;
+    top: 0; left: 0; bottom: 0; z-index: 50;
+  }
+  .sidebar-logo {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 800; color: white;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 15px rgba(99,102,241,.3);
+  }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .sidebar .nav-item {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; cursor: pointer; color: var(--muted);
+    transition: all .2s; position: relative; border: none; background: transparent;
+    padding: 0;
+  }
+  .sidebar .nav-item:hover {
+    background: rgba(99,102,241,.1); color: var(--primary-light);
+  }
+  .sidebar .nav-item.active {
+    background: rgba(99,102,241,.15); color: var(--primary-light);
+  }
+  .sidebar .nav-item.active::before {
+    content: ''; position: absolute; left: -8px;
+    width: 3px; height: 20px; background: var(--primary);
+    border-radius: 0 3px 3px 0;
+  }
+  .sidebar .nav-item .tooltip {
+    display: none; position: absolute; left: 56px; top: 50%;
+    transform: translateY(-50%);
+    background: var(--bg2); border: 1px solid var(--card-border);
+    padding: 6px 12px; border-radius: 8px;
+    font-size: .75rem; white-space: nowrap;
+    color: var(--text); z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  }
+  .sidebar .nav-item:hover .tooltip { display: block; }
+
+  .main-content {
+    flex: 1; margin-left: var(--sidebar-w); min-height: 100vh;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    padding: 18px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--card-border);
+    backdrop-filter: blur(20px);
+    background: rgba(15,23,42,.8);
+    position: sticky; top: 0; z-index: 40;
+  }
+  .topbar-left h1 {
+    font-size: 1.2rem; font-weight: 700;
+    background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .topbar-left p { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .profile-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(99,102,241,.1);
+    border: 1px solid rgba(99,102,241,.2);
+    border-radius: 99px; padding: 6px 14px;
+    font-size: .78rem; font-weight: 600;
+    color: var(--primary-light);
+  }
+  .profile-badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--success); animation: pulse 2s infinite;
+  }
+  .sheet-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(6,182,212,.1);
+    border: 1px solid rgba(6,182,212,.2);
+    border-radius: 99px; padding: 6px 14px;
+    font-size: .78rem; font-weight: 500; color: var(--accent);
+  }
+
+  .page-content { padding: 24px 28px; max-width: 820px; padding-bottom: 80px; }
+  .section-title {
+    font-size: .72rem; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted);
+    margin-bottom: 16px; font-weight: 600;
+  }
+
 
   .card { background: var(--card); backdrop-filter: blur(16px);
           border: 1px solid var(--card-border);
@@ -240,7 +334,7 @@
   .stat-box .lbl { font-size: .7rem; color: var(--muted); margin-top: 2px;
     text-transform: uppercase; letter-spacing: .5px; }
 
-  .tabs { display: flex; background: var(--bg2); border-top: 1px solid var(--card-border);
+  .tabs { display: none; background: var(--bg2); border-top: 1px solid var(--card-border);
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
     padding-bottom: max(4px, env(safe-area-inset-bottom)); }
   .tab { flex: 1; padding: 10px 4px; text-align: center; font-size: .72rem;
@@ -250,6 +344,82 @@
   .tab.active { color: var(--primary-light); border-top-color: var(--primary); }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
+
+  /* ── GRID DE PERFILES ── */
+  .profile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px; }
+  .profile-card {
+    border: 1.5px solid var(--card-border); border-radius: 12px;
+    padding: 16px; cursor: pointer; transition: all .2s;
+    text-align: center; background: rgba(255,255,255,.02);
+  }
+  .profile-card:hover { border-color: var(--primary); background: rgba(99,102,241,.06); }
+  .profile-card.active {
+    border-color: var(--primary); background: rgba(99,102,241,.1);
+    box-shadow: 0 0 20px rgba(99,102,241,.15);
+  }
+  .profile-card .profile-icon {
+    width: 48px; height: 48px; margin: 0 auto 10px;
+    background: rgba(99,102,241,.1); border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+  }
+  .profile-card .profile-name { font-weight: 700; font-size: .9rem; }
+  .profile-card .profile-desc { font-size: .72rem; color: var(--muted); margin-top: 4px; }
+  .profile-card .profile-check {
+    width: 22px; height: 22px; margin: 10px auto 0;
+    border-radius: 50%; border: 2px solid var(--card-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem; color: white;
+  }
+  .profile-card.active .profile-check {
+    background: var(--primary); border-color: var(--primary);
+  }
+
+  /* ── TABLA DE RESULTADOS SIPAGRE ── */
+  .results-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .results-table thead th {
+    padding: 10px 12px; text-align: left;
+    font-size: .7rem; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--muted);
+    border-bottom: 1px solid var(--card-border);
+  }
+  .results-table tbody td {
+    padding: 12px; border-bottom: 1px solid rgba(255,255,255,.03);
+  }
+  .results-table tbody tr:hover { background: rgba(99,102,241,.04); }
+  .results-table .score { font-weight: 700; color: var(--primary-light); }
+  .results-table .general-score {
+    font-weight: 800; font-size: 1rem;
+    background: linear-gradient(135deg, var(--primary-light), var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .results-table .avg-row {
+    background: rgba(99,102,241,.06); font-weight: 700;
+  }
+  .results-table .pdf-btn {
+    padding: 4px 10px; border: 1px solid var(--card-border);
+    border-radius: 6px; background: transparent;
+    color: var(--primary-light); font-size: .72rem; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+  }
+  .results-table .pdf-btn:hover {
+    background: rgba(99,102,241,.1); border-color: var(--primary);
+  }
+  .results-table-wrap { overflow-x: auto; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main-content { margin-left: 0; }
+    .page-content { padding: 16px; padding-bottom: 80px; }
+    .topbar { padding: 14px 16px; }
+    .topbar-left h1 { font-size: 1.05rem; }
+    .tabs { display: flex; }
+    .profile-grid { grid-template-columns: 1fr 1fr; }
+    .results-table { font-size: .75rem; }
+    .results-table thead th, .results-table tbody td { padding: 8px 6px; }
+  }
 
   .progress-wrap { margin: 10px 0 4px; }
   .progress-bar { height: 6px; background: rgba(255,255,255,.06);
@@ -298,19 +468,47 @@
 </head>
 <body>
 
-<header>
-  <h1>📝 Calificador JMR</h1>
-  <p id="header-subtitle">125 preguntas · Selección múltiple</p>
-</header>
+<div class="app-layout">
+  <!-- ══ SIDEBAR (desktop) ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">J</div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-tab="scan" onclick="switchTab('scan')">📷<span class="tooltip">Escanear</span></button>
+      <button class="nav-item" data-tab="key" onclick="switchTab('key'); initKeyPanel()">🔑<span class="tooltip">Clave</span></button>
+      <button class="nav-item" data-tab="results" onclick="switchTab('results')">📊<span class="tooltip">Resultados</span></button>
+      <button class="nav-item" data-tab="config" onclick="switchTab('config')">⚙️<span class="tooltip">Configuración</span></button>
+    </nav>
+  </aside>
 
-<main>
+  <!-- ══ MAIN CONTENT ══ -->
+  <div class="main-content">
 
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('scan')">📷 Escanear</div>
-    <div class="tab" onclick="switchTab('key'); initKeyPanel()">🔑 Clave</div>
-    <div class="tab" onclick="switchTab('results')">📊 Resultados</div>
-    <div class="tab" onclick="switchTab('config')">⚙️ Config</div>
-  </div>
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>Calificador JMR</h1>
+        <p id="header-subtitle">125 preguntas · Selección múltiple</p>
+      </div>
+      <div class="topbar-right">
+        <div class="profile-badge">
+          <span class="dot"></span>
+          <span id="active-profile-topbar">Cargando…</span>
+        </div>
+        <div class="sheet-pill">
+          📄 <span id="active-sheet-topbar">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile tabs (hidden on desktop, shown on mobile via media query) -->
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('scan')">📷<span>Escanear</span></div>
+      <div class="tab" onclick="switchTab('key'); initKeyPanel()">🔑<span>Clave</span></div>
+      <div class="tab" onclick="switchTab('results')">📊<span>Resultados</span></div>
+      <div class="tab" onclick="switchTab('config')">⚙️<span>Config</span></div>
+    </div>
+
+    <div class="page-content">
 
   <!-- ══ TAB ESCANEAR ══════════════════════════════════════════════════════ -->
   <div id="tab-scan" class="tab-content active">
@@ -527,7 +725,7 @@
         Selecciona el formato de hoja de respuestas que vas a escanear.
         El cambio aplica al próximo escaneo.
       </p>
-      <div id="profile-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div id="profile-list" class="profile-grid"></div>
       <div class="score-note" id="profile-saved-note" style="margin-top:10px;">
         ✅ Tipo de evaluación actualizado.
       </div>
@@ -588,7 +786,9 @@
 
   </div><!-- /tab-config -->
 
-</main>
+    </div><!-- /page-content -->
+  </div><!-- /main-content -->
+</div><!-- /app-layout -->
 
 <!-- Modal nueva hoja -->
 <div class="modal-overlay" id="modal-overlay">
@@ -759,8 +959,11 @@ function rerenderGrid() {
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
 function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) =>
-    t.classList.toggle('active', ['scan','key','results','config'][i] === tab));
+  const order = ['scan','key','results','config'];
+  document.querySelectorAll('.tabs .tab').forEach((t,i) =>
+    t.classList.toggle('active', order[i] === tab));
+  document.querySelectorAll('.sidebar .nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === tab));
   document.querySelectorAll('.tab-content').forEach(tc =>
     tc.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
@@ -801,6 +1004,10 @@ function applyProfile(data) {
   // Actualizar subtítulo del header principal
   const sub = document.getElementById('header-subtitle');
   if (sub) sub.textContent = `${data.total_q} preguntas · ${data.active_name}`;
+
+  // Badge de perfil en topbar
+  const topBadge = document.getElementById('active-profile-topbar');
+  if (topBadge) topBadge.textContent = data.active_name;
 }
 
 function renderProfileList(data) {
@@ -808,14 +1015,13 @@ function renderProfileList(data) {
   if (!container) return;
   container.innerHTML = (data.profiles || []).map(p => {
     const isActive = p.id === data.active_id;
-    return `<div class="profile-option${isActive ? ' active-profile' : ''}"
+    const desc = p.total_q ? `${p.total_q} preguntas` : 'Perfil de examen';
+    return `<div class="profile-card${isActive ? ' active' : ''}"
                  onclick="selectProfile('${p.id}')">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:1.4rem;">${isActive ? '✅' : '⬜'}</span>
-        <div>
-          <div style="font-weight:600;font-size:.92rem;">${p.name}</div>
-        </div>
-      </div>
+      <div class="profile-icon">📝</div>
+      <div class="profile-name">${p.name}</div>
+      <div class="profile-desc">${desc}</div>
+      <div class="profile-check">${isActive ? '✓' : ''}</div>
     </div>`;
   }).join('');
 }
@@ -1001,6 +1207,8 @@ async function loadSheets() {
 function updateActiveBadge(name) {
   document.getElementById('active-badge-text').textContent =
     name ? `Guardando en: ${name}` : 'Sin hoja seleccionada';
+  const pill = document.getElementById('active-sheet-topbar');
+  if (pill) pill.textContent = name || '—';
 }
 
 async function selectSheet(name) {
@@ -1384,23 +1592,8 @@ async function generateSipagreResults() {
       sipagreResults = data.results || [];
       status.innerHTML = `<p style="color:var(--success);font-weight:600;">
         Listo: ${data.students} estudiantes procesados.
-        <a href="${data.url}" target="_blank" style="color:#1d4ed8;">Abrir Sheets</a></p>`;
-      const list = document.getElementById('sipagre-students-list');
-      if (sipagreResults.length) {
-        list.innerHTML = '<p style="font-size:.82rem;color:var(--muted);margin-bottom:8px;"><strong>Descargar reporte individual:</strong></p>' +
-          sipagreResults.map(r => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-bottom:1px solid var(--border);font-size:.82rem;">
-              <div>
-                <strong>${r.name}</strong>
-                <span style="color:var(--muted);margin-left:6px;">ID: ${r.id}</span>
-                <span style="color:var(--muted);margin-left:6px;">General: ${r.general}</span>
-              </div>
-              <button onclick="downloadStudentPdf('${r.id}')"
-                      style="padding:4px 10px;font-size:.75rem;border:1px solid var(--border);border-radius:4px;background:#f8fafc;cursor:pointer;">
-                PDF
-              </button>
-            </div>`).join('');
-      }
+        <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
+      renderSipagreTable();
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error}</p>`;
     }
@@ -1409,6 +1602,56 @@ async function generateSipagreResults() {
   }
   btn.disabled = false;
   btn.textContent = 'Generar Resultados SIPAGRE';
+}
+
+function renderSipagreTable() {
+  const list = document.getElementById('sipagre-students-list');
+  if (!sipagreResults || !sipagreResults.length) { list.innerHTML = ''; return; }
+  const n = sipagreResults.length;
+  const avg = {
+    mat:  Math.round(sipagreResults.reduce((s,r) => s + (+r.mat||0), 0) / n),
+    lect: Math.round(sipagreResults.reduce((s,r) => s + (+r.lect||0), 0) / n),
+    soc:  Math.round(sipagreResults.reduce((s,r) => s + (+r.soc||0), 0) / n),
+    nat:  Math.round(sipagreResults.reduce((s,r) => s + (+r.nat||0), 0) / n),
+    ing:  Math.round(sipagreResults.reduce((s,r) => s + (+r.ing||0), 0) / n),
+    gen:  Math.round(sipagreResults.reduce((s,r) => s + (+r.general||0), 0) / n),
+  };
+  const rows = sipagreResults.map(r => `
+    <tr>
+      <td>
+        <div style="font-weight:600;">${r.name}</div>
+        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id}</div>
+      </td>
+      <td class="score">${r.mat}</td>
+      <td class="score">${r.lect}</td>
+      <td class="score">${r.soc}</td>
+      <td class="score">${r.nat}</td>
+      <td class="score">${r.ing}</td>
+      <td class="general-score">${r.general}</td>
+      <td><button class="pdf-btn" onclick="downloadStudentPdf('${r.id}')">PDF</button></td>
+    </tr>`).join('');
+  list.innerHTML = `
+    <div class="results-table-wrap">
+      <table class="results-table">
+        <thead><tr>
+          <th>Estudiante</th><th>Mat</th><th>Lect</th><th>Soc</th>
+          <th>Nat</th><th>Ing</th><th>General</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="avg-row">
+            <td style="font-weight:700;color:var(--text);">PROMEDIO</td>
+            <td class="score">${avg.mat}</td>
+            <td class="score">${avg.lect}</td>
+            <td class="score">${avg.soc}</td>
+            <td class="score">${avg.nat}</td>
+            <td class="score">${avg.ing}</td>
+            <td class="general-score">${avg.gen}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
 }
 
 // ── PDF 100% en navegador con jsPDF ──────────────────────────────────────
