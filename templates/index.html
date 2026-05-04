@@ -2127,22 +2127,81 @@ function updateHint(pts) {
   }
 }
 
+// Ordenar 4 puntos en orden: TL, TR, BR, BL
+function orderQuadPoints(pts) {
+  // Suma x+y: el menor es TL, el mayor es BR
+  // Diferencia x-y: el menor es TR, el mayor es BL  (ojo: signo)
+  const sums  = pts.map(p => p.x + p.y);
+  const diffs = pts.map(p => p.x - p.y);
+  const tl = pts[sums.indexOf(Math.min(...sums))];
+  const br = pts[sums.indexOf(Math.max(...sums))];
+  const tr = pts[diffs.indexOf(Math.max(...diffs))];
+  const bl = pts[diffs.indexOf(Math.min(...diffs))];
+  return [tl, tr, br, bl];
+}
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
 function captureFromCamera() {
   const video = document.getElementById('cam-video');
   if (!video.videoWidth) { alert('La cámara aún no está lista.'); return; }
-  const canvas = document.createElement('canvas');
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  canvas.toBlob(blob => {
-    if (!blob) { alert('No se pudo capturar la imagen.'); return; }
-    const file = new File([blob], `camara_${Date.now()}.jpg`, {type: 'image/jpeg'});
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    document.getElementById('file-input').files = dt.files;
-    closeCameraModal();
-    document.getElementById('file-input').dispatchEvent(new Event('change'));
-  }, 'image/jpeg', 0.92);
+
+  // Capturar frame completo a un canvas en tamaño original
+  const fullCanvas = document.createElement('canvas');
+  fullCanvas.width  = video.videoWidth;
+  fullCanvas.height = video.videoHeight;
+  fullCanvas.getContext('2d').drawImage(video, 0, 0);
+
+  // Si tenemos detección, recortar y enderezar el documento
+  if (cvLoaded && lastDetected && lastDetected.length === 4) {
+    try {
+      const ordered = orderQuadPoints(lastDetected);
+      const [tl, tr, br, bl] = ordered;
+      const widthA  = dist(br, bl);
+      const widthB  = dist(tr, tl);
+      const heightA = dist(tr, br);
+      const heightB = dist(tl, bl);
+      const outW = Math.round(Math.max(widthA, widthB));
+      const outH = Math.round(Math.max(heightA, heightB));
+
+      const src = cv.imread(fullCanvas);
+      const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y
+      ]);
+      const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        0, 0, outW, 0, outW, outH, 0, outH
+      ]);
+      const M = cv.getPerspectiveTransform(srcPts, dstPts);
+      const dst = new cv.Mat();
+      cv.warpPerspective(src, dst, M, new cv.Size(outW, outH),
+        cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width  = outW;
+      outCanvas.height = outH;
+      cv.imshow(outCanvas, dst);
+
+      src.delete(); srcPts.delete(); dstPts.delete(); M.delete(); dst.delete();
+
+      outCanvas.toBlob(blob => sendBlob(blob), 'image/jpeg', 0.92);
+      return;
+    } catch (e) {
+      console.warn('Recorte falló, usando frame completo:', e);
+    }
+  }
+
+  // Fallback: enviar el frame completo
+  fullCanvas.toBlob(blob => sendBlob(blob), 'image/jpeg', 0.92);
+}
+
+function sendBlob(blob) {
+  if (!blob) { alert('No se pudo capturar la imagen.'); return; }
+  const file = new File([blob], `camara_${Date.now()}.jpg`, {type: 'image/jpeg'});
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  document.getElementById('file-input').files = dt.files;
+  closeCameraModal();
+  document.getElementById('file-input').dispatchEvent(new Event('change'));
 }
 
 // ══ DEBUG ══════════════════════════════════════════════════════════════════
