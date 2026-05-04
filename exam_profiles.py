@@ -119,6 +119,7 @@ SIPAGRE_1S = {
     'binarize_c':        6,
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.7,   # mide solo el 70% interior, ignora el borde impreso
 }
 
 
@@ -163,6 +164,7 @@ SIPAGRE_2S = {
     'binarize_c':        6,
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.7,   # mide solo el 70% interior, ignora el borde impreso
 }
 
 

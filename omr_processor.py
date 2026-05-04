@@ -278,11 +278,15 @@ def _detect_rows(binary, profile):
 # LECTURA DE BURBUJAS — v11 (medición dual: binaria + escala de grises)
 # ===========================================================================
 
-def _make_circle_mask(radius):
-    """Máscara circular: mide fill solo dentro del círculo, ignora esquinas."""
+def _make_circle_mask(radius, fill_radius=None):
+    """
+    Máscara circular: mide fill solo dentro del círculo.
+    fill_radius < radius excluye el contorno impreso de la burbuja.
+    """
     size = radius * 2
     mask = np.zeros((size, size), dtype=np.uint8)
-    cv2.circle(mask, (radius, radius), radius, 255, -1)
+    fr = fill_radius if fill_radius is not None else radius
+    cv2.circle(mask, (radius, radius), int(fr), 255, -1)
     return mask
 
 
@@ -331,8 +335,10 @@ def _read_answers(binary, gray, y_rows, profile):
     threshold    = profile['fill_threshold']
     min_contrast = profile['min_contrast']
     snap         = profile.get('snap_range', 3)
+    inner_ratio  = profile.get('mask_inner_ratio', 1.0)
+    fill_radius  = max(1, int(radius * inner_ratio))
     edge_margin  = radius + 4
-    circle_mask  = _make_circle_mask(radius)
+    circle_mask  = _make_circle_mask(radius, fill_radius)
 
     for col in profile['columns']:
         xs      = [int(fx * w) for fx in col['bubble_fx']]
