@@ -27,7 +27,7 @@
 
   /* ── LAYOUT DESKTOP ── */
   .app-layout { display: flex; min-height: 100vh; }
-  :root { --sidebar-w: 72px; }
+  :root { --sidebar-w: 88px; }
 
   .sidebar {
     width: var(--sidebar-w); background: var(--bg2);
@@ -37,8 +37,7 @@
     top: 0; left: 0; bottom: 0; z-index: 50;
   }
   .sidebar-logo {
-    width: 56px; height: 56px;
-    border-radius: 14px;
+    width: 72px; height: 72px;
     display: flex; align-items: center; justify-content: center;
     margin-bottom: 24px; overflow: hidden;
   }
@@ -542,10 +541,8 @@
     <div class="topbar">
       <div class="topbar-left" style="display:flex;align-items:center;gap:14px;">
         <img src="{{ url_for('static', filename='logo.png') }}" alt="JMR"
-             class="topbar-logo" style="width:56px;height:56px;display:none;">
-        <div>
-          <p id="header-subtitle" style="font-size:.95rem;color:var(--text);font-weight:500;">125 preguntas · Selección múltiple</p>
-        </div>
+             class="topbar-logo" style="width:64px;height:64px;display:none;object-fit:contain;">
+        <span id="header-subtitle" style="display:none;"></span>
       </div>
       <div class="topbar-right">
         <div class="profile-badge">
