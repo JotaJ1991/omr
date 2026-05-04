@@ -112,6 +112,7 @@
     font-size: .78rem; font-weight: 500; color: var(--accent);
   }
 
+  .topbar-logo { display: none; object-fit: contain; }
   .page-content { padding: 24px 28px; max-width: 820px; padding-bottom: 80px; }
   .section-title {
     font-size: .72rem; text-transform: uppercase;
@@ -465,9 +466,12 @@
     .sidebar { display: none; }
     .main-content { margin-left: 0; }
     .page-content { padding: 16px; padding-bottom: 80px; }
-    .topbar { padding: 14px 16px; }
+    .topbar { padding: 6px 12px; }
     .topbar-left h1 { font-size: 1.05rem; }
-    .topbar-logo { display: block !important; }
+    .topbar-logo {
+      display: block !important;
+      width: 96px; height: 96px;
+    }
     .tabs { display: flex; }
     .profile-grid { grid-template-columns: 1fr 1fr; }
     .results-table { font-size: .75rem; }
@@ -539,8 +543,7 @@
     <!-- Topbar -->
     <div class="topbar">
       <div class="topbar-left" style="display:flex;align-items:center;gap:14px;">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="JMR"
-             class="topbar-logo" style="width:64px;height:64px;display:none;object-fit:contain;">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="JMR" class="topbar-logo">
         <span id="header-subtitle" style="display:none;"></span>
       </div>
       <div class="topbar-right">
