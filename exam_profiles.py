@@ -113,11 +113,11 @@ SIPAGRE_1S = {
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'snap_range':        3,
-    'fill_threshold':   0.02,
-    'min_contrast':     0.01,
+    'fill_threshold':   0.05,
+    'min_contrast':     0.03,
     'binarize_block':   25,
-    'binarize_c':        4,
-    'clahe_clip':        3.5,
+    'binarize_c':        5,
+    'clahe_clip':        3.0,
     'clahe_grid':       (8, 8),
 }
 
@@ -157,11 +157,11 @@ SIPAGRE_2S = {
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'snap_range':        3,
-    'fill_threshold':   0.02,
-    'min_contrast':     0.01,
+    'fill_threshold':   0.05,
+    'min_contrast':     0.03,
     'binarize_block':   25,
-    'binarize_c':        4,
-    'clahe_clip':        3.5,
+    'binarize_c':        5,
+    'clahe_clip':        3.0,
     'clahe_grid':       (8, 8),
 }
 
