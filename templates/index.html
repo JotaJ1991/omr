@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
 <title>Calificador JMR</title>
 <style>
   :root {
@@ -35,14 +37,13 @@
     top: 0; left: 0; bottom: 0; z-index: 50;
   }
   .sidebar-logo {
-    width: 40px; height: 40px;
-    background: linear-gradient(135deg, var(--primary), var(--accent));
+    width: 44px; height: 44px;
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem; font-weight: 800; color: white;
-    margin-bottom: 24px;
+    margin-bottom: 24px; overflow: hidden;
     box-shadow: 0 4px 15px rgba(99,102,241,.3);
   }
+  .sidebar-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .sidebar-nav { display: flex; flex-direction: column; gap: 8px; flex: 1; }
   .sidebar .nav-item {
     width: 44px; height: 44px; border-radius: 12px;
@@ -469,6 +470,7 @@
     .page-content { padding: 16px; padding-bottom: 80px; }
     .topbar { padding: 14px 16px; }
     .topbar-left h1 { font-size: 1.05rem; }
+    .topbar-logo { display: block !important; }
     .tabs { display: flex; }
     .profile-grid { grid-template-columns: 1fr 1fr; }
     .results-table { font-size: .75rem; }
@@ -525,7 +527,7 @@
 <div class="app-layout">
   <!-- ══ SIDEBAR (desktop) ══ -->
   <aside class="sidebar">
-    <div class="sidebar-logo">J</div>
+    <div class="sidebar-logo"><img src="{{ url_for('static', filename='logo.png') }}" alt="JMR"></div>
     <nav class="sidebar-nav">
       <button class="nav-item active" data-tab="scan" onclick="switchTab('scan')">📷<span class="tooltip">Escanear</span></button>
       <button class="nav-item" data-tab="key" onclick="switchTab('key'); initKeyPanel()">🔑<span class="tooltip">Clave</span></button>
@@ -539,9 +541,13 @@
 
     <!-- Topbar -->
     <div class="topbar">
-      <div class="topbar-left">
-        <h1>Calificador JMR</h1>
-        <p id="header-subtitle">125 preguntas · Selección múltiple</p>
+      <div class="topbar-left" style="display:flex;align-items:center;gap:12px;">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="JMR"
+             class="topbar-logo" style="width:38px;height:38px;border-radius:10px;display:none;">
+        <div>
+          <h1>Calificador JMR</h1>
+          <p id="header-subtitle">125 preguntas · Selección múltiple</p>
+        </div>
       </div>
       <div class="topbar-right">
         <div class="profile-badge">
