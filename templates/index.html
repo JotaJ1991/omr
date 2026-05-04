@@ -408,6 +408,52 @@
   }
   .results-table-wrap { overflow-x: auto; }
 
+  /* ── CAMERA MODAL (cámara guiada) ── */
+  .cam-modal {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: #000; flex-direction: column;
+  }
+  .cam-modal.show { display: flex; }
+  .cam-modal video { width: 100%; height: 100%; object-fit: cover; }
+  .cam-stage {
+    position: relative; flex: 1; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cam-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+  .cam-overlay svg { width: 100%; height: 100%; }
+  .cam-hint {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.6); color: white;
+    padding: 8px 16px; border-radius: 99px;
+    font-size: .82rem; backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.15);
+  }
+  .cam-controls {
+    background: #000; padding: 16px; display: flex; gap: 12px;
+    align-items: center; justify-content: space-between;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .cam-btn {
+    width: 56px; height: 56px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,.1); color: white; font-size: 1.2rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .2s; flex: 0;
+  }
+  .cam-btn:hover { background: rgba(255,255,255,.18); }
+  .cam-btn.shutter {
+    width: 76px; height: 76px;
+    background: white; color: #000; font-size: 1.6rem;
+    box-shadow: 0 0 0 4px rgba(255,255,255,.25);
+  }
+  .cam-btn.shutter:active { transform: scale(.95); }
+  .cam-error {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center; padding: 24px;
+    color: white; text-align: center; font-size: .95rem; line-height: 1.5;
+  }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 768px) {
     .sidebar { display: none; }
@@ -569,6 +615,9 @@
       <div class="btn-group">
         <button class="btn-camera" onclick="document.getElementById('file-input').click()">
           📷 Cámara
+        </button>
+        <button class="btn-camera" onclick="openCameraModal()" title="Cámara con guía visual">
+          📸 Guiada
         </button>
         <button class="btn-primary" id="btn-process" onclick="processPhoto()" disabled>
           🔍 Analizar
@@ -789,6 +838,33 @@
     </div><!-- /page-content -->
   </div><!-- /main-content -->
 </div><!-- /app-layout -->
+
+<!-- ══ CÁMARA GUIADA ══ -->
+<div class="cam-modal" id="cam-modal">
+  <div class="cam-stage">
+    <video id="cam-video" autoplay playsinline muted></video>
+    <div class="cam-overlay" id="cam-overlay">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+        <!-- Marco guía (relación 8.5:11 = letter portrait, ajustable) -->
+        <rect x="10" y="6" width="80" height="88"
+              fill="none" stroke="#10b981" stroke-width="0.5"
+              stroke-dasharray="2 1" rx="1"/>
+        <!-- Marcadores de las 4 esquinas (representan los timing marks) -->
+        <rect x="11" y="7" width="4" height="4" fill="#10b981" opacity=".9"/>
+        <rect x="85" y="7" width="4" height="4" fill="#10b981" opacity=".9"/>
+        <rect x="11" y="89" width="4" height="4" fill="#10b981" opacity=".9"/>
+        <rect x="85" y="89" width="4" height="4" fill="#10b981" opacity=".9"/>
+      </svg>
+    </div>
+    <div class="cam-hint">Encuadra los 4 marcadores negros dentro del marco verde</div>
+    <div class="cam-error" id="cam-error" style="display:none;"></div>
+  </div>
+  <div class="cam-controls">
+    <button class="cam-btn" onclick="closeCameraModal()" title="Cancelar">✕</button>
+    <button class="cam-btn shutter" onclick="captureFromCamera()" title="Tomar foto">📸</button>
+    <button class="cam-btn" onclick="switchCamera()" title="Cambiar cámara">🔄</button>
+  </div>
+</div>
 
 <!-- Modal nueva hoja -->
 <div class="modal-overlay" id="modal-overlay">
@@ -1845,6 +1921,77 @@ function downloadStudentPdf(studentId) {
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
+}
+
+// ══ CÁMARA GUIADA ══════════════════════════════════════════════════════════
+let camStream = null;
+let camFacing = 'environment';
+
+async function openCameraModal() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Tu navegador no soporta acceso a cámara. Usa el botón Cámara normal.');
+    return;
+  }
+  document.getElementById('cam-modal').classList.add('show');
+  document.getElementById('cam-error').style.display = 'none';
+  await startCameraStream();
+}
+
+async function startCameraStream() {
+  stopCameraStream();
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: camFacing, width: {ideal: 1920}, height: {ideal: 1080} },
+      audio: false
+    });
+    document.getElementById('cam-video').srcObject = camStream;
+  } catch (e) {
+    const err = document.getElementById('cam-error');
+    err.style.display = 'flex';
+    err.textContent = 'No se pudo acceder a la cámara. Verifica los permisos del navegador. (' + e.message + ')';
+  }
+}
+
+function stopCameraStream() {
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+}
+
+async function switchCamera() {
+  camFacing = (camFacing === 'environment') ? 'user' : 'environment';
+  await startCameraStream();
+}
+
+function closeCameraModal() {
+  stopCameraStream();
+  document.getElementById('cam-modal').classList.remove('show');
+}
+
+function captureFromCamera() {
+  const video = document.getElementById('cam-video');
+  if (!video.videoWidth) { alert('La cámara aún no está lista, espera un momento.'); return; }
+
+  // Capturar frame del video a un canvas
+  const canvas = document.createElement('canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  canvas.toBlob(blob => {
+    if (!blob) { alert('No se pudo capturar la imagen.'); return; }
+
+    // Convertir blob a File y asignarlo al input para reusar el flujo existente
+    const file = new File([blob], `camara_${Date.now()}.jpg`, {type: 'image/jpeg'});
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById('file-input').files = dt.files;
+
+    // Cerrar modal y disparar el flujo normal de previsualización + auto-procesado
+    closeCameraModal();
+    document.getElementById('file-input').dispatchEvent(new Event('change'));
+  }, 'image/jpeg', 0.92);
 }
 
 // ══ DEBUG ══════════════════════════════════════════════════════════════════
