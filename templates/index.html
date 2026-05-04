@@ -421,8 +421,16 @@
   }
   .cam-overlay {
     position: absolute; inset: 0; pointer-events: none;
+    width: 100%; height: 100%;
   }
-  .cam-overlay svg { width: 100%; height: 100%; }
+  .cam-loading {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
+    z-index: 5;
+  }
+  .cam-loading.hidden { display: none; }
+  .cam-hint.detected { background: rgba(16,185,129,.85); }
   .cam-hint {
     position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
     background: rgba(0,0,0,.6); color: white;
@@ -812,29 +820,22 @@
   </div><!-- /main-content -->
 </div><!-- /app-layout -->
 
-<!-- ══ CÁMARA GUIADA ══ -->
+<!-- ══ CÁMARA GUIADA CON DETECCIÓN DE BORDES ══ -->
 <div class="cam-modal" id="cam-modal">
-  <div class="cam-stage">
+  <div class="cam-stage" id="cam-stage">
     <video id="cam-video" autoplay playsinline muted></video>
-    <div class="cam-overlay" id="cam-overlay">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-        <!-- Marco guía (relación 8.5:11 = letter portrait, ajustable) -->
-        <rect x="10" y="6" width="80" height="88"
-              fill="none" stroke="#10b981" stroke-width="0.5"
-              stroke-dasharray="2 1" rx="1"/>
-        <!-- Marcadores de las 4 esquinas (representan los timing marks) -->
-        <rect x="11" y="7" width="4" height="4" fill="#10b981" opacity=".9"/>
-        <rect x="85" y="7" width="4" height="4" fill="#10b981" opacity=".9"/>
-        <rect x="11" y="89" width="4" height="4" fill="#10b981" opacity=".9"/>
-        <rect x="85" y="89" width="4" height="4" fill="#10b981" opacity=".9"/>
-      </svg>
-    </div>
-    <div class="cam-hint">Encuadra los 4 marcadores negros dentro del marco verde</div>
+    <canvas id="cam-canvas" class="cam-overlay"></canvas>
+    <div class="cam-hint" id="cam-hint">Inicializando detector…</div>
     <div class="cam-error" id="cam-error" style="display:none;"></div>
+    <div class="cam-loading" id="cam-loading">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;color:#10b981"></div>
+      <p style="margin-top:14px;font-size:.9rem;color:white;">Cargando detector OpenCV…</p>
+      <p style="margin-top:6px;font-size:.75rem;color:rgba(255,255,255,.6);">Solo la primera vez (~9 MB)</p>
+    </div>
   </div>
   <div class="cam-controls">
     <button class="cam-btn" onclick="closeCameraModal()" title="Cancelar">✕</button>
-    <button class="cam-btn shutter" onclick="captureFromCamera()" title="Tomar foto">📸</button>
+    <button class="cam-btn shutter" id="cam-shutter" onclick="captureFromCamera()" title="Tomar foto">📸</button>
     <button class="cam-btn" onclick="switchCamera()" title="Cambiar cámara">🔄</button>
   </div>
 </div>
@@ -1896,32 +1897,97 @@ function downloadStudentPdf(studentId) {
   }
 }
 
-// ══ CÁMARA GUIADA ══════════════════════════════════════════════════════════
-let camStream = null;
-let camFacing = 'environment';
+// ══ CÁMARA GUIADA CON DETECCIÓN DE BORDES (OpenCV.js) ══════════════════════
+let camStream      = null;
+let camFacing      = 'environment';
+let cvLoaded       = false;
+let cvLoading      = false;
+let detectionLoop  = null;
+let lastDetected   = null;   // {pts: [{x,y}], stableFrames: int}
+let videoReady     = false;
+
+const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js';
+
+async function loadOpenCV() {
+  if (cvLoaded) return true;
+  if (cvLoading) {
+    // Esperar a que termine la carga en curso
+    return new Promise(res => {
+      const wait = setInterval(() => {
+        if (cvLoaded) { clearInterval(wait); res(true); }
+      }, 200);
+    });
+  }
+  cvLoading = true;
+  return new Promise((resolve) => {
+    if (window.cv && window.cv.Mat) { cvLoaded = true; cvLoading = false; resolve(true); return; }
+    const script = document.createElement('script');
+    script.src = OPENCV_URL;
+    script.async = true;
+    script.onload = () => {
+      // OpenCV.js inicializa de forma asíncrona
+      const checkReady = () => {
+        if (window.cv && window.cv.Mat) {
+          cvLoaded = true; cvLoading = false; resolve(true);
+        } else if (window.cv && typeof window.cv.onRuntimeInitialized === 'function') {
+          window.cv.onRuntimeInitialized = () => { cvLoaded = true; cvLoading = false; resolve(true); };
+        } else if (window.cv) {
+          window.cv.onRuntimeInitialized = () => { cvLoaded = true; cvLoading = false; resolve(true); };
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      checkReady();
+    };
+    script.onerror = () => { cvLoading = false; resolve(false); };
+    document.head.appendChild(script);
+  });
+}
 
 async function openCameraModal() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('Tu navegador no soporta acceso a cámara. Usa el botón Cámara normal.');
     return;
   }
-  document.getElementById('cam-modal').classList.add('show');
+  const modal = document.getElementById('cam-modal');
+  modal.classList.add('show');
   document.getElementById('cam-error').style.display = 'none';
-  await startCameraStream();
+  document.getElementById('cam-loading').classList.remove('hidden');
+  document.getElementById('cam-hint').textContent = 'Inicializando detector…';
+  document.getElementById('cam-hint').classList.remove('detected');
+
+  // Iniciar cámara y cargar OpenCV en paralelo
+  const [_, ok] = await Promise.all([startCameraStream(), loadOpenCV()]);
+  document.getElementById('cam-loading').classList.add('hidden');
+
+  if (!ok) {
+    document.getElementById('cam-hint').textContent = 'Detector no disponible. Puedes capturar manualmente.';
+    return;
+  }
+  document.getElementById('cam-hint').textContent = 'Apunta al documento';
+  startDetectionLoop();
 }
 
 async function startCameraStream() {
   stopCameraStream();
+  videoReady = false;
   try {
     camStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: camFacing, width: {ideal: 1920}, height: {ideal: 1080} },
       audio: false
     });
-    document.getElementById('cam-video').srcObject = camStream;
+    const v = document.getElementById('cam-video');
+    v.srcObject = camStream;
+    v.onloadedmetadata = () => {
+      videoReady = true;
+      const cv2 = document.getElementById('cam-canvas');
+      cv2.width  = v.videoWidth;
+      cv2.height = v.videoHeight;
+    };
   } catch (e) {
     const err = document.getElementById('cam-error');
     err.style.display = 'flex';
-    err.textContent = 'No se pudo acceder a la cámara. Verifica los permisos del navegador. (' + e.message + ')';
+    err.textContent = 'No se pudo acceder a la cámara. Verifica permisos. (' + e.message + ')';
   }
 }
 
@@ -1930,38 +1996,150 @@ function stopCameraStream() {
     camStream.getTracks().forEach(t => t.stop());
     camStream = null;
   }
+  videoReady = false;
 }
 
 async function switchCamera() {
+  stopDetectionLoop();
   camFacing = (camFacing === 'environment') ? 'user' : 'environment';
   await startCameraStream();
+  if (cvLoaded) startDetectionLoop();
 }
 
 function closeCameraModal() {
+  stopDetectionLoop();
   stopCameraStream();
   document.getElementById('cam-modal').classList.remove('show');
 }
 
+// ── Loop de detección ──
+function startDetectionLoop() {
+  stopDetectionLoop();
+  detectionLoop = setInterval(detectFrame, 150);   // ~6-7 fps
+}
+function stopDetectionLoop() {
+  if (detectionLoop) { clearInterval(detectionLoop); detectionLoop = null; }
+}
+
+function detectFrame() {
+  if (!videoReady || !cvLoaded) return;
+  const video  = document.getElementById('cam-video');
+  const canvas = document.getElementById('cam-canvas');
+  if (!video.videoWidth) return;
+
+  // Capturar frame a un canvas auxiliar pequeño para acelerar
+  const procW = 480;
+  const scale = procW / video.videoWidth;
+  const procH = Math.round(video.videoHeight * scale);
+  const tmp = document.createElement('canvas');
+  tmp.width = procW; tmp.height = procH;
+  tmp.getContext('2d').drawImage(video, 0, 0, procW, procH);
+
+  let src, gray, blur, edges, contours, hierarchy;
+  try {
+    src      = cv.imread(tmp);
+    gray     = new cv.Mat();
+    blur     = new cv.Mat();
+    edges    = new cv.Mat();
+    contours = new cv.MatVector();
+    hierarchy = new cv.Mat();
+
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
+    cv.Canny(blur, edges, 60, 180);
+    // Dilatar para cerrar líneas rotas
+    const kernel = cv.Mat.ones(3,3, cv.CV_8U);
+    cv.dilate(edges, edges, kernel);
+    kernel.delete();
+
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    // Buscar el contorno cuadrilátero más grande
+    let bestPts = null;
+    let bestArea = 0;
+    const minArea = procW * procH * 0.15;  // al menos 15% de la imagen
+    for (let i = 0; i < contours.size(); i++) {
+      const c = contours.get(i);
+      const area = cv.contourArea(c);
+      if (area < minArea) { c.delete(); continue; }
+      const peri = cv.arcLength(c, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(c, approx, 0.02 * peri, true);
+      if (approx.rows === 4 && area > bestArea) {
+        bestArea = area;
+        bestPts = [];
+        for (let j = 0; j < 4; j++) {
+          bestPts.push({
+            x: approx.data32S[j*2]   / scale,
+            y: approx.data32S[j*2+1] / scale,
+          });
+        }
+      }
+      approx.delete();
+      c.delete();
+    }
+
+    drawOverlay(canvas, bestPts);
+    updateHint(bestPts);
+  } catch (e) {
+    console.warn('Detección falló:', e);
+  } finally {
+    if (src) src.delete();
+    if (gray) gray.delete();
+    if (blur) blur.delete();
+    if (edges) edges.delete();
+    if (contours) contours.delete();
+    if (hierarchy) hierarchy.delete();
+  }
+}
+
+function drawOverlay(canvas, pts) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!pts) return;
+  // Polígono semitransparente verde
+  ctx.fillStyle   = 'rgba(16, 185, 129, 0.22)';
+  ctx.strokeStyle = '#10b981';
+  ctx.lineWidth   = 6;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Vértices
+  ctx.fillStyle = '#10b981';
+  pts.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2); ctx.fill();
+  });
+}
+
+function updateHint(pts) {
+  const hint = document.getElementById('cam-hint');
+  if (pts) {
+    hint.textContent = '✓ Documento detectado';
+    hint.classList.add('detected');
+    lastDetected = pts;
+  } else {
+    hint.textContent = 'Buscando documento…';
+    hint.classList.remove('detected');
+    lastDetected = null;
+  }
+}
+
 function captureFromCamera() {
   const video = document.getElementById('cam-video');
-  if (!video.videoWidth) { alert('La cámara aún no está lista, espera un momento.'); return; }
-
-  // Capturar frame del video a un canvas
+  if (!video.videoWidth) { alert('La cámara aún no está lista.'); return; }
   const canvas = document.createElement('canvas');
   canvas.width  = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
-
   canvas.toBlob(blob => {
     if (!blob) { alert('No se pudo capturar la imagen.'); return; }
-
-    // Convertir blob a File y asignarlo al input para reusar el flujo existente
     const file = new File([blob], `camara_${Date.now()}.jpg`, {type: 'image/jpeg'});
     const dt = new DataTransfer();
     dt.items.add(file);
     document.getElementById('file-input').files = dt.files;
-
-    // Cerrar modal y disparar el flujo normal de previsualización + auto-procesado
     closeCameraModal();
     document.getElementById('file-input').dispatchEvent(new Event('change'));
   }, 'image/jpeg', 0.92);
