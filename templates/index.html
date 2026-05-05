@@ -1742,6 +1742,25 @@ function _newCanvas(w, h) {
   return c;
 }
 
+// Carga el logo una vez y lo cachea como dataURL para insertarlo en el PDF
+let _logoDataUrl = null;
+function _loadLogo() {
+  return new Promise(resolve => {
+    if (_logoDataUrl !== null) { resolve(_logoDataUrl); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = _newCanvas(img.naturalWidth, img.naturalHeight);
+      c.getContext('2d').drawImage(img, 0, 0);
+      try { _logoDataUrl = c.toDataURL('image/png'); }
+      catch (e) { _logoDataUrl = ''; }
+      resolve(_logoDataUrl);
+    };
+    img.onerror = () => { _logoDataUrl = ''; resolve(''); };
+    img.src = '/static/logo.png';
+  });
+}
+
 function drawGaugeCanvas(value, max, label) {
   const W = 700, H = 480;
   const c = _newCanvas(W, H);
@@ -2040,14 +2059,13 @@ function renderStudentPage(doc, student, pcts, addPage) {
   // Acento blanco lateral
   doc.setFillColor(255,255,255);
   doc.rect(13, 14, 3, titleH - 8, 'F');
-  // Decoración: puntos en la esquina derecha
-  doc.setFillColor(255,255,255);
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 3; j++) {
-      const dx = pw - 5 - i*3.5;
-      const dy = 13 + j*3.5;
-      doc.circle(dx, dy, 0.7, 'F');
-    }
+  // Logo en la esquina superior derecha del header
+  if (_logoDataUrl) {
+    const logoSize = 18;
+    const logoX = 10 + pw - logoSize - 4;
+    const logoY = 10 + (titleH - logoSize) / 2;
+    try { doc.addImage(_logoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
+    catch(e) { /* logo opcional */ }
   }
   // Texto título
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
@@ -2084,20 +2102,16 @@ function renderStudentPage(doc, student, pcts, addPage) {
   const gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
   doc.addImage(gaugeCanvas.toDataURL('image/png'), 'PNG', 10, y, gW, gH);
 
+  // Donut percentil ajustado al espacio restante (sin texto extra a la derecha)
   const donutCanvas = drawDonutCanvas(pctGen, 'PERCENTIL', '#6366f1');
-  const dSize = gH * 0.85;
-  const dx = 10 + gW + 8;
+  const dSize = Math.min(gH, pw - gW - 8);
+  const dx = 10 + gW + 8 + (pw - gW - 8 - dSize) / 2;
   doc.addImage(donutCanvas.toDataURL('image/png'), 'PNG', dx, y + (gH - dSize)/2, dSize, dSize);
 
-  // Etiqueta breve a la derecha del donut
-  const tx0 = dx + dSize + 4;
-  doc.setFont('helvetica','bold'); doc.setFontSize(10);
-  doc.setTextColor(40,40,40);
-  doc.text('PERCENTIL GENERAL', tx0, y + gH/2 - 4);
-  doc.setFont('helvetica','normal'); doc.setFontSize(8);
-  doc.setTextColor(80,80,80);
-  doc.text('Posicion respecto a', tx0, y + gH/2 + 2);
-  doc.text('los evaluados.', tx0, y + gH/2 + 7);
+  // Subtítulo bajo el donut
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Posicion respecto a los evaluados', dx + dSize/2, y + (gH + dSize)/2 + 2.5, {align:'center'});
 
   y += gH + 4;
 
@@ -2174,7 +2188,7 @@ function getJsPDF() {
   throw new Error('jsPDF no ha cargado. Recarga la pagina e intenta de nuevo.');
 }
 
-function downloadAllPdfs() {
+async function downloadAllPdfs() {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
       '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
@@ -2185,6 +2199,7 @@ function downloadAllPdfs() {
   btn.disabled = true; btn.textContent = 'Generando PDF...';
   status.innerHTML = '<p style="color:var(--muted)">Generando reportes...</p>';
   try {
+    await _loadLogo();
     const jsPDF = getJsPDF();
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
@@ -2199,7 +2214,7 @@ function downloadAllPdfs() {
   btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
 }
 
-function downloadStudentPdf(studentId) {
+async function downloadStudentPdf(studentId) {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
       '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
@@ -2207,6 +2222,7 @@ function downloadStudentPdf(studentId) {
   }
   const status = document.getElementById('sipagre-status');
   try {
+    await _loadLogo();
     const JsPDF = getJsPDF();
     const doc = new JsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
