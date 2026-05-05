@@ -1743,10 +1743,11 @@ function _newCanvas(w, h) {
 }
 
 function drawGaugeCanvas(value, max, label) {
-  const W = 600, H = 380;
+  const W = 700, H = 480;
   const c = _newCanvas(W, H);
   const ctx = c.getContext('2d');
-  const cx = W/2, cy = H*0.72, r = 200;
+  const cx = W/2, cy = H*0.62, r = 200;
+  const lw = 44;
   const startA = Math.PI, endA = 2*Math.PI;
   const total = endA - startA;
   // Zonas: 0-25 rojo, 25-50 naranja, 50-75 amarillo, 75-100 verde
@@ -1756,8 +1757,8 @@ function drawGaugeCanvas(value, max, label) {
     {from: 0.50, to: 0.75, color: '#eab308'},
     {from: 0.75, to: 1.00, color: '#22c55e'},
   ];
-  ctx.lineWidth = 50;
-  ctx.lineCap = 'round';
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'butt';
   zones.forEach(z => {
     ctx.beginPath();
     ctx.strokeStyle = z.color;
@@ -1766,40 +1767,128 @@ function drawGaugeCanvas(value, max, label) {
   });
   // Etiquetas 0 y max
   ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 32px Inter, Arial';
+  ctx.font = 'bold 28px Inter, Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('0', cx - r - 10, cy + 60);
-  ctx.fillText(String(max), cx + r + 10, cy + 60);
+  ctx.fillText('0',          cx - r,     cy + 45);
+  ctx.fillText(String(max),  cx + r,     cy + 45);
   // Aguja
   const v = Math.min(Math.max(value, 0), max);
   const ang = startA + total * (v / max);
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(ang);
-  // Cuerpo aguja
-  ctx.fillStyle = '#475569';
+  // Cuerpo aguja (triángulo)
+  ctx.fillStyle = '#334155';
   ctx.beginPath();
-  ctx.moveTo(0, -16);
-  ctx.lineTo(r - 10, 0);
-  ctx.lineTo(0, 16);
+  ctx.moveTo(0, -14);
+  ctx.lineTo(r - 8, 0);
+  ctx.lineTo(0, 14);
   ctx.closePath();
   ctx.fill();
   // Centro
   ctx.beginPath();
   ctx.arc(0, 0, 22, 0, Math.PI*2);
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = '#1e293b';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, 0, 8, 0, Math.PI*2);
+  ctx.fillStyle = '#94a3b8';
   ctx.fill();
   ctx.restore();
-  // Valor numérico debajo
+  // Valor numérico grande debajo
   ctx.fillStyle = '#0f172a';
-  ctx.font = 'bold 56px Inter, Arial';
-  ctx.fillText(String(value), cx, cy + 130);
+  ctx.font = 'bold 72px Inter, Arial';
+  ctx.fillText(String(value), cx, cy + 110);
+  ctx.fillStyle = '#64748b';
+  ctx.font = '500 24px Inter, Arial';
+  ctx.fillText(`/ ${max}`, cx, cy + 140);
   // Título arriba
   if (label) {
     ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 28px Inter, Arial';
+    ctx.font = 'bold 30px Inter, Arial';
     ctx.fillText(label, cx, 50);
   }
+  return c;
+}
+
+function drawDonutCanvas(percent, label, color) {
+  const W = 380, H = 380;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const cx = W/2, cy = H/2, r = 130;
+  const lw = 38;
+  // Track de fondo
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.stroke();
+  // Arco de progreso
+  const p = Math.max(0, Math.min(100, percent)) / 100;
+  ctx.strokeStyle = color || '#6366f1';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, -Math.PI/2, -Math.PI/2 + Math.PI*2 * p);
+  ctx.stroke();
+  // Texto centro: valor
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 92px Inter, Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(Math.round(percent)), cx, cy - 8);
+  // Label "PERCENTIL"
+  ctx.fillStyle = '#64748b';
+  ctx.font = 'bold 22px Inter, Arial';
+  ctx.fillText(label || 'PERCENTIL', cx, cy + 50);
+  return c;
+}
+
+function drawPercentileBarCanvas(percent) {
+  const W = 700, H = 70;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const x = 30, y = 30, w = W - 60, h = 14;
+  // Gradiente rojo→amarillo→verde
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0,    '#ef4444');
+  grad.addColorStop(0.4,  '#f59e0b');
+  grad.addColorStop(0.7,  '#eab308');
+  grad.addColorStop(1,    '#22c55e');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 7);
+  ctx.fill();
+  // Tick marks cada 10%
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const tx = x + (w * i/10);
+    ctx.beginPath();
+    ctx.moveTo(tx, y);
+    ctx.lineTo(tx, y + h);
+    ctx.stroke();
+  }
+  // Etiquetas 0 y 100
+  ctx.fillStyle = '#64748b';
+  ctx.font = 'bold 16px Inter, Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('0', x - 18, y + h + 18);
+  ctx.textAlign = 'right';
+  ctx.fillText('100', x + w + 22, y + h + 18);
+  // Marcador triangular
+  const px = x + (w * Math.max(0, Math.min(100, percent)) / 100);
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(px - 8, y - 4);
+  ctx.lineTo(px + 8, y - 4);
+  ctx.lineTo(px, y + 6);
+  ctx.closePath();
+  ctx.fill();
+  // Número del percentil arriba del marcador
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 18px Inter, Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(String(percent), px, y - 10);
   return c;
 }
 
@@ -1931,31 +2020,31 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.text('RESULTADOS GLOBALES', 10+pw/2, y+6, {align:'center'});
   y += 12;
 
-  // GAUGE: Puntaje general (a la izquierda)
+  // GAUGE Puntaje general (izquierda) + DONUT Percentil (derecha)
   const general = Number(student.general)||0;
-  const gaugeCanvas = drawGaugeCanvas(general, 500, 'PUNTAJE GENERAL');
-  const gaugeImg = gaugeCanvas.toDataURL('image/png');
-  const gW = 90, gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
-  doc.addImage(gaugeImg, 'PNG', 12, y, gW, gH);
+  const pctGen  = (pcts||{}).general||0;
 
-  // PERCENTIL al lado derecho
-  const px = 12 + gW + 6;
-  const pctGen = (pcts||{}).general||0;
+  const gaugeCanvas = drawGaugeCanvas(general, 500, 'PUNTAJE GENERAL');
+  const gW = 110;
+  const gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
+  doc.addImage(gaugeCanvas.toDataURL('image/png'), 'PNG', 10, y, gW, gH);
+
+  const donutCanvas = drawDonutCanvas(pctGen, 'PERCENTIL', '#6366f1');
+  const dSize = gH * 0.85;
+  const dx = 10 + gW + 8;
+  doc.addImage(donutCanvas.toDataURL('image/png'), 'PNG', dx, y + (gH - dSize)/2, dSize, dSize);
+
+  // Etiqueta breve a la derecha del donut
+  const tx0 = dx + dSize + 4;
   doc.setFont('helvetica','bold'); doc.setFontSize(10);
   doc.setTextColor(40,40,40);
-  doc.text('PERCENTIL GENERAL', px, y+8);
+  doc.text('PERCENTIL GENERAL', tx0, y + gH/2 - 4);
   doc.setFont('helvetica','normal'); doc.setFontSize(8);
   doc.setTextColor(80,80,80);
-  doc.text('Posicion respecto a los evaluados:', px, y+14);
-  doc.setFont('helvetica','bold'); doc.setFontSize(36);
-  doc.setTextColor(99,102,241);
-  doc.text(String(pctGen), px, y+34);
-  doc.setFont('helvetica','normal'); doc.setFontSize(10);
-  doc.setTextColor(120,120,120);
-  doc.text('/ 100', px+30, y+34);
-  drawPercentileBar(doc, px, y+42, pw - gW - 12, 14, pctGen);
+  doc.text('Posicion respecto a', tx0, y + gH/2 + 2);
+  doc.text('los evaluados.', tx0, y + gH/2 + 7);
 
-  y += gH + 6;
+  y += gH + 4;
 
   // ── RESULTADOS POR PRUEBA (header) ──
   doc.setFillColor(30,30,30);
@@ -1965,39 +2054,37 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.text('RESULTADOS POR PRUEBA', 10+pw/2, y+6, {align:'center'});
   y += 12;
 
-  // RADAR a la izquierda + tabla a la derecha
-  const labels = SUBJECTS.map(s => s.name.replace('Sociales y Ciudadanas','Sociales').replace('Ciencias Naturales','Naturales').replace('Lectura Critica','Lect. Crítica').replace('Matematicas','Matem.'));
+  // RADAR a la izquierda
+  const labels = SUBJECTS.map(s => s.name
+    .replace('Sociales y Ciudadanas','Sociales')
+    .replace('Ciencias Naturales','Naturales')
+    .replace('Lectura Critica','Lect. Crítica')
+    .replace('Matematicas','Matem.'));
   const values = SUBJECTS.map(s => Number(student[s.key])||0);
   const radarCanvas = drawRadarCanvas(labels, values, 100);
-  const radarImg = radarCanvas.toDataURL('image/png');
-  const rW = 90, rH = rW; // cuadrado
-  doc.addImage(radarImg, 'PNG', 12, y, rW, rH);
+  const rW = 80, rH = 80;
+  doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y, rW, rH);
 
-  // Tabla compacta a la derecha del radar
-  const tx = 12 + rW + 6;
-  const tw = pw - rW - 8;
-  doc.setFillColor(220,220,220);
-  doc.rect(tx, y, tw, 8, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(8);
-  doc.setTextColor(40,40,40);
-  doc.text('PRUEBA',    tx+2,         y+5.5);
-  doc.text('PUNTAJE',   tx+tw*0.55,   y+5.5, {align:'center'});
-  doc.text('PERCENTIL', tx+tw*0.85,   y+5.5, {align:'center'});
-  let ty = y + 12;
-  SUBJECTS.forEach(subj => {
+  // Lista de materias a la derecha con barra grande de percentil
+  const lx = 10 + rW + 4;
+  const lw = pw - rW - 6;
+  let ly = y;
+  const rowH = (rH - 0) / SUBJECTS.length;
+  SUBJECTS.forEach((subj, idx) => {
     const score = Number(student[subj.key])||0;
-    const pct = (pcts||{})[subj.key]||0;
-    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    const pct   = (pcts||{})[subj.key]||0;
+    // Nombre + puntaje
+    doc.setFont('helvetica','bold'); doc.setFontSize(9);
     doc.setTextColor(40,40,40);
-    doc.text(subj.name, tx+2, ty+4);
+    doc.text(subj.name, lx, ly + 4);
     doc.setFont('helvetica','bold'); doc.setFontSize(13);
-    doc.text(String(score), tx+tw*0.55, ty+5, {align:'center'});
-    doc.setFont('helvetica','bold'); doc.setFontSize(11);
-    doc.setTextColor(99,102,241);
-    doc.text(String(pct), tx+tw*0.85, ty+5, {align:'center'});
-    doc.setDrawColor(220,220,220);
-    doc.line(tx, ty+9, tx+tw, ty+9);
-    ty += 11;
+    doc.setTextColor(15,23,42);
+    doc.text(String(score), lx + lw - 2, ly + 5, {align:'right'});
+    // Barra de percentil colorida
+    const barCanvas = drawPercentileBarCanvas(pct);
+    const barW = lw, barH = barW * (barCanvas.height/barCanvas.width);
+    doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', lx, ly + 6, barW, barH);
+    ly += rowH;
   });
 
   // PIE
