@@ -1985,17 +1985,61 @@ function drawPercentileBar(doc, x, y, w, h, pct) {
   doc.text(String(pct), px-3, midY+11);
 }
 
+function _drawSectionHeader(doc, x, y, w, title) {
+  // Gradiente simulado: bandas de color púrpura → cyan
+  const steps = 60;
+  const h = 9;
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    // Interpolación violeta (#6366f1) → cyan (#06b6d4)
+    const r = Math.round(99  + (6   - 99 ) * t);
+    const g = Math.round(102 + (182 - 102) * t);
+    const b = Math.round(241 + (212 - 241) * t);
+    doc.setFillColor(r, g, b);
+    doc.rect(x + (w * i / steps), y, w / steps + 0.3, h, 'F');
+  }
+  // Acento blanco a la izquierda
+  doc.setFillColor(255, 255, 255);
+  doc.rect(x + 2, y + 2, 2.5, h - 4, 'F');
+  // Texto
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.setTextColor(255, 255, 255);
+  doc.text(title, x + 9, y + 6);
+}
+
+function _drawScoreBadge(doc, x, y, w, h, score, label) {
+  // Píldora violeta con sombra
+  doc.setFillColor(99, 102, 241);
+  doc.roundedRect(x, y, w, h, 2.5, 2.5, 'F');
+  // Etiqueta arriba
+  doc.setFont('helvetica','bold'); doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255, 0.85);
+  doc.text(label, x + w/2, y + 3.5, {align: 'center'});
+  // Score grande
+  doc.setFont('helvetica','bold'); doc.setFontSize(15);
+  doc.setTextColor(255, 255, 255);
+  doc.text(String(score), x + w/2, y + h - 2.2, {align: 'center'});
+}
+
 function renderStudentPage(doc, student, pcts, addPage) {
   if (addPage) doc.addPage('letter','p');
   const pw = 215.9 - 20; // letter width - margins
 
-  // ── TITULO ──
-  doc.setFillColor(30,30,30);
-  doc.rect(10, 10, pw, 18, 'F');
+  // ── TITULO ──  (gradiente)
+  const titleSteps = 80;
+  for (let i = 0; i < titleSteps; i++) {
+    const t = i / titleSteps;
+    const r = Math.round(30  + (15  - 30) * t);
+    const g = Math.round(41  + (23  - 41) * t);
+    const b = Math.round(59  + (42  - 59) * t);
+    doc.setFillColor(r, g, b);
+    doc.rect(10 + (pw * i / titleSteps), 10, pw / titleSteps + 0.3, 18, 'F');
+  }
   doc.setFont('helvetica','bold'); doc.setFontSize(14);
   doc.setTextColor(255,255,255);
   doc.text('REPORTE DE RESULTADOS ESTUDIANTE', 10+pw/2, 17, {align:'center'});
   doc.setFontSize(10);
+  doc.setTextColor(199, 210, 254);
   doc.text('SIMULACRO SIPAGRE', 10+pw/2, 24, {align:'center'});
 
   // ── DATOS ESTUDIANTE ──
@@ -2011,14 +2055,10 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.setFont('helvetica','bold');
   doc.text(String(student.id||''), 55, y);
 
-  // ── RESULTADOS GLOBALES (header) ──
+  // ── RESULTADOS GLOBALES (header gradiente) ──
   y += 10;
-  doc.setFillColor(30,30,30);
-  doc.rect(10, y, pw, 8, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(10);
-  doc.setTextColor(255,255,255);
-  doc.text('RESULTADOS GLOBALES', 10+pw/2, y+6, {align:'center'});
-  y += 12;
+  _drawSectionHeader(doc, 10, y, pw, 'RESULTADOS GLOBALES');
+  y += 13;
 
   // GAUGE Puntaje general (izquierda) + DONUT Percentil (derecha)
   const general = Number(student.general)||0;
@@ -2046,15 +2086,11 @@ function renderStudentPage(doc, student, pcts, addPage) {
 
   y += gH + 4;
 
-  // ── RESULTADOS POR PRUEBA (header) ──
-  doc.setFillColor(30,30,30);
-  doc.rect(10, y, pw, 8, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(10);
-  doc.setTextColor(255,255,255);
-  doc.text('RESULTADOS POR PRUEBA', 10+pw/2, y+6, {align:'center'});
-  y += 12;
+  // ── RESULTADOS POR PRUEBA (header gradiente) ──
+  _drawSectionHeader(doc, 10, y, pw, 'RESULTADOS POR PRUEBA');
+  y += 13;
 
-  // RADAR a la izquierda
+  // RADAR a la izquierda con su título
   const labels = SUBJECTS.map(s => s.name
     .replace('Sociales y Ciudadanas','Sociales')
     .replace('Ciencias Naturales','Naturales')
@@ -2062,28 +2098,51 @@ function renderStudentPage(doc, student, pcts, addPage) {
     .replace('Matematicas','Matem.'));
   const values = SUBJECTS.map(s => Number(student[s.key])||0);
   const radarCanvas = drawRadarCanvas(labels, values, 100);
-  const rW = 80, rH = 80;
-  doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y, rW, rH);
+  const rW = 75, rH = 75;
+  doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y + 2, rW, rH);
 
-  // Lista de materias a la derecha con barra grande de percentil
-  const lx = 10 + rW + 4;
-  const lw = pw - rW - 6;
+  // Lista de materias con badges de puntaje + barra de percentil
+  const lx = 10 + rW + 5;
+  const lw = pw - rW - 7;
   let ly = y;
-  const rowH = (rH - 0) / SUBJECTS.length;
+  const rowH = (rH + 2) / SUBJECTS.length;
+  // Encabezado pequeño de columnas
+  doc.setFont('helvetica','bold'); doc.setFontSize(7);
+  doc.setTextColor(99,102,241);
+  doc.text('PRUEBA',         lx + 1,        ly - 1);
+  doc.setTextColor(99,102,241);
+  doc.text('PUNTAJE',        lx + lw*0.62, ly - 1, {align:'center'});
+  doc.text('PERCENTIL',      lx + lw*0.88, ly - 1, {align:'center'});
+
   SUBJECTS.forEach((subj, idx) => {
     const score = Number(student[subj.key])||0;
     const pct   = (pcts||{})[subj.key]||0;
-    // Nombre + puntaje
+
+    // Card de fondo claro alternada
+    doc.setFillColor(idx % 2 === 0 ? 248 : 241, idx % 2 === 0 ? 250 : 245, idx % 2 === 0 ? 252 : 249);
+    doc.roundedRect(lx, ly + 0.5, lw, rowH - 1, 1.5, 1.5, 'F');
+
+    // Nombre materia
     doc.setFont('helvetica','bold'); doc.setFontSize(9);
-    doc.setTextColor(40,40,40);
-    doc.text(subj.name, lx, ly + 4);
-    doc.setFont('helvetica','bold'); doc.setFontSize(13);
-    doc.setTextColor(15,23,42);
-    doc.text(String(score), lx + lw - 2, ly + 5, {align:'right'});
-    // Barra de percentil colorida
-    const barCanvas = drawPercentileBarCanvas(pct);
-    const barW = lw, barH = barW * (barCanvas.height/barCanvas.width);
-    doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', lx, ly + 6, barW, barH);
+    doc.setTextColor(30, 41, 59);
+    doc.text(subj.name, lx + 2, ly + rowH/2 + 1);
+
+    // Badge violeta del PUNTAJE
+    const badgeW = 16, badgeH = rowH - 3;
+    const badgeX = lx + lw*0.62 - badgeW/2;
+    _drawScoreBadge(doc, badgeX, ly + 1.5, badgeW, badgeH, score, 'PUNTAJE');
+
+    // Badge cyan del PERCENTIL
+    const pBadgeX = lx + lw*0.88 - badgeW/2;
+    doc.setFillColor(6, 182, 212);
+    doc.roundedRect(pBadgeX, ly + 1.5, badgeW, badgeH, 2.5, 2.5, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text('PERCENTIL', pBadgeX + badgeW/2, ly + 5, {align: 'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(15);
+    doc.setTextColor(255, 255, 255);
+    doc.text(String(pct), pBadgeX + badgeW/2, ly + rowH - 1.7, {align: 'center'});
+
     ly += rowH;
   });
 
