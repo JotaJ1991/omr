@@ -2076,21 +2076,34 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.setTextColor(220, 235, 255);
   doc.text('Simulacro SIPAGRE  ·  Reporte individual', 20, 30);
 
-  // ── DATOS ESTUDIANTE ──
-  let y = 50;
-  doc.setTextColor(40,40,40);
-  doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.text('Apellidos y nombres:', 12, y);
-  doc.setFont('helvetica','bold');
-  doc.text(String(student.name||''), 55, y);
-  y += 6;
-  doc.setFont('helvetica','normal');
-  doc.text('Identificacion:', 12, y);
-  doc.setFont('helvetica','bold');
-  doc.text(String(student.id||''), 55, y);
+  // ── DATOS ESTUDIANTE (card estilizada) ──
+  let y = 47;
+  const cardH = 22;
+  // Fondo claro con bordes redondeados
+  doc.setFillColor(245, 247, 252);
+  doc.roundedRect(10, y, pw, cardH, 2.5, 2.5, 'F');
+  // Acento lateral violeta
+  doc.setFillColor(99, 102, 241);
+  doc.roundedRect(10, y, 2.2, cardH, 1.1, 1.1, 'F');
+  // Etiqueta ESTUDIANTE
+  doc.setFont('helvetica','bold'); doc.setFontSize(7);
+  doc.setTextColor(99, 102, 241);
+  doc.text('ESTUDIANTE', 16, y + 5);
+  // Nombre grande
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(15, 23, 42);
+  doc.text(String(student.name||'').toUpperCase(), 16, y + 11);
+  // Pill ID (más sutil)
+  const idText = `ID:  ${String(student.id||'')}`;
+  doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  const idW = doc.getTextWidth(idText) + 6;
+  doc.setFillColor(99, 102, 241);
+  doc.roundedRect(16, y + 14, idW, 5.5, 1.2, 1.2, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.text(idText, 16 + idW/2, y + 17.8, {align:'center'});
 
+  y += cardH + 4;
   // ── RESULTADOS GLOBALES (header gradiente) ──
-  y += 10;
   _drawSectionHeader(doc, 10, y, pw, 'RESULTADOS GLOBALES');
   y += 13;
 
