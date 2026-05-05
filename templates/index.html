@@ -1863,10 +1863,10 @@ function drawDonutCanvas(percent, label, color) {
 }
 
 function drawPercentileBarCanvas(percent) {
-  const W = 700, H = 70;
+  const W = 700, H = 110;
   const c = _newCanvas(W, H);
   const ctx = c.getContext('2d');
-  const x = 30, y = 30, w = W - 60, h = 14;
+  const x = 30, y = 60, w = W - 60, h = 16;
   // Gradiente rojo→amarillo→verde
   const grad = ctx.createLinearGradient(x, 0, x + w, 0);
   grad.addColorStop(0,    '#ef4444');
@@ -1875,7 +1875,7 @@ function drawPercentileBarCanvas(percent) {
   grad.addColorStop(1,    '#22c55e');
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 7);
+  ctx.roundRect(x, y, w, h, 8);
   ctx.fill();
   // Tick marks cada 10%
   ctx.strokeStyle = 'rgba(0,0,0,0.2)';
@@ -1889,25 +1889,26 @@ function drawPercentileBarCanvas(percent) {
   }
   // Etiquetas 0 y 100
   ctx.fillStyle = '#64748b';
-  ctx.font = 'bold 16px Inter, Arial';
+  ctx.font = 'bold 18px Inter, Arial';
   ctx.textAlign = 'left';
-  ctx.fillText('0', x - 18, y + h + 18);
+  ctx.fillText('0', x - 22, y + h + 20);
   ctx.textAlign = 'right';
-  ctx.fillText('100', x + w + 22, y + h + 18);
+  ctx.fillText('100', x + w + 26, y + h + 20);
   // Marcador triangular
   const px = x + (w * Math.max(0, Math.min(100, percent)) / 100);
   ctx.fillStyle = '#1e293b';
   ctx.beginPath();
-  ctx.moveTo(px - 8, y - 4);
-  ctx.lineTo(px + 8, y - 4);
+  ctx.moveTo(px - 9, y - 6);
+  ctx.lineTo(px + 9, y - 6);
   ctx.lineTo(px, y + 6);
   ctx.closePath();
   ctx.fill();
-  // Número del percentil arriba del marcador
-  ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 18px Inter, Arial';
+  // Número del percentil GRANDE arriba del marcador
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 42px Inter, Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(String(percent), px, y - 10);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(String(percent), px, y - 14);
   return c;
 }
 
@@ -2045,7 +2046,7 @@ function renderStudentPage(doc, student, pcts, addPage) {
   const pw = 215.9 - 20; // letter width - margins
 
   // ── TITULO HERO (gradiente violeta → cyan) ──
-  const titleH = 26;
+  const titleH = 32;
   const titleSteps = 100;
   for (let i = 0; i < titleSteps; i++) {
     const t = i / titleSteps;
@@ -2061,8 +2062,8 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.rect(13, 14, 3, titleH - 8, 'F');
   // Logo en la esquina superior derecha del header
   if (_logoDataUrl) {
-    const logoSize = 18;
-    const logoX = 10 + pw - logoSize - 4;
+    const logoSize = 28;
+    const logoX = 10 + pw - logoSize - 2;
     const logoY = 10 + (titleH - logoSize) / 2;
     try { doc.addImage(_logoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
     catch(e) { /* logo opcional */ }
@@ -2070,13 +2071,13 @@ function renderStudentPage(doc, student, pcts, addPage) {
   // Texto título
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.setTextColor(255,255,255);
-  doc.text('REPORTE DE RESULTADOS', 20, 20);
+  doc.text('REPORTE DE RESULTADOS', 20, 23);
   doc.setFont('helvetica','normal'); doc.setFontSize(10);
   doc.setTextColor(220, 235, 255);
-  doc.text('Simulacro SIPAGRE  ·  Reporte individual', 20, 27);
+  doc.text('Simulacro SIPAGRE  ·  Reporte individual', 20, 30);
 
   // ── DATOS ESTUDIANTE ──
-  let y = 44;
+  let y = 50;
   doc.setTextColor(40,40,40);
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
   doc.text('Apellidos y nombres:', 12, y);
