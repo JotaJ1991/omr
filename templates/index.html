@@ -1735,6 +1735,144 @@ function calcPercentiles(results) {
   return pcts;
 }
 
+// ── Charts visuales para el PDF (Canvas → imagen) ────────────────────────
+function _newCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function drawGaugeCanvas(value, max, label) {
+  const W = 600, H = 380;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const cx = W/2, cy = H*0.72, r = 200;
+  const startA = Math.PI, endA = 2*Math.PI;
+  const total = endA - startA;
+  // Zonas: 0-25 rojo, 25-50 naranja, 50-75 amarillo, 75-100 verde
+  const zones = [
+    {from: 0,    to: 0.25, color: '#ef4444'},
+    {from: 0.25, to: 0.50, color: '#f59e0b'},
+    {from: 0.50, to: 0.75, color: '#eab308'},
+    {from: 0.75, to: 1.00, color: '#22c55e'},
+  ];
+  ctx.lineWidth = 50;
+  ctx.lineCap = 'round';
+  zones.forEach(z => {
+    ctx.beginPath();
+    ctx.strokeStyle = z.color;
+    ctx.arc(cx, cy, r, startA + total*z.from, startA + total*z.to);
+    ctx.stroke();
+  });
+  // Etiquetas 0 y max
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 32px Inter, Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('0', cx - r - 10, cy + 60);
+  ctx.fillText(String(max), cx + r + 10, cy + 60);
+  // Aguja
+  const v = Math.min(Math.max(value, 0), max);
+  const ang = startA + total * (v / max);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  // Cuerpo aguja
+  ctx.fillStyle = '#475569';
+  ctx.beginPath();
+  ctx.moveTo(0, -16);
+  ctx.lineTo(r - 10, 0);
+  ctx.lineTo(0, 16);
+  ctx.closePath();
+  ctx.fill();
+  // Centro
+  ctx.beginPath();
+  ctx.arc(0, 0, 22, 0, Math.PI*2);
+  ctx.fillStyle = '#334155';
+  ctx.fill();
+  ctx.restore();
+  // Valor numérico debajo
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 56px Inter, Arial';
+  ctx.fillText(String(value), cx, cy + 130);
+  // Título arriba
+  if (label) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 28px Inter, Arial';
+    ctx.fillText(label, cx, 50);
+  }
+  return c;
+}
+
+function drawRadarCanvas(labels, values, maxVal) {
+  const W = 700, H = 700;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const cx = W/2, cy = H/2, R = 230;
+  const N = labels.length;
+  // Niveles concéntricos
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1.5;
+  for (let lvl = 1; lvl <= 4; lvl++) {
+    const r = R * lvl / 4;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI/2 + 2*Math.PI*i/N;
+      const x = cx + r*Math.cos(a);
+      const y = cy + r*Math.sin(a);
+      if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+  // Ejes radiales (punteados)
+  ctx.setLineDash([4,4]);
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI/2 + 2*Math.PI*i/N;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R*Math.cos(a), cy + R*Math.sin(a));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // Polígono de valores
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI/2 + 2*Math.PI*i/N;
+    const v = Math.min(values[i] / maxVal, 1);
+    const x = cx + R*v*Math.cos(a);
+    const y = cy + R*v*Math.sin(a);
+    if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(34, 197, 94, 0.35)';
+  ctx.fill();
+  ctx.strokeStyle = '#16a34a';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  // Vértices
+  ctx.fillStyle = '#16a34a';
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI/2 + 2*Math.PI*i/N;
+    const v = Math.min(values[i] / maxVal, 1);
+    const x = cx + R*v*Math.cos(a);
+    const y = cy + R*v*Math.sin(a);
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2); ctx.fill();
+  }
+  // Etiquetas
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 22px Inter, Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI/2 + 2*Math.PI*i/N;
+    const lblR = R + 36;
+    const x = cx + lblR*Math.cos(a);
+    const y = cy + lblR*Math.sin(a);
+    ctx.fillText(labels[i], x, y);
+  }
+  return c;
+}
+
 function drawPercentileBar(doc, x, y, w, h, pct) {
   const midY = y + h/2;
   doc.setDrawColor(150,150,150);
@@ -1762,7 +1900,7 @@ function renderStudentPage(doc, student, pcts, addPage) {
   if (addPage) doc.addPage('letter','p');
   const pw = 215.9 - 20; // letter width - margins
 
-  // TITULO
+  // ── TITULO ──
   doc.setFillColor(30,30,30);
   doc.rect(10, 10, pw, 18, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(14);
@@ -1771,7 +1909,7 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.setFontSize(10);
   doc.text('SIMULACRO SIPAGRE', 10+pw/2, 24, {align:'center'});
 
-  // DATOS
+  // ── DATOS ESTUDIANTE ──
   let y = 36;
   doc.setTextColor(40,40,40);
   doc.setFont('helvetica','normal'); doc.setFontSize(9);
@@ -1784,63 +1922,82 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.setFont('helvetica','bold');
   doc.text(String(student.id||''), 55, y);
 
-  // RESULTADOS GLOBALES
-  y += 12;
+  // ── RESULTADOS GLOBALES (header) ──
+  y += 10;
   doc.setFillColor(30,30,30);
   doc.rect(10, y, pw, 8, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(10);
   doc.setTextColor(255,255,255);
   doc.text('RESULTADOS GLOBALES', 10+pw/2, y+6, {align:'center'});
-
   y += 12;
-  doc.setDrawColor(100,100,100); doc.setLineWidth(0.5);
-  doc.rect(15, y, pw/2-10, 28, 'D');
-  doc.setTextColor(40,40,40);
-  doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  doc.text('PUNTAJE GENERAL', 17, y+6);
-  doc.setFont('helvetica','bold'); doc.setFontSize(28);
-  doc.text(String(student.general||0), 15+(pw/2-10)/2, y+22, {align:'center'});
 
+  // GAUGE: Puntaje general (a la izquierda)
+  const general = Number(student.general)||0;
+  const gaugeCanvas = drawGaugeCanvas(general, 500, 'PUNTAJE GENERAL');
+  const gaugeImg = gaugeCanvas.toDataURL('image/png');
+  const gW = 90, gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
+  doc.addImage(gaugeImg, 'PNG', 12, y, gW, gH);
+
+  // PERCENTIL al lado derecho
+  const px = 12 + gW + 6;
   const pctGen = (pcts||{}).general||0;
-  const px = pw/2+10;
-  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
   doc.setTextColor(40,40,40);
-  doc.text('PERCENTIL GENERAL', px, y+5);
-  doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
-  doc.text('Respecto a los evaluados, usted esta aqui.', px, y+10);
-  drawPercentileBar(doc, px+5, y+12, pw/2-20, 14, pctGen);
+  doc.text('PERCENTIL GENERAL', px, y+8);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.setTextColor(80,80,80);
+  doc.text('Posicion respecto a los evaluados:', px, y+14);
+  doc.setFont('helvetica','bold'); doc.setFontSize(36);
+  doc.setTextColor(99,102,241);
+  doc.text(String(pctGen), px, y+34);
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  doc.setTextColor(120,120,120);
+  doc.text('/ 100', px+30, y+34);
+  drawPercentileBar(doc, px, y+42, pw - gW - 12, 14, pctGen);
 
-  // RESULTADOS POR PRUEBA
-  y += 38;
+  y += gH + 6;
+
+  // ── RESULTADOS POR PRUEBA (header) ──
   doc.setFillColor(30,30,30);
   doc.rect(10, y, pw, 8, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(10);
   doc.setTextColor(255,255,255);
   doc.text('RESULTADOS POR PRUEBA', 10+pw/2, y+6, {align:'center'});
-
   y += 12;
-  const cw = [60, 40, pw-100];
+
+  // RADAR a la izquierda + tabla a la derecha
+  const labels = SUBJECTS.map(s => s.name.replace('Sociales y Ciudadanas','Sociales').replace('Ciencias Naturales','Naturales').replace('Lectura Critica','Lect. Crítica').replace('Matematicas','Matem.'));
+  const values = SUBJECTS.map(s => Number(student[s.key])||0);
+  const radarCanvas = drawRadarCanvas(labels, values, 100);
+  const radarImg = radarCanvas.toDataURL('image/png');
+  const rW = 90, rH = rW; // cuadrado
+  doc.addImage(radarImg, 'PNG', 12, y, rW, rH);
+
+  // Tabla compacta a la derecha del radar
+  const tx = 12 + rW + 6;
+  const tw = pw - rW - 8;
   doc.setFillColor(220,220,220);
-  doc.rect(10, y, pw, 8, 'F');
+  doc.rect(tx, y, tw, 8, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(8);
   doc.setTextColor(40,40,40);
-  doc.text('PRUEBA', 10+cw[0]/2, y+5.5, {align:'center'});
-  doc.text('PUNTAJE', 10+cw[0]+cw[1]/2, y+5.5, {align:'center'});
-  doc.text('PERCENTIL', 10+cw[0]+cw[1]+cw[2]/2, y+5.5, {align:'center'});
-  y += 10;
-
+  doc.text('PRUEBA',    tx+2,         y+5.5);
+  doc.text('PUNTAJE',   tx+tw*0.55,   y+5.5, {align:'center'});
+  doc.text('PERCENTIL', tx+tw*0.85,   y+5.5, {align:'center'});
+  let ty = y + 12;
   SUBJECTS.forEach(subj => {
     const score = Number(student[subj.key])||0;
     const pct = (pcts||{})[subj.key]||0;
-    doc.setDrawColor(200,200,200);
-    doc.line(10, y+22, 10+pw, y+22);
     doc.setFont('helvetica','normal'); doc.setFontSize(9);
     doc.setTextColor(40,40,40);
-    doc.text(subj.name, 12, y+10);
-    doc.setFont('helvetica','bold'); doc.setFontSize(14);
-    doc.text(String(score), 10+cw[0]+cw[1]/2, y+12, {align:'center'});
-    drawPercentileBar(doc, 10+cw[0]+cw[1]+8, y+2, cw[2]-16, 14, pct);
-    y += 24;
+    doc.text(subj.name, tx+2, ty+4);
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text(String(score), tx+tw*0.55, ty+5, {align:'center'});
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.setTextColor(99,102,241);
+    doc.text(String(pct), tx+tw*0.85, ty+5, {align:'center'});
+    doc.setDrawColor(220,220,220);
+    doc.line(tx, ty+9, tx+tw, ty+9);
+    ty += 11;
   });
 
   // PIE
