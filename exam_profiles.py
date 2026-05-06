@@ -189,8 +189,9 @@ M_SIPAGRE = {
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
          'bubble_fx': [0.551, 0.575, 0.599, 0.624, 0.648, 0.673, 0.697, 0.722],
          'timing_fx': 0.503},
-        # Col 4 ahora solo lee hasta P125 (20 preguntas)
-        {'q_start': 106, 'q_end': 125, 'options': ['A','B','C','D'],
+        # Col 4: lee 29 espacios físicos para que la geometría se calibre,
+        # pero la imagen de debug y el scoring solo usan hasta P125 (total_q).
+        {'q_start': 106, 'q_end': 134, 'options': ['A','B','C','D'],
          'bubble_fx': [0.870, 0.896, 0.919, 0.943],
          'timing_fx': 0.823},
     ],

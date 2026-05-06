@@ -456,14 +456,20 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path):
     ]
     radius = profile['bubble_radius']
 
-    # ── Dibujar TODAS las posiciones de burbuja (detectada o no) ─────────────
-    q_idx = 0
+    # ── Dibujar las posiciones de burbuja hasta total_q ─────────────────────
+    # Si total_q < total geometrico, no dibuja las burbujas excedentes
+    total_q   = profile.get('total_q', sum(c['q_end'] - c['q_start'] + 1 for c in profile['columns']))
+    q_idx     = 0
     for col in profile['columns']:
+        if q_idx >= total_q:
+            break
         xs      = [int(fx * w) for fx in col['bubble_fx']]
         options = col['options']
         n_rows  = col['q_end'] - col['q_start'] + 1
 
         for row_idx in range(n_rows):
+            if q_idx >= total_q:
+                break
             ans = answers[q_idx] if q_idx < len(answers) else '?'
             y   = y_rows[row_idx] if row_idx < len(y_rows) else 0
 
