@@ -12,6 +12,7 @@ from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet, generate_sipagre_results,
+    generate_msipagre_results,
     list_courses, add_course, delete_course
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
@@ -338,6 +339,20 @@ def sipagre_results():
     results_sheet  = data.get('results_sheet', 'Resultados SIPAGRE')
     try:
         result = generate_sipagre_results(sheet_1s, sheet_2s, results_sheet)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
+
+
+@app.route('/msipagre_results', methods=['POST'])
+def msipagre_results():
+    """Genera la hoja de Resultados M SIPAGRE (única jornada de 125 preguntas)."""
+    data = request.get_json(silent=True) or {}
+    sheet_m        = data.get('sheet_m', 'M SIPAGRE')
+    results_sheet  = data.get('results_sheet', 'Resultados M SIPAGRE')
+    try:
+        result = generate_msipagre_results(sheet_m, results_sheet)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()

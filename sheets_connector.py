@@ -514,6 +514,15 @@ SIPAGRE_SUBJECTS = [
     ('Ingles',           [('2S', 79, 133)],                   1.8),
 ]
 
+# M SIPAGRE — Una sola jornada de 125 preguntas, mismas ponderaciones
+M_SIPAGRE_SUBJECTS = [
+    ('Matematica',       (0,  24),   2.0),
+    ('Lectura Critica',  (25, 49),   2.4),
+    ('Sociales',         (50, 74),   2.0),
+    ('Naturales',        (75, 99),   1.7),
+    ('Ingles',           (100,124),  1.8),
+]
+
 
 def _count_correct_range(answers, key, start, end):
     """Cuenta respuestas correctas en rango [start, end] (0-based, inclusivo)."""
@@ -711,6 +720,130 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
             'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
             'textFormat': {'bold': True,
                            'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
+            'horizontalAlignment': 'CENTER'
+        })
+    except Exception:
+        pass
+
+    return {
+        'success':  True,
+        'students': len(results),
+        'results':  results,
+        'url':      f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESULTADOS M SIPAGRE — una sola jornada (125 preguntas)
+# ─────────────────────────────────────────────────────────────────────────────
+def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
+                              results_sheet: str = 'Resultados M SIPAGRE') -> dict:
+    """
+    Calcula puntajes por materia y puntaje general para M SIPAGRE
+    (una sola jornada de 125 preguntas) y los escribe en una hoja nueva/existente.
+    """
+    spreadsheet = _open_spreadsheet()
+
+    try:
+        ws_m = spreadsheet.worksheet(sheet_m)
+    except Exception:
+        return {'success': False, 'error': f'Hoja "{sheet_m}" no encontrada.'}
+
+    key_m = _get_answer_key(ws_m)
+    if not key_m:
+        return {'success': False,
+                'error': f'La hoja "{sheet_m}" no tiene clave de respuestas.'}
+
+    students = _extract_students(ws_m)
+    if not students:
+        return {'success': False, 'error': 'No se encontraron estudiantes.'}
+
+    results = []
+    for sid in sorted(students.keys()):
+        s    = students[sid]
+        name = s['name']
+        curso = s.get('curso', '')
+        ans  = s['answers']
+
+        scores = {}
+        for subj_name, (start, end), points in M_SIPAGRE_SUBJECTS:
+            correct = _count_correct_range(ans, key_m, start, end)
+            scores[subj_name] = round(correct * points, 2)
+
+        mat  = int(round(scores['Matematica']))
+        lect = int(round(scores['Lectura Critica']))
+        soc  = int(round(scores['Sociales']))
+        nat  = int(round(scores['Naturales']))
+        ing  = int(round(scores['Ingles']))
+        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3) / 13)))
+
+        results.append({
+            'id':       sid,
+            'name':     name,
+            'curso':    curso,
+            'mat':      mat,
+            'lect':     lect,
+            'soc':      soc,
+            'nat':      nat,
+            'ing':      ing,
+            'general':  general,
+            'type':     'M',
+        })
+
+    # Crear/sobrescribir hoja de resultados
+    needed_rows = len(results) + 5
+    try:
+        ws_res = spreadsheet.worksheet(results_sheet)
+        ws_res.clear()
+        if ws_res.row_count < needed_rows:
+            ws_res.resize(rows=needed_rows)
+    except Exception:
+        ws_res = spreadsheet.add_worksheet(
+            title=results_sheet, rows=needed_rows, cols=20)
+
+    header = [
+        'ID Estudiante', 'Nombre', 'Curso',
+        'Matematica', 'Lectura Critica', 'Sociales',
+        'Naturales', 'Ingles', 'Puntaje General'
+    ]
+    ws_res.update('A1:I1', [header], value_input_option='RAW')
+
+    rows = []
+    for r in results:
+        rows.append([
+            r['id'], r['name'], r.get('curso',''),
+            r['mat'], r['lect'], r['soc'],
+            r['nat'], r['ing'], r['general'],
+        ])
+
+    if rows:
+        end_col = _col_letter(len(header) - 1)
+        end_row = len(rows) + 1
+        ws_res.update(f'A2:{end_col}{end_row}', rows, value_input_option='RAW')
+
+        n = len(results)
+        avg = {k: int(round(sum(r[k] for r in results) / n))
+               for k in ['mat','lect','soc','nat','ing','general']}
+        avg_row = end_row + 1
+        ws_res.update(
+            f'A{avg_row}:I{avg_row}',
+            [['', 'PROMEDIO', '', avg['mat'], avg['lect'], avg['soc'],
+              avg['nat'], avg['ing'], avg['general']]],
+            value_input_option='RAW')
+        try:
+            ws_res.format(f'A{avg_row}:I{avg_row}', {
+                'backgroundColor': {'red': 0.93, 'green': 0.93, 'blue': 0.93},
+                'textFormat': {'bold': True},
+                'horizontalAlignment': 'CENTER'
+            })
+        except Exception:
+            pass
+
+    try:
+        ws_res.format('A1:I1', {
+            'backgroundColor': {'red': 0.30, 'green': 0.39, 'blue': 0.85},
+            'textFormat': {'bold': True,
+                           'foregroundColor': {'red':1,'green':1,'blue':1}},
             'horizontalAlignment': 'CENTER'
         })
     except Exception:

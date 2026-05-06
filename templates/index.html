@@ -782,6 +782,32 @@
       <div id="sipagre-status" style="margin-top:10px;"></div>
       <div id="sipagre-students-list" style="margin-top:12px;"></div>
     </div>
+
+    <!-- ── M SIPAGRE Resultados (una sola jornada) ── -->
+    <div class="card">
+      <h2>📋 Resultados M SIPAGRE</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Simulacro de una sola jornada (125 preguntas). La hoja debe tener la clave de respuestas cargada.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:.78rem;color:var(--muted);">Hoja M SIPAGRE</label>
+          <input type="text" id="msipagre-sheet" value="M SIPAGRE">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-success" onclick="generateMSipagreResults()" id="btn-msipagre"
+                style="flex:1;padding:13px;font-size:.92rem;">
+          Generar Resultados
+        </button>
+        <button class="btn-primary" onclick="downloadAllMPdfs()" id="btn-mpdf-all"
+                style="flex:1;padding:13px;font-size:.92rem;">
+          Descargar Todos PDF
+        </button>
+      </div>
+      <div id="msipagre-status" style="margin-top:10px;"></div>
+      <div id="msipagre-students-list" style="margin-top:12px;"></div>
+    </div>
   </div>
 
   <!-- ══ TAB AYUDA ══════════════════════════════════════════════════════════ -->
@@ -1334,7 +1360,8 @@ async function loadSheets() {
     state.activeSheet = data.active;
     updateActiveBadge(data.active);
 
-    const filtered = data.sheets.filter(s => s !== 'Resultados SIPAGRE');
+    const filtered = data.sheets.filter(s =>
+      s !== 'Resultados SIPAGRE' && s !== 'Resultados M SIPAGRE' && s !== 'Cursos');
     const opts = filtered.length
       ? filtered.map(s =>
           `<option value="${s}" ${s===data.active?'selected':''}>${s}</option>`).join('')
@@ -1712,7 +1739,8 @@ function setStatus(type, msg) {
 }
 
 // ══ RESULTADOS ═════════════════════════════════════════════════════════════
-let sipagreResults = null;  // cache de resultados en el cliente
+let sipagreResults  = null;   // SIPAGRE (1S+2S, 254 preguntas)
+let msipagreResults = null;   // M SIPAGRE (125 preguntas, una jornada)
 
 // ══ RESULTADOS SIPAGRE ═════════════════════════════════════════════════════
 async function generateSipagreResults() {
@@ -2134,9 +2162,13 @@ function _drawScoreBadge(doc, x, y, w, h, score, label) {
   doc.text(String(score), x + w/2, y + h - 2.2, {align: 'center'});
 }
 
-function renderStudentPage(doc, student, pcts, addPage) {
+function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   if (addPage) doc.addPage('letter','p');
   const pw = 215.9 - 20; // letter width - margins
+  const isM = (simulacroLabel || '').toLowerCase().includes('m sipagre');
+  // Para M SIPAGRE el max teórico es ~234, para SIPAGRE ~500
+  const maxGeneral = isM ? 235 : 500;
+  const subTitle = simulacroLabel || 'SIPAGRE';
 
   // ── TITULO HERO (gradiente violeta → cyan) ──
   const titleH = 32;
@@ -2167,7 +2199,7 @@ function renderStudentPage(doc, student, pcts, addPage) {
   doc.text('REPORTE DE RESULTADOS', 20, 23);
   doc.setFont('helvetica','normal'); doc.setFontSize(10);
   doc.setTextColor(220, 235, 255);
-  doc.text('Simulacro SIPAGRE  ·  Reporte individual', 20, 30);
+  doc.text(`Simulacro ${subTitle}  ·  Reporte individual`, 20, 30);
 
   // ── DATOS ESTUDIANTE (card estilizada) ──
   let y = 47;
@@ -2214,7 +2246,7 @@ function renderStudentPage(doc, student, pcts, addPage) {
   const general = Number(student.general)||0;
   const pctGen  = (pcts||{}).general||0;
 
-  const gaugeCanvas = drawGaugeCanvas(general, 500, 'PUNTAJE GENERAL');
+  const gaugeCanvas = drawGaugeCanvas(general, maxGeneral, 'PUNTAJE GENERAL');
   const gW = 110;
   const gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
   doc.addImage(gaugeCanvas.toDataURL('image/png'), 'PNG', 10, y, gW, gH);
@@ -2297,7 +2329,7 @@ function renderStudentPage(doc, student, pcts, addPage) {
   // PIE
   doc.setFont('helvetica','italic'); doc.setFontSize(7);
   doc.setTextColor(150,150,150);
-  doc.text('Generado automaticamente - Simulacro SIPAGRE', 10+pw/2, 264, {align:'center'});
+  doc.text(`Generado automaticamente - Simulacro ${subTitle}`, 10+pw/2, 264, {align:'center'});
 }
 
 function getJsPDF() {
@@ -2321,7 +2353,7 @@ async function downloadAllPdfs() {
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
     sipagreResults.forEach((st, i) => {
-      renderStudentPage(doc, st, pcts[String(st.id)]||{}, i>0);
+      renderStudentPage(doc, st, pcts[String(st.id)]||{}, i>0, 'SIPAGRE');
     });
     doc.save('Resultados_SIPAGRE.pdf');
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
@@ -2345,8 +2377,139 @@ async function downloadStudentPdf(studentId) {
     const pcts = calcPercentiles(sipagreResults);
     const st = sipagreResults.find(r => String(r.id) === String(studentId));
     if (!st) { status.innerHTML = '<p style="color:var(--danger);">Estudiante no encontrado.</p>'; return; }
-    renderStudentPage(doc, st, pcts[String(st.id)]||{}, false);
+    renderStudentPage(doc, st, pcts[String(st.id)]||{}, false, 'SIPAGRE');
     doc.save(`Resultado_${studentId}.pdf`);
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+}
+
+// ══ RESULTADOS M SIPAGRE (una sola jornada) ════════════════════════════════
+async function generateMSipagreResults() {
+  const btn    = document.getElementById('btn-msipagre');
+  const status = document.getElementById('msipagre-status');
+  msipagreResults = null;
+  btn.disabled = true; btn.textContent = 'Generando...';
+  status.innerHTML = '<p style="color:var(--muted)">Leyendo hoja y calculando puntajes...</p>';
+  try {
+    const resp = await fetch('/msipagre_results', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        sheet_m: document.getElementById('msipagre-sheet').value.trim(),
+      })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      msipagreResults = data.results || [];
+      status.innerHTML = `<p style="color:var(--success);font-weight:600;">
+        Listo: ${data.students} estudiantes procesados.
+        <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
+      renderMSipagreTable();
+    } else {
+      status.innerHTML = `<p style="color:var(--danger);">${data.error}</p>`;
+    }
+  } catch(e) {
+    status.innerHTML = '<p style="color:var(--danger);">Error de conexion</p>';
+  }
+  btn.disabled = false; btn.textContent = 'Generar Resultados';
+}
+
+function renderMSipagreTable() {
+  const list = document.getElementById('msipagre-students-list');
+  if (!msipagreResults || !msipagreResults.length) { list.innerHTML = ''; return; }
+  const n = msipagreResults.length;
+  const avg = {
+    mat:  Math.round(msipagreResults.reduce((s,r) => s + (+r.mat||0), 0) / n),
+    lect: Math.round(msipagreResults.reduce((s,r) => s + (+r.lect||0), 0) / n),
+    soc:  Math.round(msipagreResults.reduce((s,r) => s + (+r.soc||0), 0) / n),
+    nat:  Math.round(msipagreResults.reduce((s,r) => s + (+r.nat||0), 0) / n),
+    ing:  Math.round(msipagreResults.reduce((s,r) => s + (+r.ing||0), 0) / n),
+    gen:  Math.round(msipagreResults.reduce((s,r) => s + (+r.general||0), 0) / n),
+  };
+  const rows = msipagreResults.map(r => `
+    <tr>
+      <td>
+        <div style="font-weight:600;">${r.name}</div>
+        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id}</div>
+      </td>
+      <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
+      <td class="score">${r.mat}</td>
+      <td class="score">${r.lect}</td>
+      <td class="score">${r.soc}</td>
+      <td class="score">${r.nat}</td>
+      <td class="score">${r.ing}</td>
+      <td class="general-score">${r.general}</td>
+      <td><button class="pdf-btn" onclick="downloadMStudentPdf('${r.id}')">PDF</button></td>
+    </tr>`).join('');
+  list.innerHTML = `
+    <div class="results-table-wrap">
+      <table class="results-table">
+        <thead><tr>
+          <th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th>
+          <th>Nat</th><th>Ing</th><th>General</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="avg-row">
+            <td style="font-weight:700;color:var(--text);">PROMEDIO</td>
+            <td>—</td>
+            <td class="score">${avg.mat}</td>
+            <td class="score">${avg.lect}</td>
+            <td class="score">${avg.soc}</td>
+            <td class="score">${avg.nat}</td>
+            <td class="score">${avg.ing}</td>
+            <td class="general-score">${avg.gen}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function downloadAllMPdfs() {
+  if (!msipagreResults || !msipagreResults.length) {
+    document.getElementById('msipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados M SIPAGRE.</p>';
+    return;
+  }
+  const status = document.getElementById('msipagre-status');
+  const btn = document.getElementById('btn-mpdf-all');
+  btn.disabled = true; btn.textContent = 'Generando PDF...';
+  status.innerHTML = '<p style="color:var(--muted)">Generando reportes...</p>';
+  try {
+    await _loadLogo();
+    const jsPDF = getJsPDF();
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const pcts = calcPercentiles(msipagreResults);
+    msipagreResults.forEach((st, i) => {
+      renderStudentPage(doc, st, pcts[String(st.id)]||{}, i>0, 'M SIPAGRE');
+    });
+    doc.save('Resultados_M_SIPAGRE.pdf');
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error generando PDF: ${e.message}</p>`;
+  }
+  btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
+}
+
+async function downloadMStudentPdf(studentId) {
+  if (!msipagreResults || !msipagreResults.length) {
+    document.getElementById('msipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados M SIPAGRE.</p>';
+    return;
+  }
+  const status = document.getElementById('msipagre-status');
+  try {
+    await _loadLogo();
+    const JsPDF = getJsPDF();
+    const doc = new JsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const pcts = calcPercentiles(msipagreResults);
+    const st = msipagreResults.find(r => String(r.id) === String(studentId));
+    if (!st) { status.innerHTML = '<p style="color:var(--danger);">Estudiante no encontrado.</p>'; return; }
+    renderStudentPage(doc, st, pcts[String(st.id)]||{}, false, 'M SIPAGRE');
+    doc.save(`Resultado_M_${studentId}.pdf`);
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
