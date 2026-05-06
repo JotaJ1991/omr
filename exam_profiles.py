@@ -183,17 +183,15 @@ M_SIPAGRE = {
     'work_h':  1650,
 
     'columns': [
-        # Cols 1-3: +0.001 a cada posición
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
          'bubble_fx': [0.069, 0.094, 0.119, 0.144],
          'timing_fx': 0.02},
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.310, 0.334, 0.360, 0.384],
+         'bubble_fx': [0.309, 0.333, 0.359, 0.383],
          'timing_fx': 0.262},
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.552, 0.576, 0.600, 0.625, 0.649, 0.674, 0.698, 0.723],
+         'bubble_fx': [0.551, 0.575, 0.599, 0.624, 0.648, 0.673, 0.697, 0.722],
          'timing_fx': 0.503},
-        # Col 4 (P106-P134): -0.001 a cada posición
         {'q_start': 106, 'q_end': 134, 'options': ['A','B','C','D'],
          'bubble_fx': [0.870, 0.896, 0.919, 0.943],
          'timing_fx': 0.823},
