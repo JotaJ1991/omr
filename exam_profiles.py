@@ -169,18 +169,60 @@ SIPAGRE_2S = {
 
 
 # ---------------------------------------------------------------------------
+# M SIPAGRE  —  Una sola jornada, 134 preguntas
+#   Misma geometría que 2S SIPAGRE.
+# ---------------------------------------------------------------------------
+M_SIPAGRE = {
+    'id':    'MSIPAGRE',
+    'name':  'M SIPAGRE — 134 preguntas',
+    'total_q': 134,
+    'work_w':  1275,
+    'work_h':  1650,
+
+    'columns': [
+        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.068, 0.093, 0.118, 0.143],
+         'timing_fx': 0.02},
+        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.309, 0.333, 0.359, 0.383],
+         'timing_fx': 0.262},
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.551, 0.575, 0.599, 0.624, 0.648, 0.673, 0.697, 0.722],
+         'timing_fx': 0.503},
+        {'q_start': 106, 'q_end': 134, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.871, 0.897, 0.920, 0.944],
+         'timing_fx': 0.823},
+    ],
+
+    'answers_top_f':    0.175,
+    'answers_bottom_f': 0.977,
+    'bubble_radius':     9,
+    'snap_range':        3,
+    'fill_threshold':   0.12,
+    'min_contrast':     0.05,
+    'binarize_block':   25,
+    'binarize_c':        6,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.6,
+}
+
+
+# ---------------------------------------------------------------------------
 # Registro central
 # ---------------------------------------------------------------------------
 PROFILES = {
     JMR_125['id']:    JMR_125,
     SIPAGRE_1S['id']: SIPAGRE_1S,
     SIPAGRE_2S['id']: SIPAGRE_2S,
+    M_SIPAGRE['id']:  M_SIPAGRE,
 }
 
 # Lista ordenada para la UI
 PROFILE_LIST = [
     {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
+    {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
     {'id': JMR_125['id'],    'name': JMR_125['name']},
 ]
 
