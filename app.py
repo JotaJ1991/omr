@@ -271,8 +271,9 @@ def courses_list():
 def courses_add():
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
+    grado = (data.get('grado') or '').strip()
     try:
-        result = add_course(name)
+        result = add_course(name, grado)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()

@@ -929,8 +929,19 @@
     <h3>➕ Nuevo curso</h3>
     <label>Nombre del curso</label>
     <input type="text" id="new-course-name"
-           placeholder="Ej: 10A, 11B, Octavo…"
+           placeholder="Ej: 701, 1001, 1102…"
+           oninput="_autoFillGradeFromCourse()"
            onkeydown="if(event.key==='Enter') createNewCourse()">
+    <label>Grado</label>
+    <select id="new-course-grade">
+      <option value="">— selecciona grado —</option>
+      <option value="6">6°</option>
+      <option value="7">7°</option>
+      <option value="8">8°</option>
+      <option value="9">9°</option>
+      <option value="10">10°</option>
+      <option value="11">11°</option>
+    </select>
     <div class="modal-btns">
       <button class="btn-secondary" onclick="hideNewCourseModal()">Cancelar</button>
       <button class="btn-success"   onclick="createNewCourse()">✅ Agregar</button>
@@ -966,22 +977,53 @@ let state = {
 })();
 
 // ══ CURSOS ════════════════════════════════════════════════════════════════
+let _coursesCache = [];   // [{name, grado}, ...]
+
 async function loadCourses() {
   try {
     const resp = await fetch('/courses');
     const data = await resp.json();
+    _coursesCache = data.courses || [];
     const sel  = document.getElementById('student-curso');
     if (!sel) return;
     const prev = sel.value;
-    const courses = data.courses || [];
-    sel.innerHTML = '<option value="">— sin curso —</option>' +
-      courses.map(c => `<option value="${c}">${c}</option>`).join('');
-    if (prev && courses.includes(prev)) sel.value = prev;
+    // Agrupar por grado para visualizacion
+    const grouped = {};
+    _coursesCache.forEach(c => {
+      const g = c.grado || 'Otros';
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(c);
+    });
+    let html = '<option value="">— sin curso —</option>';
+    Object.keys(grouped).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99)).forEach(g => {
+      const label = g === 'Otros' ? 'Otros' : `Grado ${g}°`;
+      html += `<optgroup label="${label}">`;
+      grouped[g].forEach(c => {
+        html += `<option value="${c.name}">${c.name}</option>`;
+      });
+      html += `</optgroup>`;
+    });
+    sel.innerHTML = html;
+    if (prev && _coursesCache.some(c => c.name === prev)) sel.value = prev;
   } catch(e) { console.warn('No se pudo cargar cursos:', e); }
+}
+
+// Auto-rellenar el grado al escribir un nombre numerico (701 -> 7, 1001 -> 10)
+function _autoFillGradeFromCourse() {
+  const name = document.getElementById('new-course-name').value.trim();
+  const sel  = document.getElementById('new-course-grade');
+  if (!name || !sel || sel.value) return;  // no sobreescribir si ya eligio
+  let grado = '';
+  if (/^\d+$/.test(name)) {
+    if (name.length === 4)      grado = name.slice(0, 2);  // 1001 -> 10
+    else if (name.length === 3) grado = name.slice(0, 1);  // 701  -> 7
+  }
+  if (['6','7','8','9','10','11'].includes(grado)) sel.value = grado;
 }
 
 function showNewCourseModal() {
   document.getElementById('new-course-name').value = '';
+  document.getElementById('new-course-grade').value = '';
   document.getElementById('course-modal-error').style.display = 'none';
   document.getElementById('course-modal').classList.add('show');
   setTimeout(() => document.getElementById('new-course-name').focus(), 100);
@@ -993,15 +1035,17 @@ function hideNewCourseModal() {
 
 async function createNewCourse() {
   const name  = document.getElementById('new-course-name').value.trim();
+  const grado = document.getElementById('new-course-grade').value.trim();
   const errEl = document.getElementById('course-modal-error');
   if (!name) { errEl.textContent = 'Escribe un nombre.'; errEl.style.display = 'block'; return; }
+  if (!grado) { errEl.textContent = 'Selecciona el grado.'; errEl.style.display = 'block'; return; }
   const btn = document.querySelector('#course-modal .btn-success');
   btn.disabled = true; btn.textContent = 'Creando…'; errEl.style.display = 'none';
   try {
     const resp = await fetch('/courses', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name})
+      body: JSON.stringify({name, grado})
     });
     const data = await resp.json();
     if (data.success) {
@@ -1018,6 +1062,18 @@ async function createNewCourse() {
   } finally {
     btn.disabled = false; btn.textContent = '✅ Agregar';
   }
+}
+
+// Devuelve el grado de un curso (string '6'..'11') o '' si no se encuentra
+function gradoDeCurso(curso) {
+  curso = (curso || '').trim();
+  if (!curso) return '';
+  const c = _coursesCache.find(x => x.name === curso);
+  if (c && c.grado) return String(c.grado);
+  // Fallback: derivar del nombre
+  if (/^\d{4}$/.test(curso)) return curso.slice(0,2);
+  if (/^\d{3}$/.test(curso)) return curso.slice(0,1);
+  return '';
 }
 
 document.addEventListener('DOMContentLoaded', () => {

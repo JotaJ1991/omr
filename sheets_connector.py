@@ -103,16 +103,36 @@ def _ensure_curso_column(worksheet, n_questions=125) -> int:
 
 
 # ── Gestión de cursos ─────────────────────────────────────────────────────
+def _grade_from_course_name(name: str) -> str:
+    """Deriva el grado de un nombre de curso numérico tipo '701', '1001'.
+       701  -> '7'  (3 digitos: primer digito)
+       1001 -> '10' (4 digitos: primeros 2)
+       1101 -> '11'
+       Si no es numérico, retorna ''."""
+    n = (name or '').strip()
+    if not n.isdigit():
+        return ''
+    if len(n) == 4:
+        return n[:2]
+    if len(n) == 3:
+        return n[:1]
+    return ''
+
+
 def _ensure_courses_sheet():
-    """Crea la hoja 'Cursos' si no existe. Retorna la worksheet."""
+    """Crea/verifica la hoja 'Cursos'. Asegura columnas: Curso, Grado."""
     ss = _open_spreadsheet()
     try:
         ws = ss.worksheet(COURSES_SHEET)
+        # Verificar header
+        header = ws.row_values(1) or []
+        if len(header) < 2 or header[1].strip().lower() != 'grado':
+            ws.update('A1:B1', [['Curso', 'Grado']], value_input_option='RAW')
     except Exception:
-        ws = ss.add_worksheet(title=COURSES_SHEET, rows=200, cols=2)
-        ws.update('A1', [['Curso']], value_input_option='RAW')
+        ws = ss.add_worksheet(title=COURSES_SHEET, rows=200, cols=3)
+        ws.update('A1:B1', [['Curso', 'Grado']], value_input_option='RAW')
         try:
-            ws.format('A1', {
+            ws.format('A1:B1', {
                 'backgroundColor': {'red': 0.39, 'green': 0.40, 'blue': 0.95},
                 'textFormat': {'bold': True,
                                'foregroundColor': {'red':1,'green':1,'blue':1}},
@@ -124,34 +144,54 @@ def _ensure_courses_sheet():
 
 
 def list_courses() -> list:
-    """Lista los cursos guardados (sin duplicados, ordenados)."""
+    """Lista los cursos guardados como [{name, grado}, ...] sin duplicados, ordenados."""
     try:
         ws = _ensure_courses_sheet()
-        col = ws.col_values(1)[1:]  # saltar encabezado
-        seen = []
-        for c in col:
-            c = (c or '').strip()
-            if c and c not in seen:
-                seen.append(c)
-        return seen
+        rows = ws.get_all_values()[1:]  # saltar encabezado
+        seen_names = set()
+        result = []
+        for r in rows:
+            name = (r[0] if len(r) > 0 else '').strip()
+            grado = (r[1] if len(r) > 1 else '').strip()
+            if not name or name in seen_names:
+                continue
+            seen_names.add(name)
+            # Si no tiene grado guardado, intentar derivarlo del nombre
+            if not grado:
+                grado = _grade_from_course_name(name)
+            result.append({'name': name, 'grado': grado})
+        # Ordenar por (grado numérico, nombre)
+        def _key(c):
+            g = c['grado']
+            try:
+                gi = int(g)
+            except Exception:
+                gi = 99
+            return (gi, c['name'])
+        result.sort(key=_key)
+        return result
     except Exception:
         return []
 
 
-def add_course(name: str) -> dict:
+def add_course(name: str, grado: str = '') -> dict:
     """Agrega un curso si no existe."""
-    name = (name or '').strip()
+    name  = (name or '').strip()
+    grado = (grado or '').strip()
     if not name:
         return {'success': False, 'error': 'El nombre no puede estar vacío.'}
     if len(name) > 50:
         return {'success': False, 'error': 'Nombre demasiado largo (máx 50).'}
+    if not grado:
+        grado = _grade_from_course_name(name)
     try:
         existing = list_courses()
-        if name in existing:
+        if any(c['name'] == name for c in existing):
             return {'success': False, 'error': f'El curso "{name}" ya existe.'}
         ws = _ensure_courses_sheet()
-        ws.append_row([name], value_input_option='RAW')
-        return {'success': True, 'name': name, 'courses': existing + [name]}
+        ws.append_row([name, grado], value_input_option='RAW')
+        return {'success': True, 'name': name, 'grado': grado,
+                'courses': list_courses()}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
