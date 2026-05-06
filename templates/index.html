@@ -2165,9 +2165,7 @@ function _drawScoreBadge(doc, x, y, w, h, score, label) {
 function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   if (addPage) doc.addPage('letter','p');
   const pw = 215.9 - 20; // letter width - margins
-  const isM = (simulacroLabel || '').toLowerCase().includes('m sipagre');
-  // Para M SIPAGRE el max teórico es ~234, para SIPAGRE ~500
-  const maxGeneral = isM ? 235 : 500;
+  const maxGeneral = 500;
   const subTitle = simulacroLabel || 'SIPAGRE';
 
   // ── TITULO HERO (gradiente violeta → cyan) ──

@@ -514,13 +514,15 @@ SIPAGRE_SUBJECTS = [
     ('Ingles',           [('2S', 79, 133)],                   1.8),
 ]
 
-# M SIPAGRE — Una sola jornada de 125 preguntas, mismas ponderaciones
+# M SIPAGRE — Una sola jornada de 125 preguntas
+# Cada materia tiene 25 preguntas → multiplicador 4.0 para max 100 por materia
+# Puntaje general máx ≈ 461 (escalado 0-500 como SIPAGRE)
 M_SIPAGRE_SUBJECTS = [
-    ('Matematica',       (0,  24),   2.0),
-    ('Lectura Critica',  (25, 49),   2.4),
-    ('Sociales',         (50, 74),   2.0),
-    ('Naturales',        (75, 99),   1.7),
-    ('Ingles',           (100,124),  1.8),
+    ('Matematica',       (0,  24),   4.0),
+    ('Lectura Critica',  (25, 49),   4.0),
+    ('Sociales',         (50, 74),   4.0),
+    ('Naturales',        (75, 99),   4.0),
+    ('Ingles',           (100,124),  4.0),
 ]
 
 
