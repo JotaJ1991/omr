@@ -759,9 +759,28 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         return {'success': False,
                 'error': f'La hoja "{sheet_m}" no tiene clave de respuestas.'}
 
+    # Diagnostico detallado
+    all_rows = ws_m.get_all_values()
+    total_data_rows = max(0, len(all_rows) - 2)  # excluir header + clave
     students = _extract_students(ws_m)
     if not students:
-        return {'success': False, 'error': 'No se encontraron estudiantes.'}
+        # Intentar dar pista de por qué
+        no_id_count = 0
+        for row in all_rows[2:]:
+            if not row or len(row) < 5:
+                continue
+            name = row[2].strip() if len(row) > 2 else ''
+            sid  = row[3].strip() if len(row) > 3 else ''
+            if name in (KEY_ROW_NAME, '--- TOTALES ---'):
+                continue
+            if name and not sid:
+                no_id_count += 1
+        msg = f'No se encontraron estudiantes con ID en "{sheet_m}".'
+        if no_id_count > 0:
+            msg += f' Hay {no_id_count} estudiante(s) sin ID — el ID es obligatorio para generar resultados.'
+        elif total_data_rows == 0:
+            msg += ' La hoja no tiene filas de estudiantes.'
+        return {'success': False, 'error': msg}
 
     results = []
     for sid in sorted(students.keys()):
