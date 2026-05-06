@@ -169,11 +169,8 @@ SIPAGRE_2S = {
 
 
 # ---------------------------------------------------------------------------
-# M SIPAGRE  —  Una sola jornada, 125 preguntas válidas
-#   Geometría idéntica a 2S SIPAGRE (134 espacios físicos en la hoja)
-#   pero solo se contabilizan las primeras 125 para el puntaje.
-#   total_q = 125 (UI muestra 125 chips), columnas mantienen 134 para
-#   que el OMR detecte las posiciones correctamente.
+# M SIPAGRE  —  Una sola jornada, 125 preguntas
+#   Geometría: 4 columnas. La columna 4 lee solo hasta P125.
 # ---------------------------------------------------------------------------
 M_SIPAGRE = {
     'id':    'MSIPAGRE',
@@ -192,7 +189,8 @@ M_SIPAGRE = {
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
          'bubble_fx': [0.551, 0.575, 0.599, 0.624, 0.648, 0.673, 0.697, 0.722],
          'timing_fx': 0.503},
-        {'q_start': 106, 'q_end': 134, 'options': ['A','B','C','D'],
+        # Col 4 ahora solo lee hasta P125 (20 preguntas)
+        {'q_start': 106, 'q_end': 125, 'options': ['A','B','C','D'],
          'bubble_fx': [0.870, 0.896, 0.919, 0.943],
          'timing_fx': 0.823},
     ],
