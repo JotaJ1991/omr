@@ -219,9 +219,9 @@ def save():
     answers      = data.get('answers', [])
     sheet_name   = data.get('sheet_name', active_sheet())
 
-    if not student_name:
+    if not student_name and not exam_id:
         return jsonify({'success': False,
-                        'error': 'El nombre del estudiante es obligatorio.'}), 400
+                        'error': 'Ingresa al menos nombre o ID del estudiante.'}), 400
     n = len(answers)
     if n < 1 or n > 200:
         return jsonify({'success': False,

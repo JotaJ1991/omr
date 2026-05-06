@@ -590,14 +590,16 @@
     <!-- 2. Datos estudiante -->
     <div class="card">
       <h2>👤 Datos del estudiante</h2>
-      <label for="student-name">
-        Nombre completo <span style="color:var(--danger)">*</span>
-      </label>
+      <label for="student-name">Nombre completo</label>
       <input type="text" id="student-name"
-             placeholder="Requerido antes de guardar"
+             placeholder="Apellidos y nombres"
              oninput="this.classList.remove('required-empty')">
-      <label for="student-id">ID / Cédula (opcional)</label>
-      <input type="text" id="student-id" placeholder="Ej: 1234567890">
+      <label for="student-id">ID / Cédula</label>
+      <input type="text" id="student-id" placeholder="Ej: 1234567890"
+             oninput="this.classList.remove('required-empty')">
+      <p style="font-size:.78rem;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
+        💡 Ingresa al menos nombre o ID
+      </p>
 
       <label>Curso</label>
       <div class="sheet-selector">
@@ -1628,12 +1630,13 @@ async function confirmSave() {
   const name = document.getElementById('student-name').value.trim();
   const id   = document.getElementById('student-id').value.trim();
 
-  // Validar nombre obligatorio
-  if (!name) {
+  // Validar: al menos nombre o ID
+  if (!name && !id) {
     document.getElementById('student-name').classList.add('required-empty');
+    document.getElementById('student-id').classList.add('required-empty');
     document.getElementById('student-name').focus();
     document.getElementById('student-name').scrollIntoView({behavior:'smooth', block:'center'});
-    setStatus('error', '⚠️ El nombre del estudiante es obligatorio antes de guardar.');
+    setStatus('error', '⚠️ Ingresa al menos nombre o ID del estudiante.');
     return;
   }
 

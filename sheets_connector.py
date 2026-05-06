@@ -539,8 +539,9 @@ def _count_correct_range(answers, key, start, end):
 
 def _extract_students(worksheet):
     """
-    Extrae dict {id_estudiante: {'name': str, 'answers': list, 'curso': str}} de una hoja.
+    Extrae dict {key: {'name','id','answers','curso'}} de una hoja.
     Salta fila 1 (encabezado), fila 2 (clave) y fila TOTALES.
+    Acepta estudiantes con solo nombre o solo ID (al menos uno).
     """
     all_rows = worksheet.get_all_values()
     if not all_rows:
@@ -552,12 +553,15 @@ def _extract_students(worksheet):
             curso_col = i
             break
     students = {}
-    for row in all_rows[2:]:
+    for row_idx, row in enumerate(all_rows[2:]):
         if not row or len(row) < 5:
             continue
         name = row[2].strip() if len(row) > 2 else ''
         sid  = row[3].strip() if len(row) > 3 else ''
-        if not sid or name in (KEY_ROW_NAME, '--- TOTALES ---'):
+        if name in (KEY_ROW_NAME, '--- TOTALES ---'):
+            continue
+        # Aceptar si tiene al menos nombre o ID
+        if not name and not sid:
             continue
         answers = row[COL_OFFSET:]
         clean = []
@@ -572,7 +576,14 @@ def _extract_students(worksheet):
         curso = ''
         if curso_col >= 0 and curso_col < len(row):
             curso = (row[curso_col] or '').strip()
-        students[sid] = {'name': name, 'answers': clean, 'curso': curso}
+        # Key unica: ID si existe, sino nombre+row
+        key = sid if sid else f'_{row_idx}_{name}'
+        students[key] = {
+            'name':    name,
+            'id':      sid,
+            'answers': clean,
+            'curso':   curso,
+        }
     return students
 
 
@@ -616,10 +627,12 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
 
     # Calcular resultados
     results = []
-    for sid in sorted(all_ids):
-        s1 = students_1s.get(sid)
-        s2 = students_2s.get(sid)
-        name  = (s1 or s2)['name']
+    for key in sorted(all_ids):
+        s1 = students_1s.get(key)
+        s2 = students_2s.get(key)
+        s_any = s1 or s2
+        name  = s_any.get('name','')
+        sid   = s_any.get('id','') or (key if not key.startswith('_') else '')
         # Curso: priorizar el de 1S, luego 2S
         curso = ''
         if s1 and s1.get('curso'): curso = s1['curso']
@@ -759,35 +772,18 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         return {'success': False,
                 'error': f'La hoja "{sheet_m}" no tiene clave de respuestas.'}
 
-    # Diagnostico detallado
-    all_rows = ws_m.get_all_values()
-    total_data_rows = max(0, len(all_rows) - 2)  # excluir header + clave
     students = _extract_students(ws_m)
     if not students:
-        # Intentar dar pista de por qué
-        no_id_count = 0
-        for row in all_rows[2:]:
-            if not row or len(row) < 5:
-                continue
-            name = row[2].strip() if len(row) > 2 else ''
-            sid  = row[3].strip() if len(row) > 3 else ''
-            if name in (KEY_ROW_NAME, '--- TOTALES ---'):
-                continue
-            if name and not sid:
-                no_id_count += 1
-        msg = f'No se encontraron estudiantes con ID en "{sheet_m}".'
-        if no_id_count > 0:
-            msg += f' Hay {no_id_count} estudiante(s) sin ID — el ID es obligatorio para generar resultados.'
-        elif total_data_rows == 0:
-            msg += ' La hoja no tiene filas de estudiantes.'
-        return {'success': False, 'error': msg}
+        return {'success': False,
+                'error': f'No se encontraron estudiantes en "{sheet_m}". Verifica que la hoja tenga filas de estudiantes con nombre o ID.'}
 
     results = []
-    for sid in sorted(students.keys()):
-        s    = students[sid]
-        name = s['name']
+    for key in sorted(students.keys()):
+        s     = students[key]
+        name  = s['name']
+        sid   = s.get('id', '')
         curso = s.get('curso', '')
-        ans  = s['answers']
+        ans   = s['answers']
 
         scores = {}
         for subj_name, (start, end), _points_legacy in M_SIPAGRE_SUBJECTS:
