@@ -2401,7 +2401,8 @@ async function downloadAllPdfs() {
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
     sipagreResults.forEach((st, i) => {
-      renderStudentPage(doc, st, pcts[String(st.id)]||{}, i>0, 'SIPAGRE');
+      const pctKey = st.id ? String(st.id) : `_idx${i}`;
+      renderStudentPage(doc, st, pcts[pctKey]||{}, i>0, 'SIPAGRE');
     });
     doc.save('Resultados_SIPAGRE.pdf');
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
@@ -2534,7 +2535,8 @@ async function downloadAllMPdfs() {
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(msipagreResults);
     msipagreResults.forEach((st, i) => {
-      renderStudentPage(doc, st, pcts[String(st.id)]||{}, i>0, 'M SIPAGRE');
+      const pctKey = st.id ? String(st.id) : `_idx${i}`;
+      renderStudentPage(doc, st, pcts[pctKey]||{}, i>0, 'M SIPAGRE');
     });
     doc.save('Resultados_M_SIPAGRE.pdf');
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
