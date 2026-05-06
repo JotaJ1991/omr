@@ -2189,10 +2189,10 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   // Acento blanco lateral
   doc.setFillColor(255,255,255);
   doc.rect(13, 14, 3, titleH - 8, 'F');
-  // Logo SIPAGRE en la esquina superior derecha del header
+  // Logo SIPAGRE en la esquina superior derecha (puede desbordar la caja del header)
   if (_sipagreLogoDataUrl) {
-    const logoSize = 28;
-    const logoX = 10 + pw - logoSize - 2;
+    const logoSize = 46;
+    const logoX = 10 + pw - logoSize + 2;
     const logoY = 10 + (titleH - logoSize) / 2;
     try { doc.addImage(_sipagreLogoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
     catch(e) { /* opcional */ }
