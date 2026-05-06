@@ -1792,11 +1792,11 @@ function renderSipagreTable() {
     ing:  Math.round(sipagreResults.reduce((s,r) => s + (+r.ing||0), 0) / n),
     gen:  Math.round(sipagreResults.reduce((s,r) => s + (+r.general||0), 0) / n),
   };
-  const rows = sipagreResults.map(r => `
+  const rows = sipagreResults.map((r, idx) => `
     <tr>
       <td>
-        <div style="font-weight:600;">${r.name}</div>
-        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id}</div>
+        <div style="font-weight:600;">${r.name || '—'}</div>
+        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id || '—'}</div>
       </td>
       <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
       <td class="score">${r.mat}</td>
@@ -1805,7 +1805,7 @@ function renderSipagreTable() {
       <td class="score">${r.nat}</td>
       <td class="score">${r.ing}</td>
       <td class="general-score">${r.general}</td>
-      <td><button class="pdf-btn" onclick="downloadStudentPdf('${r.id}')">PDF</button></td>
+      <td><button class="pdf-btn" onclick="downloadStudentPdf(${idx})">PDF</button></td>
     </tr>`).join('');
   list.innerHTML = `
     <div class="results-table-wrap">
@@ -1848,13 +1848,14 @@ function calcPercentiles(results) {
   const sorted = {};
   fields.forEach(f => { sorted[f] = results.map(r => Number(r[f])||0).sort((a,b)=>a-b); });
   const pcts = {};
-  results.forEach(r => {
-    const sid = String(r.id);
-    pcts[sid] = {};
+  results.forEach((r, idx) => {
+    // Si el estudiante no tiene id, usar un key basado en el indice
+    const key = r.id ? String(r.id) : `_idx${idx}`;
+    pcts[key] = {};
     fields.forEach(f => {
       const val = Number(r[f])||0;
       const count = sorted[f].filter(v => v <= val).length;
-      pcts[sid][f] = Math.round(count / n * 100);
+      pcts[key][f] = Math.round(count / n * 100);
     });
   });
   return pcts;
@@ -2410,7 +2411,7 @@ async function downloadAllPdfs() {
   btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
 }
 
-async function downloadStudentPdf(studentId) {
+async function downloadStudentPdf(idx) {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
       '<p style="color:var(--danger);">Primero genera los resultados SIPAGRE.</p>';
@@ -2422,10 +2423,12 @@ async function downloadStudentPdf(studentId) {
     const JsPDF = getJsPDF();
     const doc = new JsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(sipagreResults);
-    const st = sipagreResults.find(r => String(r.id) === String(studentId));
+    const st = sipagreResults[idx];
     if (!st) { status.innerHTML = '<p style="color:var(--danger);">Estudiante no encontrado.</p>'; return; }
-    renderStudentPage(doc, st, pcts[String(st.id)]||{}, false, 'SIPAGRE');
-    doc.save(`Resultado_${studentId}.pdf`);
+    const pctKey = st.id ? String(st.id) : `_idx${idx}`;
+    renderStudentPage(doc, st, pcts[pctKey]||{}, false, 'SIPAGRE');
+    const safe = (st.name || st.id || `est_${idx+1}`).replace(/[^a-z0-9]+/gi,'_').slice(0,30);
+    doc.save(`Resultado_${safe}.pdf`);
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
@@ -2475,11 +2478,11 @@ function renderMSipagreTable() {
     ing:  Math.round(msipagreResults.reduce((s,r) => s + (+r.ing||0), 0) / n),
     gen:  Math.round(msipagreResults.reduce((s,r) => s + (+r.general||0), 0) / n),
   };
-  const rows = msipagreResults.map(r => `
+  const rows = msipagreResults.map((r, idx) => `
     <tr>
       <td>
-        <div style="font-weight:600;">${r.name}</div>
-        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id}</div>
+        <div style="font-weight:600;">${r.name || '—'}</div>
+        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id || '—'}</div>
       </td>
       <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
       <td class="score">${r.mat}</td>
@@ -2488,7 +2491,7 @@ function renderMSipagreTable() {
       <td class="score">${r.nat}</td>
       <td class="score">${r.ing}</td>
       <td class="general-score">${r.general}</td>
-      <td><button class="pdf-btn" onclick="downloadMStudentPdf('${r.id}')">PDF</button></td>
+      <td><button class="pdf-btn" onclick="downloadMStudentPdf(${idx})">PDF</button></td>
     </tr>`).join('');
   list.innerHTML = `
     <div class="results-table-wrap">
@@ -2541,7 +2544,7 @@ async function downloadAllMPdfs() {
   btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
 }
 
-async function downloadMStudentPdf(studentId) {
+async function downloadMStudentPdf(idx) {
   if (!msipagreResults || !msipagreResults.length) {
     document.getElementById('msipagre-status').innerHTML =
       '<p style="color:var(--danger);">Primero genera los resultados M SIPAGRE.</p>';
@@ -2553,10 +2556,12 @@ async function downloadMStudentPdf(studentId) {
     const JsPDF = getJsPDF();
     const doc = new JsPDF({orientation:'p', unit:'mm', format:'letter'});
     const pcts = calcPercentiles(msipagreResults);
-    const st = msipagreResults.find(r => String(r.id) === String(studentId));
+    const st = msipagreResults[idx];
     if (!st) { status.innerHTML = '<p style="color:var(--danger);">Estudiante no encontrado.</p>'; return; }
-    renderStudentPage(doc, st, pcts[String(st.id)]||{}, false, 'M SIPAGRE');
-    doc.save(`Resultado_M_${studentId}.pdf`);
+    const pctKey = st.id ? String(st.id) : `_idx${idx}`;
+    renderStudentPage(doc, st, pcts[pctKey]||{}, false, 'M SIPAGRE');
+    const safe = (st.name || st.id || `est_${idx+1}`).replace(/[^a-z0-9]+/gi,'_').slice(0,30);
+    doc.save(`Resultado_M_${safe}.pdf`);
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
