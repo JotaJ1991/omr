@@ -781,6 +781,19 @@
           Descargar Todos PDF
         </button>
       </div>
+      <div id="sipagre-course-bar" style="display:none;margin-top:10px;
+           gap:8px;align-items:end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:.78rem;color:var(--muted);">Filtrar por curso</label>
+          <select id="sipagre-course-filter">
+            <option value="">— todos los cursos —</option>
+          </select>
+        </div>
+        <button class="btn-accent" onclick="downloadCoursePdfs()" id="btn-course-pdf"
+                style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
+          📥 Descargar curso
+        </button>
+      </div>
       <div id="sipagre-status" style="margin-top:10px;"></div>
       <div id="sipagre-students-list" style="margin-top:12px;"></div>
     </div>
@@ -805,6 +818,19 @@
         <button class="btn-primary" onclick="downloadAllMPdfs()" id="btn-mpdf-all"
                 style="flex:1;padding:13px;font-size:.92rem;">
           Descargar Todos PDF
+        </button>
+      </div>
+      <div id="msipagre-course-bar" style="display:none;margin-top:10px;
+           gap:8px;align-items:end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:.78rem;color:var(--muted);">Filtrar por curso</label>
+          <select id="msipagre-course-filter">
+            <option value="">— todos los cursos —</option>
+          </select>
+        </div>
+        <button class="btn-accent" onclick="downloadMCoursePdfs()" id="btn-mcourse-pdf"
+                style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
+          📥 Descargar curso
         </button>
       </div>
       <div id="msipagre-status" style="margin-top:10px;"></div>
@@ -1770,6 +1796,7 @@ async function generateSipagreResults() {
         Listo: ${data.students} estudiantes procesados.
         <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
       renderSipagreTable();
+      _populateCourseFilter('sipagre-course-filter', sipagreResults, 'sipagre-course-bar');
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error}</p>`;
     }
@@ -2385,6 +2412,87 @@ function getJsPDF() {
   throw new Error('jsPDF no ha cargado. Recarga la pagina e intenta de nuevo.');
 }
 
+// Poblar el dropdown de cursos a partir de los resultados
+function _populateCourseFilter(selectId, results, barId) {
+  const sel = document.getElementById(selectId);
+  const bar = document.getElementById(barId);
+  if (!sel || !results || !results.length) {
+    if (bar) bar.style.display = 'none';
+    return;
+  }
+  const courses = [...new Set(results.map(r => (r.curso || '').trim()).filter(c => c))].sort();
+  if (!courses.length) {
+    bar.style.display = 'none';
+    return;
+  }
+  sel.innerHTML = '<option value="">— todos los cursos —</option>' +
+    courses.map(c => `<option value="${c}">${c}</option>`).join('');
+  bar.style.display = 'flex';
+}
+
+async function _generatePdfForResults(filteredResults, allResults, simulacroLabel, fileName) {
+  await _loadLogo();
+  const jsPDF = getJsPDF();
+  const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+  // Percentiles SIEMPRE se calculan sobre el universo completo (allResults)
+  const pcts = calcPercentiles(allResults);
+  filteredResults.forEach((st, i) => {
+    // Buscar el indice original en allResults para usar el key correcto
+    const origIdx = allResults.indexOf(st);
+    const pctKey = st.id ? String(st.id) : `_idx${origIdx}`;
+    renderStudentPage(doc, st, pcts[pctKey]||{}, i>0, simulacroLabel);
+  });
+  doc.save(fileName);
+}
+
+async function downloadCoursePdfs() {
+  if (!sipagreResults || !sipagreResults.length) {
+    document.getElementById('sipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados.</p>'; return;
+  }
+  const curso = document.getElementById('sipagre-course-filter').value;
+  const status = document.getElementById('sipagre-status');
+  const btn = document.getElementById('btn-course-pdf');
+  btn.disabled = true; btn.textContent = 'Generando...';
+  try {
+    const filtered = curso ? sipagreResults.filter(r => (r.curso||'').trim() === curso) : sipagreResults;
+    if (!filtered.length) {
+      status.innerHTML = `<p style="color:var(--danger);">No hay estudiantes en el curso "${curso}".</p>`;
+      btn.disabled = false; btn.textContent = '📥 Descargar curso'; return;
+    }
+    const fname = curso ? `Resultados_SIPAGRE_${curso}.pdf` : 'Resultados_SIPAGRE.pdf';
+    await _generatePdfForResults(filtered, sipagreResults, 'SIPAGRE', fname);
+    status.innerHTML = `<p style="color:var(--success);font-weight:600;">PDF descargado (${filtered.length} estudiante${filtered.length>1?'s':''}).</p>`;
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+  btn.disabled = false; btn.textContent = '📥 Descargar curso';
+}
+
+async function downloadMCoursePdfs() {
+  if (!msipagreResults || !msipagreResults.length) {
+    document.getElementById('msipagre-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados.</p>'; return;
+  }
+  const curso = document.getElementById('msipagre-course-filter').value;
+  const status = document.getElementById('msipagre-status');
+  const btn = document.getElementById('btn-mcourse-pdf');
+  btn.disabled = true; btn.textContent = 'Generando...';
+  try {
+    const filtered = curso ? msipagreResults.filter(r => (r.curso||'').trim() === curso) : msipagreResults;
+    if (!filtered.length) {
+      status.innerHTML = `<p style="color:var(--danger);">No hay estudiantes en el curso "${curso}".</p>`;
+      btn.disabled = false; btn.textContent = '📥 Descargar curso'; return;
+    }
+    const fname = curso ? `Resultados_M_SIPAGRE_${curso}.pdf` : 'Resultados_M_SIPAGRE.pdf';
+    await _generatePdfForResults(filtered, msipagreResults, 'M SIPAGRE', fname);
+    status.innerHTML = `<p style="color:var(--success);font-weight:600;">PDF descargado (${filtered.length} estudiante${filtered.length>1?'s':''}).</p>`;
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+  btn.disabled = false; btn.textContent = '📥 Descargar curso';
+}
+
 async function downloadAllPdfs() {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
@@ -2458,6 +2566,7 @@ async function generateMSipagreResults() {
         Listo: ${data.students} estudiantes procesados.
         <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
       renderMSipagreTable();
+      _populateCourseFilter('msipagre-course-filter', msipagreResults, 'msipagre-course-bar');
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error}</p>`;
     }
