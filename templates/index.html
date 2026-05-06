@@ -2189,19 +2189,11 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   // Acento blanco lateral
   doc.setFillColor(255,255,255);
   doc.rect(13, 14, 3, titleH - 8, 'F');
-  // Logos en la esquina superior derecha del header (JMR + SIPAGRE lado a lado)
-  const logoSize = 28;
-  let logoX = 10 + pw - 2;
-  const logoY = 10 + (titleH - logoSize) / 2;
-  // Logo JMR a la derecha
-  if (_logoDataUrl) {
-    logoX -= logoSize;
-    try { doc.addImage(_logoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
-    catch(e) { /* opcional */ }
-  }
-  // Logo SIPAGRE a la izquierda del JMR (o solo si no hay JMR)
+  // Logo SIPAGRE en la esquina superior derecha del header
   if (_sipagreLogoDataUrl) {
-    logoX -= (logoSize + 2);
+    const logoSize = 28;
+    const logoX = 10 + pw - logoSize - 2;
+    const logoY = 10 + (titleH - logoSize) / 2;
     try { doc.addImage(_sipagreLogoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
     catch(e) { /* opcional */ }
   }
@@ -2338,10 +2330,17 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
     ly += rowH;
   });
 
-  // PIE
+  // PIE: logo JMR pequeño centrado + texto
+  if (_logoDataUrl) {
+    const fLogoSize = 12;
+    const fLogoX = 10 + pw/2 - fLogoSize/2;
+    const fLogoY = 256;
+    try { doc.addImage(_logoDataUrl, 'PNG', fLogoX, fLogoY, fLogoSize, fLogoSize); }
+    catch(e) { /* opcional */ }
+  }
   doc.setFont('helvetica','italic'); doc.setFontSize(7);
   doc.setTextColor(150,150,150);
-  doc.text(`Generado automaticamente - Simulacro ${subTitle}`, 10+pw/2, 264, {align:'center'});
+  doc.text(`Generado automaticamente - Simulacro ${subTitle}`, 10+pw/2, 272, {align:'center'});
 }
 
 function getJsPDF() {
