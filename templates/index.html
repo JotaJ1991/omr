@@ -2299,9 +2299,19 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   doc.text('PUNTAJE',    lx + colNameW + colScoreW/2,             ly - 1, {align:'center'});
   doc.text('PERCENTIL',  lx + colNameW + colScoreW + 2 + colBarW/2, ly - 1, {align:'center'});
 
+  // Nombres compactos para la tabla
+  const shortNames = {
+    'Matematicas':           'Matemáticas',
+    'Lectura Critica':       'Lectura Crítica',
+    'Sociales y Ciudadanas': 'Sociales',
+    'Ciencias Naturales':    'Naturales',
+    'Ingles':                'Inglés',
+  };
+
   SUBJECTS.forEach((subj, idx) => {
     const score = Number(student[subj.key])||0;
     const pct   = (pcts||{})[subj.key]||0;
+    const displayName = shortNames[subj.name] || subj.name;
 
     // Card de fondo claro alternada
     doc.setFillColor(idx % 2 === 0 ? 248 : 241,
@@ -2309,10 +2319,17 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
                      idx % 2 === 0 ? 252 : 249);
     doc.roundedRect(lx, ly + 0.5, lw, rowH - 1, 1.5, 1.5, 'F');
 
-    // Nombre materia (alineado verticalmente al centro)
-    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    // Nombre materia con tamaño ajustado para evitar solape
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
     doc.setTextColor(30, 41, 59);
-    doc.text(subj.name, lx + 2, ly + rowH/2 + 1.2);
+    // Calcular ancho disponible y truncar/encoger si excede
+    const maxNameW = colNameW - 4;
+    let nameSize = 8.5;
+    while (doc.getTextWidth(displayName) > maxNameW && nameSize > 6.5) {
+      nameSize -= 0.5;
+      doc.setFontSize(nameSize);
+    }
+    doc.text(displayName, lx + 2, ly + rowH/2 + 1.2);
 
     // Badge violeta del PUNTAJE (mismo estilo)
     const badgeW = colScoreW - 1, badgeH = rowH - 3;
