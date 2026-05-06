@@ -470,11 +470,10 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path):
             for oi, x in enumerate(xs):
                 opt = options[oi]
                 if opt == ans:
-                    # Detectada: círculo grueso con color
+                    # Detectada: círculo SÓLIDO con color (relleno) para verificación visual rápida
                     clr = palette[oi % len(palette)]
-                    cv2.circle(debug, (x, y), radius, clr, 2)
-                    cv2.putText(debug, opt, (x-4, y+4),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.28, clr, 1)
+                    cv2.circle(debug, (x, y), radius, clr, -1)         # relleno
+                    cv2.circle(debug, (x, y), radius, (255, 255, 255), 1)  # borde blanco fino
                 else:
                     # No detectada: círculo fino gris para ver la posición
                     cv2.circle(debug, (x, y), radius, (180, 180, 180), 1)

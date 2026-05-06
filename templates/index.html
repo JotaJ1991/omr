@@ -1696,7 +1696,8 @@ function openSheets() {
 
 function resetAndScan() {
   resetScan();
-  setTimeout(() => document.getElementById('file-input').click(), 200);
+  // Activar la cámara guiada con detección de bordes para el siguiente estudiante
+  setTimeout(() => openCameraModal(), 200);
 }
 
 // ══ RESET ══════════════════════════════════════════════════════════════════
