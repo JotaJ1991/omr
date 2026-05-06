@@ -1813,7 +1813,9 @@ function renderSipagreTable() {
   // Filtrar por curso si hay uno seleccionado
   const filterSel = document.getElementById('sipagre-course-filter');
   const cursoF    = filterSel ? filterSel.value : '';
-  const view = cursoF ? sipagreResults.filter(r => (r.curso||'').trim() === cursoF) : sipagreResults;
+  let view = cursoF ? sipagreResults.filter(r => (r.curso||'').trim() === cursoF) : sipagreResults.slice();
+  // Ordenar por puntaje general descendente (mayor a menor)
+  view = view.slice().sort((a, b) => (+b.general||0) - (+a.general||0));
   if (!view.length) {
     list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">No hay estudiantes en el curso "${cursoF}".</p>`;
     return;
@@ -2598,7 +2600,9 @@ function renderMSipagreTable() {
   // Filtrar por curso si hay uno seleccionado
   const filterSel = document.getElementById('msipagre-course-filter');
   const cursoF    = filterSel ? filterSel.value : '';
-  const view = cursoF ? msipagreResults.filter(r => (r.curso||'').trim() === cursoF) : msipagreResults;
+  let view = cursoF ? msipagreResults.filter(r => (r.curso||'').trim() === cursoF) : msipagreResults.slice();
+  // Ordenar por puntaje general descendente (mayor a menor)
+  view = view.slice().sort((a, b) => (+b.general||0) - (+a.general||0));
   if (!view.length) {
     list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">No hay estudiantes en el curso "${cursoF}".</p>`;
     return;
