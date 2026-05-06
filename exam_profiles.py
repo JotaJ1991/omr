@@ -113,13 +113,13 @@ SIPAGRE_1S = {
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'snap_range':        3,
-    'fill_threshold':   0.12,
-    'min_contrast':     0.05,
+    'fill_threshold':   0.08,
+    'min_contrast':     0.04,
     'binarize_block':   25,
     'binarize_c':        6,
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
-    'mask_inner_ratio':  0.6,   # mide solo el 60% interior, ignora el borde impreso
+    'mask_inner_ratio':  0.55,   # mide solo el 60% interior, ignora el borde impreso
 }
 
 
@@ -158,13 +158,13 @@ SIPAGRE_2S = {
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'snap_range':        3,
-    'fill_threshold':   0.12,
-    'min_contrast':     0.05,
+    'fill_threshold':   0.08,
+    'min_contrast':     0.04,
     'binarize_block':   25,
     'binarize_c':        6,
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
-    'mask_inner_ratio':  0.6,   # mide solo el 60% interior, ignora el borde impreso
+    'mask_inner_ratio':  0.55,   # mide solo el 60% interior, ignora el borde impreso
 }
 
 
@@ -201,13 +201,13 @@ M_SIPAGRE = {
     'answers_bottom_f': 0.977,
     'bubble_radius':     9,
     'snap_range':        3,
-    'fill_threshold':   0.12,
-    'min_contrast':     0.05,
+    'fill_threshold':   0.08,
+    'min_contrast':     0.04,
     'binarize_block':   25,
     'binarize_c':        6,
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
-    'mask_inner_ratio':  0.6,
+    'mask_inner_ratio':  0.55,
 }
 
 
