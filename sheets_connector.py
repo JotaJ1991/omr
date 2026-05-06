@@ -648,7 +648,8 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         soc  = int(round(scores['Sociales']['points']))
         nat  = int(round(scores['Naturales']['points']))
         ing  = int(round(scores['Ingles']['points']))
-        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3) / 13)))
+        # Pesos: Mat, Lect, Soc, Nat = 3 cada una; Ing = 1.  Suma = 13
+        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
 
         results.append({
             'id':       sid,
@@ -777,7 +778,8 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         soc  = int(round(scores['Sociales']))
         nat  = int(round(scores['Naturales']))
         ing  = int(round(scores['Ingles']))
-        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3) / 13)))
+        # Pesos: Mat, Lect, Soc, Nat = 3 cada una; Ing = 1.  Suma = 13
+        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
 
         results.append({
             'id':       sid,
