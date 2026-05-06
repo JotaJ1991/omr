@@ -1810,16 +1810,26 @@ async function generateSipagreResults() {
 function renderSipagreTable() {
   const list = document.getElementById('sipagre-students-list');
   if (!sipagreResults || !sipagreResults.length) { list.innerHTML = ''; return; }
-  const n = sipagreResults.length;
+  // Filtrar por curso si hay uno seleccionado
+  const filterSel = document.getElementById('sipagre-course-filter');
+  const cursoF    = filterSel ? filterSel.value : '';
+  const view = cursoF ? sipagreResults.filter(r => (r.curso||'').trim() === cursoF) : sipagreResults;
+  if (!view.length) {
+    list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">No hay estudiantes en el curso "${cursoF}".</p>`;
+    return;
+  }
+  const n = view.length;
   const avg = {
-    mat:  Math.round(sipagreResults.reduce((s,r) => s + (+r.mat||0), 0) / n),
-    lect: Math.round(sipagreResults.reduce((s,r) => s + (+r.lect||0), 0) / n),
-    soc:  Math.round(sipagreResults.reduce((s,r) => s + (+r.soc||0), 0) / n),
-    nat:  Math.round(sipagreResults.reduce((s,r) => s + (+r.nat||0), 0) / n),
-    ing:  Math.round(sipagreResults.reduce((s,r) => s + (+r.ing||0), 0) / n),
-    gen:  Math.round(sipagreResults.reduce((s,r) => s + (+r.general||0), 0) / n),
+    mat:  Math.round(view.reduce((s,r) => s + (+r.mat||0), 0) / n),
+    lect: Math.round(view.reduce((s,r) => s + (+r.lect||0), 0) / n),
+    soc:  Math.round(view.reduce((s,r) => s + (+r.soc||0), 0) / n),
+    nat:  Math.round(view.reduce((s,r) => s + (+r.nat||0), 0) / n),
+    ing:  Math.round(view.reduce((s,r) => s + (+r.ing||0), 0) / n),
+    gen:  Math.round(view.reduce((s,r) => s + (+r.general||0), 0) / n),
   };
-  const rows = sipagreResults.map((r, idx) => `
+  const rows = view.map(r => {
+    const idx = sipagreResults.indexOf(r);  // indice original para downloads
+    return `
     <tr>
       <td>
         <div style="font-weight:600;">${r.name || '—'}</div>
@@ -1833,7 +1843,8 @@ function renderSipagreTable() {
       <td class="score">${r.ing}</td>
       <td class="general-score">${r.general}</td>
       <td><button class="pdf-btn" onclick="downloadStudentPdf(${idx})">PDF</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   list.innerHTML = `
     <div class="results-table-wrap">
       <table class="results-table">
@@ -2428,6 +2439,11 @@ function _populateCourseFilter(selectId, results, barId) {
   sel.innerHTML = '<option value="">— todos los cursos —</option>' +
     courses.map(c => `<option value="${c}">${c}</option>`).join('');
   bar.style.display = 'flex';
+  // Re-render de la tabla cuando cambia el filtro
+  sel.onchange = () => {
+    if (selectId === 'sipagre-course-filter')  renderSipagreTable();
+    if (selectId === 'msipagre-course-filter') renderMSipagreTable();
+  };
 }
 
 async function _generatePdfForResults(filteredResults, allResults, simulacroLabel, fileName) {
@@ -2579,16 +2595,26 @@ async function generateMSipagreResults() {
 function renderMSipagreTable() {
   const list = document.getElementById('msipagre-students-list');
   if (!msipagreResults || !msipagreResults.length) { list.innerHTML = ''; return; }
-  const n = msipagreResults.length;
+  // Filtrar por curso si hay uno seleccionado
+  const filterSel = document.getElementById('msipagre-course-filter');
+  const cursoF    = filterSel ? filterSel.value : '';
+  const view = cursoF ? msipagreResults.filter(r => (r.curso||'').trim() === cursoF) : msipagreResults;
+  if (!view.length) {
+    list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">No hay estudiantes en el curso "${cursoF}".</p>`;
+    return;
+  }
+  const n = view.length;
   const avg = {
-    mat:  Math.round(msipagreResults.reduce((s,r) => s + (+r.mat||0), 0) / n),
-    lect: Math.round(msipagreResults.reduce((s,r) => s + (+r.lect||0), 0) / n),
-    soc:  Math.round(msipagreResults.reduce((s,r) => s + (+r.soc||0), 0) / n),
-    nat:  Math.round(msipagreResults.reduce((s,r) => s + (+r.nat||0), 0) / n),
-    ing:  Math.round(msipagreResults.reduce((s,r) => s + (+r.ing||0), 0) / n),
-    gen:  Math.round(msipagreResults.reduce((s,r) => s + (+r.general||0), 0) / n),
+    mat:  Math.round(view.reduce((s,r) => s + (+r.mat||0), 0) / n),
+    lect: Math.round(view.reduce((s,r) => s + (+r.lect||0), 0) / n),
+    soc:  Math.round(view.reduce((s,r) => s + (+r.soc||0), 0) / n),
+    nat:  Math.round(view.reduce((s,r) => s + (+r.nat||0), 0) / n),
+    ing:  Math.round(view.reduce((s,r) => s + (+r.ing||0), 0) / n),
+    gen:  Math.round(view.reduce((s,r) => s + (+r.general||0), 0) / n),
   };
-  const rows = msipagreResults.map((r, idx) => `
+  const rows = view.map(r => {
+    const idx = msipagreResults.indexOf(r);
+    return `
     <tr>
       <td>
         <div style="font-weight:600;">${r.name || '—'}</div>
@@ -2602,7 +2628,8 @@ function renderMSipagreTable() {
       <td class="score">${r.ing}</td>
       <td class="general-score">${r.general}</td>
       <td><button class="pdf-btn" onclick="downloadMStudentPdf(${idx})">PDF</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   list.innerHTML = `
     <div class="results-table-wrap">
       <table class="results-table">
