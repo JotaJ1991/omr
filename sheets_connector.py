@@ -628,7 +628,7 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         ans_2s = s2['answers'] if s2 else []
 
         scores = {}
-        for subj_name, ranges, points in SIPAGRE_SUBJECTS:
+        for subj_name, ranges, _points_legacy in SIPAGRE_SUBJECTS:
             correct = 0
             total_q = 0
             for session, start, end in ranges:
@@ -637,10 +637,12 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
                 else:
                     correct += _count_correct_range(ans_2s, key_2s, start, end)
                 total_q += (end - start + 1)
+            # Puntaje 0-100 = correctas / total * 100
+            pct_score = (correct / total_q * 100) if total_q > 0 else 0.0
             scores[subj_name] = {
                 'correct': correct,
                 'total':   total_q,
-                'points':  round(correct * points, 2),
+                'points':  round(pct_score, 2),
             }
 
         mat  = int(round(scores['Matematica']['points']))
@@ -769,9 +771,11 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         ans  = s['answers']
 
         scores = {}
-        for subj_name, (start, end), points in M_SIPAGRE_SUBJECTS:
+        for subj_name, (start, end), _points_legacy in M_SIPAGRE_SUBJECTS:
             correct = _count_correct_range(ans, key_m, start, end)
-            scores[subj_name] = round(correct * points, 2)
+            total_q = end - start + 1
+            pct_score = (correct / total_q * 100) if total_q > 0 else 0.0
+            scores[subj_name] = round(pct_score, 2)
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))
