@@ -1863,23 +1863,29 @@ function _newCanvas(w, h) {
   return c;
 }
 
-// Carga el logo una vez y lo cachea como dataURL para insertarlo en el PDF
+// Carga los logos una vez y los cachea como dataURL para insertarlos en el PDF
 let _logoDataUrl = null;
-function _loadLogo() {
+let _sipagreLogoDataUrl = null;
+
+function _loadImageAsDataUrl(url) {
   return new Promise(resolve => {
-    if (_logoDataUrl !== null) { resolve(_logoDataUrl); return; }
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       const c = _newCanvas(img.naturalWidth, img.naturalHeight);
       c.getContext('2d').drawImage(img, 0, 0);
-      try { _logoDataUrl = c.toDataURL('image/png'); }
-      catch (e) { _logoDataUrl = ''; }
-      resolve(_logoDataUrl);
+      try { resolve(c.toDataURL('image/png')); }
+      catch (e) { resolve(''); }
     };
-    img.onerror = () => { _logoDataUrl = ''; resolve(''); };
-    img.src = '/static/logo.png';
+    img.onerror = () => resolve('');
+    img.src = url;
   });
+}
+
+async function _loadLogo() {
+  if (_logoDataUrl === null)        _logoDataUrl        = await _loadImageAsDataUrl('/static/logo.png');
+  if (_sipagreLogoDataUrl === null) _sipagreLogoDataUrl = await _loadImageAsDataUrl('/static/sipagre_logo.png');
+  return _logoDataUrl;
 }
 
 function drawGaugeCanvas(value, max, label) {
@@ -2183,13 +2189,21 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   // Acento blanco lateral
   doc.setFillColor(255,255,255);
   doc.rect(13, 14, 3, titleH - 8, 'F');
-  // Logo en la esquina superior derecha del header
+  // Logos en la esquina superior derecha del header (JMR + SIPAGRE lado a lado)
+  const logoSize = 28;
+  let logoX = 10 + pw - 2;
+  const logoY = 10 + (titleH - logoSize) / 2;
+  // Logo JMR a la derecha
   if (_logoDataUrl) {
-    const logoSize = 28;
-    const logoX = 10 + pw - logoSize - 2;
-    const logoY = 10 + (titleH - logoSize) / 2;
+    logoX -= logoSize;
     try { doc.addImage(_logoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
-    catch(e) { /* logo opcional */ }
+    catch(e) { /* opcional */ }
+  }
+  // Logo SIPAGRE a la izquierda del JMR (o solo si no hay JMR)
+  if (_sipagreLogoDataUrl) {
+    logoX -= (logoSize + 2);
+    try { doc.addImage(_sipagreLogoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
+    catch(e) { /* opcional */ }
   }
   // Texto título
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
