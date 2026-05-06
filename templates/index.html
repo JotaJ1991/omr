@@ -2089,14 +2089,29 @@ function drawRadarCanvas(labels, values, maxVal) {
   ctx.strokeStyle = '#16a34a';
   ctx.lineWidth = 2.5;
   ctx.stroke();
-  // Vértices
-  ctx.fillStyle = '#16a34a';
+  // Vértices con número del puntaje al lado
   for (let i = 0; i < N; i++) {
     const a = -Math.PI/2 + 2*Math.PI*i/N;
     const v = Math.min(values[i] / maxVal, 1);
     const x = cx + R*v*Math.cos(a);
     const y = cy + R*v*Math.sin(a);
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2); ctx.fill();
+    // Punto del vértice
+    ctx.fillStyle = '#16a34a';
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+    // Número del puntaje (background blanco para legibilidad)
+    const valStr = String(Math.round(values[i]));
+    ctx.font = 'bold 20px Inter, Arial';
+    const tw = ctx.measureText(valStr).width;
+    // Posicionar el número ligeramente hacia afuera del vértice
+    const offR = 18;
+    const tx = cx + (R*v + offR)*Math.cos(a);
+    const ty = cy + (R*v + offR)*Math.sin(a);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillRect(tx - tw/2 - 4, ty - 12, tw + 8, 22);
+    ctx.fillStyle = '#16a34a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(valStr, tx, ty);
   }
   // Etiquetas
   ctx.fillStyle = '#1e293b';
@@ -2105,7 +2120,7 @@ function drawRadarCanvas(labels, values, maxVal) {
   ctx.textBaseline = 'middle';
   for (let i = 0; i < N; i++) {
     const a = -Math.PI/2 + 2*Math.PI*i/N;
-    const lblR = R + 36;
+    const lblR = R + 50;
     const x = cx + lblR*Math.cos(a);
     const y = cy + lblR*Math.sin(a);
     ctx.fillText(labels[i], x, y);
