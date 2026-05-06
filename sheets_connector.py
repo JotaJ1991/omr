@@ -29,6 +29,7 @@ CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS_JSON', None)
 # Columna donde empieza P1 (base-0: col 4 = columna E)
 COL_OFFSET = 4
 KEY_ROW_NAME = '*** CLAVE ***'
+COURSES_SHEET = 'Cursos'
 
 
 def _get_sheets_client():
@@ -70,8 +71,108 @@ def _build_header(n=125):
     """Fila 1: encabezados."""
     h = ['Fecha', 'Hora', 'Nombre', 'ID_Estudiante']
     h += [f'P{i}' for i in range(1, n + 1)]
-    h += ['Respondidas', 'Correctas', 'Porcentaje']
+    h += ['Respondidas', 'Correctas', 'Porcentaje', 'Curso']
     return h
+
+
+def _find_curso_col(worksheet) -> int:
+    """Devuelve el índice base-0 de la columna 'Curso' o -1 si no existe."""
+    try:
+        header = worksheet.row_values(1)
+        for i, h in enumerate(header):
+            if h.strip().lower() == 'curso':
+                return i
+    except Exception:
+        pass
+    return -1
+
+
+def _ensure_curso_column(worksheet, n_questions=125) -> int:
+    """Garantiza que exista la columna 'Curso' al final. Devuelve su indice 0-based."""
+    idx = _find_curso_col(worksheet)
+    if idx >= 0:
+        return idx
+    try:
+        header = worksheet.row_values(1) or []
+        new_idx = len(header)
+        col_letter = _col_letter(new_idx)
+        worksheet.update(f'{col_letter}1', [['Curso']], value_input_option='RAW')
+        return new_idx
+    except Exception:
+        return -1
+
+
+# ── Gestión de cursos ─────────────────────────────────────────────────────
+def _ensure_courses_sheet():
+    """Crea la hoja 'Cursos' si no existe. Retorna la worksheet."""
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(COURSES_SHEET)
+    except Exception:
+        ws = ss.add_worksheet(title=COURSES_SHEET, rows=200, cols=2)
+        ws.update('A1', [['Curso']], value_input_option='RAW')
+        try:
+            ws.format('A1', {
+                'backgroundColor': {'red': 0.39, 'green': 0.40, 'blue': 0.95},
+                'textFormat': {'bold': True,
+                               'foregroundColor': {'red':1,'green':1,'blue':1}},
+                'horizontalAlignment': 'CENTER'
+            })
+        except Exception:
+            pass
+    return ws
+
+
+def list_courses() -> list:
+    """Lista los cursos guardados (sin duplicados, ordenados)."""
+    try:
+        ws = _ensure_courses_sheet()
+        col = ws.col_values(1)[1:]  # saltar encabezado
+        seen = []
+        for c in col:
+            c = (c or '').strip()
+            if c and c not in seen:
+                seen.append(c)
+        return seen
+    except Exception:
+        return []
+
+
+def add_course(name: str) -> dict:
+    """Agrega un curso si no existe."""
+    name = (name or '').strip()
+    if not name:
+        return {'success': False, 'error': 'El nombre no puede estar vacío.'}
+    if len(name) > 50:
+        return {'success': False, 'error': 'Nombre demasiado largo (máx 50).'}
+    try:
+        existing = list_courses()
+        if name in existing:
+            return {'success': False, 'error': f'El curso "{name}" ya existe.'}
+        ws = _ensure_courses_sheet()
+        ws.append_row([name], value_input_option='RAW')
+        return {'success': True, 'name': name, 'courses': existing + [name]}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def delete_course(name: str) -> dict:
+    """Elimina un curso por nombre."""
+    name = (name or '').strip()
+    if not name:
+        return {'success': False, 'error': 'Nombre vacío.'}
+    try:
+        ws = _ensure_courses_sheet()
+        col = ws.col_values(1)
+        for i, c in enumerate(col):
+            if i == 0:
+                continue
+            if (c or '').strip() == name:
+                ws.delete_rows(i + 1)
+                return {'success': True, 'courses': list_courses()}
+        return {'success': False, 'error': 'Curso no encontrado.'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
 
 
 def _ensure_structure(worksheet, n_questions=125):
@@ -288,7 +389,8 @@ def create_sheet(name: str) -> dict:
 
 
 def save_to_sheets(student_name: str, exam_id: str,
-                   answers: list, sheet_name: str) -> dict:
+                   answers: list, sheet_name: str,
+                   curso: str = '') -> dict:
     """
     Guarda una fila de respuestas, calcula correctas vs clave,
     y mantiene UNA SOLA fila de totales al final.
@@ -303,6 +405,8 @@ def save_to_sheets(student_name: str, exam_id: str,
 
     n_questions = len(answers)
     _ensure_structure(worksheet, n_questions)
+    # Asegurar columna Curso
+    curso_col = _ensure_curso_column(worksheet, n_questions)
 
     # Obtener clave
     key      = _get_answer_key(worksheet)
@@ -314,11 +418,10 @@ def save_to_sheets(student_name: str, exam_id: str,
     pct_str = f'{round(correct / key_n * 100)}%' if key_n > 0 else ''
 
     # ── Eliminar fila de TOTALES existente antes de agregar el estudiante ─────
-    # Esto evita que los totales queden duplicados o en posición incorrecta
     all_rows = worksheet.get_all_values()
     for i, row in enumerate(all_rows):
         if row and len(row) > 2 and row[2] == '--- TOTALES ---':
-            worksheet.delete_rows(i + 1)   # gspread usa índice 1-based
+            worksheet.delete_rows(i + 1)
             break
 
     # ── Agregar fila del estudiante ───────────────────────────────────────────
@@ -329,11 +432,16 @@ def save_to_sheets(student_name: str, exam_id: str,
     row_data += [detected,
                  correct if key_n > 0 else '',
                  pct_str]
+    # Agregar curso al final si la columna existe
+    if curso_col >= 0:
+        # rellenar gaps si curso_col > len(row_data)
+        while len(row_data) < curso_col:
+            row_data.append('')
+        row_data.append(curso or '')
 
     worksheet.append_row(row_data, value_input_option='RAW')
     row_num = len(worksheet.col_values(1))
 
-    # ── Agregar TOTALES al final (siempre una sola vez) ───────────────────────
     _update_totals_row(worksheet, n_questions)
 
     return {
@@ -420,10 +528,18 @@ def _count_correct_range(answers, key, start, end):
 
 def _extract_students(worksheet):
     """
-    Extrae dict {id_estudiante: {'name': str, 'answers': list}} de una hoja.
+    Extrae dict {id_estudiante: {'name': str, 'answers': list, 'curso': str}} de una hoja.
     Salta fila 1 (encabezado), fila 2 (clave) y fila TOTALES.
     """
     all_rows = worksheet.get_all_values()
+    if not all_rows:
+        return {}
+    header = all_rows[0]
+    curso_col = -1
+    for i, h in enumerate(header):
+        if (h or '').strip().lower() == 'curso':
+            curso_col = i
+            break
     students = {}
     for row in all_rows[2:]:
         if not row or len(row) < 5:
@@ -433,8 +549,6 @@ def _extract_students(worksheet):
         if not sid or name in (KEY_ROW_NAME, '--- TOTALES ---'):
             continue
         answers = row[COL_OFFSET:]
-        # Limpiar: quitar columnas de resumen al final si las tiene
-        # (buscar donde empiezan las no-letra)
         clean = []
         for a in answers:
             a = a.strip()
@@ -443,8 +557,11 @@ def _extract_students(worksheet):
             elif len(a) == 1 and a.upper() in 'ABCDEFGH':
                 clean.append(a.upper())
             else:
-                break  # llegamos a Respondidas/Correctas/Porcentaje
-        students[sid] = {'name': name, 'answers': clean}
+                break
+        curso = ''
+        if curso_col >= 0 and curso_col < len(row):
+            curso = (row[curso_col] or '').strip()
+        students[sid] = {'name': name, 'answers': clean, 'curso': curso}
     return students
 
 
@@ -491,7 +608,11 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     for sid in sorted(all_ids):
         s1 = students_1s.get(sid)
         s2 = students_2s.get(sid)
-        name = (s1 or s2)['name']
+        name  = (s1 or s2)['name']
+        # Curso: priorizar el de 1S, luego 2S
+        curso = ''
+        if s1 and s1.get('curso'): curso = s1['curso']
+        elif s2 and s2.get('curso'): curso = s2['curso']
         ans_1s = s1['answers'] if s1 else []
         ans_2s = s2['answers'] if s2 else []
 
@@ -521,6 +642,7 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         results.append({
             'id':       sid,
             'name':     name,
+            'curso':    curso,
             'mat':      mat,
             'lect':     lect,
             'soc':      soc,
@@ -540,19 +662,19 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         ws_res = spreadsheet.add_worksheet(
             title=results_sheet, rows=needed_rows, cols=20)
 
-    # Encabezado
+    # Encabezado (con Curso)
     header = [
-        'ID Estudiante', 'Nombre',
+        'ID Estudiante', 'Nombre', 'Curso',
         'Matematica', 'Lectura Critica', 'Sociales',
         'Naturales', 'Ingles', 'Puntaje General'
     ]
-    ws_res.update('A1:H1', [header], value_input_option='RAW')
+    ws_res.update('A1:I1', [header], value_input_option='RAW')
 
     # Datos
     rows = []
     for r in results:
         rows.append([
-            r['id'], r['name'],
+            r['id'], r['name'], r.get('curso',''),
             r['mat'], r['lect'], r['soc'],
             r['nat'], r['ing'], r['general'],
         ])
@@ -571,11 +693,11 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         avg_ing  = int(round(sum(r['ing']     for r in results) / n))
         avg_gen  = int(round(sum(r['general'] for r in results) / n))
         avg_row = end_row + 1
-        ws_res.update(f'A{avg_row}:H{avg_row}',
-                      [['', 'PROMEDIO', avg_mat, avg_lect, avg_soc, avg_nat, avg_ing, avg_gen]],
+        ws_res.update(f'A{avg_row}:I{avg_row}',
+                      [['', 'PROMEDIO', '', avg_mat, avg_lect, avg_soc, avg_nat, avg_ing, avg_gen]],
                       value_input_option='RAW')
         try:
-            ws_res.format(f'A{avg_row}:H{avg_row}', {
+            ws_res.format(f'A{avg_row}:I{avg_row}', {
                 'backgroundColor': {'red': 0.93, 'green': 0.93, 'blue': 0.93},
                 'textFormat': {'bold': True},
                 'horizontalAlignment': 'CENTER'
@@ -585,7 +707,7 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
 
     # Formato encabezado
     try:
-        ws_res.format('A1:H1', {
+        ws_res.format('A1:I1', {
             'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
             'textFormat': {'bold': True,
                            'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},

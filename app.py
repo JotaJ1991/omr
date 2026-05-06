@@ -11,7 +11,8 @@ from omr_processor import process_exam_image
 from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
-    list_sheets, create_sheet, generate_sipagre_results
+    list_sheets, create_sheet, generate_sipagre_results,
+    list_courses, add_course, delete_course
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -38,6 +39,13 @@ def active_profile_id():
 @app.route('/')
 def index():
     return render_template('index.html',
+                           profiles=PROFILE_LIST,
+                           default_profile=DEFAULT_PROFILE_ID)
+
+
+@app.route('/design-preview')
+def design_preview():
+    return render_template('design_preview.html',
                            profiles=PROFILE_LIST,
                            default_profile=DEFAULT_PROFILE_ID)
 
@@ -206,6 +214,7 @@ def save():
 
     student_name = data.get('student_name', '').strip()
     exam_id      = data.get('exam_id', '').strip()
+    curso        = (data.get('curso') or '').strip()
     answers      = data.get('answers', [])
     sheet_name   = data.get('sheet_name', active_sheet())
 
@@ -222,7 +231,8 @@ def save():
             student_name=student_name,
             exam_id=exam_id,
             answers=answers,
-            sheet_name=sheet_name
+            sheet_name=sheet_name,
+            curso=curso
         )
         detected = len([a for a in answers if a not in ('?', '')])
         correct  = sheets_result.get('correct')
@@ -245,6 +255,39 @@ def save():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Error al guardar: {str(e)}'}), 500
+
+
+@app.route('/courses', methods=['GET'])
+def courses_list():
+    try:
+        return jsonify({'success': True, 'courses': list_courses()})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e), 'courses': []}), 500
+
+
+@app.route('/courses', methods=['POST'])
+def courses_add():
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    try:
+        result = add_course(name)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/courses', methods=['DELETE'])
+def courses_delete():
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    try:
+        result = delete_course(name)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/get_key', methods=['GET'])
