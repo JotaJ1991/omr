@@ -854,6 +854,49 @@
       <div id="r-status" style="margin-top:10px;"></div>
       <div id="r-students-list" style="margin-top:12px;"></div>
     </div>
+
+    <!-- Card Reportes -->
+    <div class="card">
+      <h2>📈 Reportes</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Análisis estadísticos sobre los resultados generados.
+        Selecciona el ámbito y luego el tipo de reporte.
+      </p>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="flex:1;min-width:130px;">
+          <label style="font-size:.78rem;color:var(--muted);">Análisis</label>
+          <select id="rep-scope" onchange="_onRepScopeChange()">
+            <option value="general">General (todos los estudiantes)</option>
+            <option value="grado">Por grado</option>
+            <option value="curso">Por curso</option>
+            <option value="asignatura">Por asignatura</option>
+          </select>
+        </div>
+        <div id="rep-extra-wrap" style="flex:1;min-width:130px;display:none;">
+          <label style="font-size:.78rem;color:var(--muted);" id="rep-extra-label">Filtro</label>
+          <select id="rep-extra"></select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="generateSubjectReport()"
+                style="flex:1;min-width:160px;padding:11px;font-size:.85rem;">
+          📊 Por asignatura
+        </button>
+        <button class="btn-primary" onclick="generateStudentTableReport()"
+                style="flex:1;min-width:160px;padding:11px;font-size:.85rem;">
+          📋 Tabla de estudiantes
+        </button>
+        <button class="btn-warning" onclick="generateBecariosReport()"
+                style="flex:1;min-width:160px;padding:11px;font-size:.85rem;">
+          🏆 Potenciales becarios
+        </button>
+      </div>
+
+      <div id="rep-status" style="margin-top:10px;"></div>
+      <div id="rep-output" style="margin-top:12px;"></div>
+    </div>
   </div>
 
   <!-- ══ TAB AYUDA ══════════════════════════════════════════════════════════ -->
@@ -1283,6 +1326,7 @@ async function generateUnifiedResults() {
         <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
       _populateUnifiedCourseFilter();
       renderUnifiedTable();
+      _onRepScopeChange();   // refrescar dropdown extra de Reportes
       document.getElementById('btn-r-all').disabled = false;
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error'}</p>`;
@@ -1460,6 +1504,212 @@ async function downloadUnifiedStudent(idx) {
     document.getElementById('r-status').innerHTML =
       `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
+}
+
+// ══ REPORTES ════════════════════════════════════════════════════════════════
+const REP_SUBJECTS = [
+  {key:'mat',  label:'Matemáticas'},
+  {key:'lect', label:'Lectura Crítica'},
+  {key:'soc',  label:'Sociales'},
+  {key:'nat',  label:'Naturales'},
+  {key:'ing',  label:'Inglés'},
+  {key:'general', label:'General'},
+];
+
+function _repNeedResults() {
+  if (!unifiedResults || !unifiedResults.length) {
+    document.getElementById('rep-status').innerHTML =
+      '<p style="color:var(--danger);">Primero genera los resultados arriba.</p>';
+    return false;
+  }
+  return true;
+}
+
+function _onRepScopeChange() {
+  const scope = document.getElementById('rep-scope').value;
+  const wrap  = document.getElementById('rep-extra-wrap');
+  const label = document.getElementById('rep-extra-label');
+  const sel   = document.getElementById('rep-extra');
+  if (!unifiedResults || !unifiedResults.length) {
+    wrap.style.display = 'none'; return;
+  }
+  if (scope === 'grado') {
+    label.textContent = 'Grado';
+    const grados = [...new Set(unifiedResults.map(r => gradoDeCurso(r.curso)).filter(g => g))]
+                    .sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99));
+    sel.innerHTML = '<option value="">— todos —</option>' +
+                    grados.map(g => `<option value="${g}">${g}°</option>`).join('');
+    wrap.style.display = 'block';
+  } else if (scope === 'curso') {
+    label.textContent = 'Curso';
+    const cursos = [...new Set(unifiedResults.map(r => (r.curso||'').trim()).filter(c => c))].sort();
+    sel.innerHTML = '<option value="">— todos —</option>' +
+                    cursos.map(c => `<option value="${c}">${c}</option>`).join('');
+    wrap.style.display = 'block';
+  } else if (scope === 'asignatura') {
+    label.textContent = 'Asignatura';
+    sel.innerHTML = REP_SUBJECTS.map(s => `<option value="${s.key}">${s.label}</option>`).join('');
+    wrap.style.display = 'block';
+  } else {
+    wrap.style.display = 'none';
+  }
+}
+
+function _statsFor(values) {
+  if (!values.length) return {n:0, avg:0, min:0, max:0};
+  const sum = values.reduce((s,v) => s + v, 0);
+  return {
+    n:   values.length,
+    avg: Math.round(sum / values.length),
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+function _filteredByScope() {
+  const scope = document.getElementById('rep-scope').value;
+  const extra = document.getElementById('rep-extra').value;
+  let view = unifiedResults.slice();
+  let scopeLabel = 'General';
+  if (scope === 'grado' && extra) {
+    view = view.filter(r => gradoDeCurso(r.curso) === extra);
+    scopeLabel = `Grado ${extra}°`;
+  } else if (scope === 'curso' && extra) {
+    view = view.filter(r => (r.curso||'').trim() === extra);
+    scopeLabel = `Curso ${extra}`;
+  }
+  return {view, scope, extra, scopeLabel};
+}
+
+// Reporte 1 — Estadísticas por asignatura (avg/min/max)
+function generateSubjectReport() {
+  if (!_repNeedResults()) return;
+  const {view, scope, extra, scopeLabel} = _filteredByScope();
+  const out = document.getElementById('rep-output');
+  if (!view.length) {
+    out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      Sin estudiantes con ese filtro.</p>`;
+    return;
+  }
+  // Si scope=asignatura, mostrar la materia destacada por grupo (grado/curso)
+  if (scope === 'asignatura' && extra) {
+    const subj = REP_SUBJECTS.find(s => s.key === extra);
+    // Agrupar por grado y luego por curso
+    const byGrado = {};
+    view.forEach(r => {
+      const g = gradoDeCurso(r.curso) || 'sin grado';
+      if (!byGrado[g]) byGrado[g] = [];
+      byGrado[g].push(r);
+    });
+    let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">📊 ${subj.label} — desglose por grado</h3>`;
+    html += `<table class="results-table"><thead><tr>
+      <th>Grupo</th><th>Estudiantes</th><th>Promedio</th><th>Mín</th><th>Máx</th>
+      </tr></thead><tbody>`;
+    Object.keys(byGrado).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99)).forEach(g => {
+      const grp = byGrado[g];
+      const stats = _statsFor(grp.map(r => +r[extra] || 0));
+      html += `<tr>
+        <td><strong>${g === 'sin grado' ? 'Sin grado' : 'Grado '+g+'°'}</strong></td>
+        <td>${stats.n}</td>
+        <td class="score">${stats.avg}</td>
+        <td>${stats.min}</td>
+        <td>${stats.max}</td>
+      </tr>`;
+    });
+    const all = _statsFor(view.map(r => +r[extra] || 0));
+    html += `<tr class="avg-row">
+      <td><strong>Total</strong></td>
+      <td>${all.n}</td>
+      <td class="general-score">${all.avg}</td>
+      <td>${all.min}</td>
+      <td>${all.max}</td>
+    </tr></tbody></table>`;
+    out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+    return;
+  }
+  // Para General/Grado/Curso: estadísticas de cada asignatura
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">📊 Estadísticas por asignatura — ${scopeLabel} (${view.length} estudiantes)</h3>`;
+  html += `<table class="results-table"><thead><tr>
+    <th>Asignatura</th><th>Promedio</th><th>Mín</th><th>Máx</th>
+    </tr></thead><tbody>`;
+  REP_SUBJECTS.forEach(s => {
+    const stats = _statsFor(view.map(r => +r[s.key] || 0));
+    const isGen = s.key === 'general';
+    html += `<tr ${isGen ? 'class="avg-row"' : ''}>
+      <td><strong>${s.label}</strong></td>
+      <td class="${isGen ? 'general-score' : 'score'}">${stats.avg}</td>
+      <td>${stats.min}</td>
+      <td>${stats.max}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+}
+
+// Reporte 2 — Tabla de resultados por estudiante
+function generateStudentTableReport() {
+  if (!_repNeedResults()) return;
+  const {view, scopeLabel} = _filteredByScope();
+  const out = document.getElementById('rep-output');
+  if (!view.length) {
+    out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      Sin estudiantes con ese filtro.</p>`;
+    return;
+  }
+  const sorted = view.slice().sort((a,b) => (+b.general||0) - (+a.general||0));
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
+    📋 Tabla de estudiantes — ${scopeLabel} (${sorted.length})</h3>`;
+  html += `<table class="results-table"><thead><tr>
+    <th>#</th><th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th><th>Nat</th><th>Ing</th><th>General</th>
+    </tr></thead><tbody>`;
+  sorted.forEach((r, i) => {
+    html += `<tr>
+      <td>${i+1}</td>
+      <td><div style="font-weight:600;">${r.name || '—'}</div>
+          <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id || '—'}</div></td>
+      <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
+      <td class="score">${r.mat}</td><td class="score">${r.lect}</td>
+      <td class="score">${r.soc}</td><td class="score">${r.nat}</td>
+      <td class="score">${r.ing}</td>
+      <td class="general-score">${r.general}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+}
+
+// Reporte 3 — Potenciales becarios (general >= 300)
+const BECARIO_UMBRAL = 300;
+function generateBecariosReport() {
+  if (!_repNeedResults()) return;
+  const {view, scopeLabel} = _filteredByScope();
+  const out = document.getElementById('rep-output');
+  const becarios = view.filter(r => (+r.general||0) >= BECARIO_UMBRAL)
+                       .sort((a,b)=> (+b.general||0)-(+a.general||0));
+  if (!becarios.length) {
+    out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      Ningún estudiante alcanzó ${BECARIO_UMBRAL} puntos en ${scopeLabel}.</p>`;
+    return;
+  }
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
+    🏆 Potenciales becarios — puntaje general ≥ ${BECARIO_UMBRAL} · ${scopeLabel}
+    (${becarios.length} estudiantes)</h3>`;
+  html += `<table class="results-table"><thead><tr>
+    <th>#</th><th>Estudiante</th><th>Curso</th><th>Grado</th><th>General</th>
+    </tr></thead><tbody>`;
+  becarios.forEach((r, i) => {
+    const g = gradoDeCurso(r.curso);
+    html += `<tr>
+      <td>${i+1}</td>
+      <td><div style="font-weight:600;">${r.name || '—'}</div>
+          <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id || '—'}</div></td>
+      <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
+      <td>${g ? g+'°' : '—'}</td>
+      <td class="general-score">${r.general}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
 }
 
 // Cuando cambia el simulacro o la sesión, ajusta hoja activa y perfil OMR
