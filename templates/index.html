@@ -1506,6 +1506,113 @@ async function downloadUnifiedStudent(idx) {
   }
 }
 
+// ══ HELPERS PDF para reportes ══════════════════════════════════════════════
+// Dibuja una tabla simple en jsPDF; rows = [[c1,c2,...], ...]
+// avgRow opcional: misma estructura que una fila pero se pinta destacada al final.
+function _drawPdfTable(doc, x, y, headers, rows, colWidths, avgRow) {
+  const cellH = 7;
+  const totalW = colWidths.reduce((a,b)=>a+b, 0);
+  // Header
+  doc.setFillColor(99, 102, 241);
+  doc.rect(x, y, totalW, cellH, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9);
+  doc.setTextColor(255,255,255);
+  let cx = x;
+  headers.forEach((h, i) => {
+    doc.text(String(h), cx + colWidths[i]/2, y + cellH - 2, {align:'center'});
+    cx += colWidths[i];
+  });
+  y += cellH;
+
+  // Filas
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  rows.forEach((row, ri) => {
+    if (ri % 2 === 1) {
+      doc.setFillColor(245, 247, 252);
+      doc.rect(x, y, totalW, cellH, 'F');
+    }
+    cx = x;
+    doc.setTextColor(40,40,40);
+    row.forEach((cell, i) => {
+      doc.text(String(cell), cx + colWidths[i]/2, y + cellH - 2, {align:'center'});
+      cx += colWidths[i];
+    });
+    y += cellH;
+    if (y > 260) { doc.addPage('letter','p'); y = 20; }  // salto de pagina
+  });
+
+  // Fila de promedios destacada (si aplica)
+  if (avgRow) {
+    doc.setFillColor(220, 225, 245);
+    doc.rect(x, y, totalW, cellH + 1, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(9);
+    doc.setTextColor(67, 56, 202);
+    cx = x;
+    avgRow.forEach((cell, i) => {
+      doc.text(String(cell), cx + colWidths[i]/2, y + cellH - 1.5, {align:'center'});
+      cx += colWidths[i];
+    });
+    y += cellH + 1;
+  }
+  return y;
+}
+
+function _drawReportHeader(doc, title, subtitle) {
+  const pw = 215.9 - 20;
+  // Banda gradiente
+  const titleH = 24;
+  const steps = 80;
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    const r = Math.round(99  + (6   - 99 ) * t);
+    const g = Math.round(102 + (182 - 102) * t);
+    const b = Math.round(241 + (212 - 241) * t);
+    doc.setFillColor(r,g,b);
+    doc.rect(10 + (pw * i/steps), 10, pw/steps + 0.3, titleH, 'F');
+  }
+  // Logo SIPAGRE arriba derecha
+  if (_sipagreLogoDataUrl) {
+    const sz = 30;
+    try { doc.addImage(_sipagreLogoDataUrl, 'PNG', 10 + pw - sz, 10 + (titleH - sz)/2, sz, sz); } catch(e){}
+  }
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(255,255,255);
+  doc.text(title, 14, 20);
+  if (subtitle) {
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.setTextColor(220, 235, 255);
+    doc.text(subtitle, 14, 27);
+  }
+  return 10 + titleH + 6; // y inicial de la tabla
+}
+
+function _drawReportFooter(doc, label) {
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    if (_logoDataUrl) {
+      try { doc.addImage(_logoDataUrl, 'PNG', 10 + (215.9-20)/2 - 5, 264, 10, 10); } catch(e){}
+    }
+    doc.setFont('helvetica','italic'); doc.setFontSize(7);
+    doc.setTextColor(150,150,150);
+    doc.text(label, 10 + (215.9-20)/2, 277, {align:'center'});
+    doc.text(`Pág. ${p} / ${pages}`, 10 + (215.9-20) - 5, 277, {align:'right'});
+  }
+}
+
+async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths, fileName}) {
+  await _loadLogo();
+  const jsPDF = getJsPDF();
+  const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+  const y0 = _drawReportHeader(doc, title, subtitle);
+  _drawPdfTable(doc, 10, y0, headers, rows, colWidths, avgRow);
+  const simLabel = unifiedSimulacro
+                   ? `Simulacro ${unifiedSimulacro.nombre}`
+                   : 'Simulacro';
+  _drawReportFooter(doc, `Reporte automático · ${simLabel}`);
+  doc.save(fileName);
+}
+
 // ══ REPORTES ════════════════════════════════════════════════════════════════
 const REP_SUBJECTS = [
   {key:'mat',  label:'Matemáticas'},
@@ -1581,6 +1688,18 @@ function _filteredByScope() {
   return {view, scope, extra, scopeLabel};
 }
 
+function _btnPdfHtml(fnName) {
+  return `<button onclick="${fnName}()"
+    style="margin-top:10px;padding:9px 14px;font-size:.85rem;
+           background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+           color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
+    📥 Descargar PDF</button>`;
+}
+
+let _lastSubjectReportData   = null;
+let _lastStudentTableData    = null;
+let _lastBecariosData        = null;
+
 // Reporte 1 — Estadísticas por asignatura (avg/min/max)
 function generateSubjectReport() {
   if (!_repNeedResults()) return;
@@ -1591,59 +1710,74 @@ function generateSubjectReport() {
       Sin estudiantes con ese filtro.</p>`;
     return;
   }
-  // Si scope=asignatura, mostrar la materia destacada por grupo (grado/curso)
+  // Caso: por asignatura específica
   if (scope === 'asignatura' && extra) {
     const subj = REP_SUBJECTS.find(s => s.key === extra);
-    // Agrupar por grado y luego por curso
     const byGrado = {};
     view.forEach(r => {
       const g = gradoDeCurso(r.curso) || 'sin grado';
       if (!byGrado[g]) byGrado[g] = [];
       byGrado[g].push(r);
     });
-    let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">📊 ${subj.label} — desglose por grado</h3>`;
-    html += `<table class="results-table"><thead><tr>
-      <th>Grupo</th><th>Estudiantes</th><th>Promedio</th><th>Mín</th><th>Máx</th>
-      </tr></thead><tbody>`;
+    const headers = ['Grupo', 'Estudiantes', 'Promedio', 'Mín', 'Máx'];
+    const rows = [];
     Object.keys(byGrado).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99)).forEach(g => {
-      const grp = byGrado[g];
-      const stats = _statsFor(grp.map(r => +r[extra] || 0));
-      html += `<tr>
-        <td><strong>${g === 'sin grado' ? 'Sin grado' : 'Grado '+g+'°'}</strong></td>
-        <td>${stats.n}</td>
-        <td class="score">${stats.avg}</td>
-        <td>${stats.min}</td>
-        <td>${stats.max}</td>
-      </tr>`;
+      const stats = _statsFor(byGrado[g].map(r => +r[extra] || 0));
+      const label = g === 'sin grado' ? 'Sin grado' : 'Grado '+g+'°';
+      rows.push([label, stats.n, stats.avg, stats.min, stats.max]);
     });
     const all = _statsFor(view.map(r => +r[extra] || 0));
-    html += `<tr class="avg-row">
-      <td><strong>Total</strong></td>
-      <td>${all.n}</td>
-      <td class="general-score">${all.avg}</td>
-      <td>${all.min}</td>
-      <td>${all.max}</td>
-    </tr></tbody></table>`;
-    out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+    const avgRow = ['PROMEDIO TOTAL', all.n, all.avg, all.min, all.max];
+
+    let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">📊 ${subj.label} — desglose por grado</h3>`;
+    html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
+      ${headers.map(h => `<th>${h}</th>`).join('')}
+      </tr></thead><tbody>
+      ${rows.map(r => `<tr>${r.map((c,i) => i===2 ? `<td class="score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
+      <tr class="avg-row">${avgRow.map((c,i) => i===2 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
+      </tbody></table></div>`;
+    html += _btnPdfHtml('downloadSubjectReportPdf');
+    out.innerHTML = html;
+    _lastSubjectReportData = {
+      title: `Análisis por asignatura: ${subj.label}`,
+      subtitle: `${scopeLabel} · ${view.length} estudiantes`,
+      headers, rows, avgRow,
+      colWidths: [55, 35, 35, 35, 35.9],
+      fileName: `Reporte_${subj.label}_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
+    };
     return;
   }
-  // Para General/Grado/Curso: estadísticas de cada asignatura
-  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">📊 Estadísticas por asignatura — ${scopeLabel} (${view.length} estudiantes)</h3>`;
-  html += `<table class="results-table"><thead><tr>
-    <th>Asignatura</th><th>Promedio</th><th>Mín</th><th>Máx</th>
-    </tr></thead><tbody>`;
-  REP_SUBJECTS.forEach(s => {
+  // Caso General/Grado/Curso: stats por asignatura
+  const headers = ['Asignatura', 'Promedio', 'Mín', 'Máx'];
+  const rows = [];
+  REP_SUBJECTS.filter(s => s.key !== 'general').forEach(s => {
     const stats = _statsFor(view.map(r => +r[s.key] || 0));
-    const isGen = s.key === 'general';
-    html += `<tr ${isGen ? 'class="avg-row"' : ''}>
-      <td><strong>${s.label}</strong></td>
-      <td class="${isGen ? 'general-score' : 'score'}">${stats.avg}</td>
-      <td>${stats.min}</td>
-      <td>${stats.max}</td>
-    </tr>`;
+    rows.push([s.label, stats.avg, stats.min, stats.max]);
   });
-  html += `</tbody></table>`;
-  out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+  const genStats = _statsFor(view.map(r => +r.general || 0));
+  const avgRow = ['PUNTAJE GENERAL', genStats.avg, genStats.min, genStats.max];
+
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
+    📊 Estadísticas por asignatura — ${scopeLabel} (${view.length} estudiantes)</h3>`;
+  html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
+    ${headers.map(h => `<th>${h}</th>`).join('')}
+    </tr></thead><tbody>
+    ${rows.map(r => `<tr>${r.map((c,i) => i===1 ? `<td class="score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
+    <tr class="avg-row">${avgRow.map((c,i) => i===1 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
+    </tbody></table></div>`;
+  html += _btnPdfHtml('downloadSubjectReportPdf');
+  out.innerHTML = html;
+  _lastSubjectReportData = {
+    title: `Estadísticas por asignatura`,
+    subtitle: `${scopeLabel} · ${view.length} estudiantes`,
+    headers, rows, avgRow,
+    colWidths: [60, 45, 45, 45.9],
+    fileName: `Reporte_Asignaturas_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
+  };
+}
+
+async function downloadSubjectReportPdf() {
+  if (_lastSubjectReportData) await _saveReportPdf(_lastSubjectReportData);
 }
 
 // Reporte 2 — Tabla de resultados por estudiante
@@ -1657,9 +1791,18 @@ function generateStudentTableReport() {
     return;
   }
   const sorted = view.slice().sort((a,b) => (+b.general||0) - (+a.general||0));
+  // Promedios por columna
+  const avg = {
+    mat:  Math.round(sorted.reduce((s,r)=>s+(+r.mat||0),0)/sorted.length),
+    lect: Math.round(sorted.reduce((s,r)=>s+(+r.lect||0),0)/sorted.length),
+    soc:  Math.round(sorted.reduce((s,r)=>s+(+r.soc||0),0)/sorted.length),
+    nat:  Math.round(sorted.reduce((s,r)=>s+(+r.nat||0),0)/sorted.length),
+    ing:  Math.round(sorted.reduce((s,r)=>s+(+r.ing||0),0)/sorted.length),
+    gen:  Math.round(sorted.reduce((s,r)=>s+(+r.general||0),0)/sorted.length),
+  };
   let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
     📋 Tabla de estudiantes — ${scopeLabel} (${sorted.length})</h3>`;
-  html += `<table class="results-table"><thead><tr>
+  html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
     <th>#</th><th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th><th>Nat</th><th>Ing</th><th>General</th>
     </tr></thead><tbody>`;
   sorted.forEach((r, i) => {
@@ -1674,8 +1817,37 @@ function generateStudentTableReport() {
       <td class="general-score">${r.general}</td>
     </tr>`;
   });
-  html += `</tbody></table>`;
-  out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+  html += `<tr class="avg-row">
+    <td colspan="3" style="text-align:right;font-weight:700;">PROMEDIO</td>
+    <td class="score">${avg.mat}</td><td class="score">${avg.lect}</td>
+    <td class="score">${avg.soc}</td><td class="score">${avg.nat}</td>
+    <td class="score">${avg.ing}</td>
+    <td class="general-score">${avg.gen}</td>
+  </tr>`;
+  html += `</tbody></table></div>`;
+  html += _btnPdfHtml('downloadStudentTableReportPdf');
+  out.innerHTML = html;
+
+  // Cachear datos para PDF
+  const headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'Gen'];
+  const rows = sorted.map((r, i) => [
+    i+1,
+    (r.name || '—').slice(0, 28),
+    r.curso || '—',
+    r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
+  ]);
+  const avgRow = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc, avg.nat, avg.ing, avg.gen];
+  _lastStudentTableData = {
+    title: 'Tabla de estudiantes',
+    subtitle: `${scopeLabel} · ${sorted.length} estudiantes`,
+    headers, rows, avgRow,
+    colWidths: [10, 60, 18, 14, 14, 14, 14, 14, 17.9],
+    fileName: `Tabla_Estudiantes_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
+  };
+}
+
+async function downloadStudentTableReportPdf() {
+  if (_lastStudentTableData) await _saveReportPdf(_lastStudentTableData);
 }
 
 // Reporte 3 — Potenciales becarios (general >= 300)
@@ -1691,10 +1863,12 @@ function generateBecariosReport() {
       Ningún estudiante alcanzó ${BECARIO_UMBRAL} puntos en ${scopeLabel}.</p>`;
     return;
   }
+  const avgGen = Math.round(becarios.reduce((s,r)=>s+(+r.general||0),0)/becarios.length);
+
   let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
     🏆 Potenciales becarios — puntaje general ≥ ${BECARIO_UMBRAL} · ${scopeLabel}
     (${becarios.length} estudiantes)</h3>`;
-  html += `<table class="results-table"><thead><tr>
+  html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
     <th>#</th><th>Estudiante</th><th>Curso</th><th>Grado</th><th>General</th>
     </tr></thead><tbody>`;
   becarios.forEach((r, i) => {
@@ -1708,8 +1882,33 @@ function generateBecariosReport() {
       <td class="general-score">${r.general}</td>
     </tr>`;
   });
-  html += `</tbody></table>`;
-  out.innerHTML = `<div class="results-table-wrap">${html}</div>`;
+  html += `<tr class="avg-row">
+    <td colspan="4" style="text-align:right;font-weight:700;">PROMEDIO</td>
+    <td class="general-score">${avgGen}</td>
+  </tr></tbody></table></div>`;
+  html += _btnPdfHtml('downloadBecariosReportPdf');
+  out.innerHTML = html;
+
+  const headers = ['#', 'Estudiante', 'Curso', 'Grado', 'General'];
+  const rows = becarios.map((r, i) => [
+    i+1,
+    (r.name || '—').slice(0, 32),
+    r.curso || '—',
+    gradoDeCurso(r.curso) ? gradoDeCurso(r.curso)+'°' : '—',
+    r.general,
+  ]);
+  const avgRow = ['', 'PROMEDIO', '', '', avgGen];
+  _lastBecariosData = {
+    title: `Potenciales becarios (≥ ${BECARIO_UMBRAL})`,
+    subtitle: `${scopeLabel} · ${becarios.length} estudiantes`,
+    headers, rows, avgRow,
+    colWidths: [12, 90, 22, 22, 49.9],
+    fileName: `Becarios_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
+  };
+}
+
+async function downloadBecariosReportPdf() {
+  if (_lastBecariosData) await _saveReportPdf(_lastBecariosData);
 }
 
 // Cuando cambia el simulacro o la sesión, ajusta hoja activa y perfil OMR
