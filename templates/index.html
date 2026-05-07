@@ -879,6 +879,9 @@
         <button class="r-view-pill"        data-view="pregunta" onclick="setResultsView('pregunta')">
           ❓ Por pregunta
         </button>
+        <button class="r-view-pill"        data-view="integral" onclick="setResultsView('integral')">
+          📚 Integral
+        </button>
       </div>
 
       <div id="r-status" style="margin-top:6px;"></div>
@@ -1330,7 +1333,260 @@ function _renderCurrentView() {
   if (_currentView === 'asign')    return generateSubjectReport();
   if (_currentView === 'becarios') return generateBecariosReport();
   if (_currentView === 'pregunta') return generateQuestionReport();
+  if (_currentView === 'integral') return generateIntegralReport();
   return renderUnifiedTable();   // por defecto: tabla
+}
+
+// ── ANÁLISIS INTEGRAL ──────────────────────────────────────────────────
+function generateIntegralReport() {
+  const out = document.getElementById('r-output');
+  if (!unifiedResults || !unifiedResults.length) { out.innerHTML = ''; return; }
+  const gradeF = document.getElementById('r-grade-select')?.value || '';
+  const cursoF = document.getElementById('r-course-select')?.value || '';
+
+  if (!gradeF && !cursoF) {
+    out.innerHTML = `<div style="background:rgba(245,158,11,.08);
+      border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px;
+      font-size:.9rem;color:#fbbf24;">
+      ⚠️ El análisis integral requiere que selecciones <strong>un grado</strong>
+      o <strong>un curso</strong> en los filtros.
+    </div>`;
+    return;
+  }
+
+  // Datos del scope
+  let view = unifiedResults.slice();
+  if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
+  if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
+
+  if (!view.length) {
+    out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      No hay estudiantes con ese filtro.</p>`;
+    return;
+  }
+
+  const scopeType  = cursoF ? 'curso' : 'grado';
+  const scopeLabel = cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`;
+  const cursos = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
+  const general = _statsFor(view.map(r => +r.general || 0));
+  const becarios = view.filter(r => (+r.general||0) >= 300)
+                       .sort((a,b) => (+b.general||0) - (+a.general||0));
+
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;color:var(--primary-light);
+              border-bottom:1px solid var(--card-border);padding-bottom:6px;">
+    📚 Análisis integral — ${scopeLabel}</h3>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:14px;">
+      Reporte completo con tablas de cursos, desagregado por asignatura,
+      posibles becarios y listado por curso. Descargar como PDF para
+      compartir con coordinación o directivos.
+    </p>`;
+
+  // Resumen
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+                gap:10px;margin-bottom:14px;">`;
+  const cards = [
+    ['Estudiantes',     general.n],
+    ['Cursos',          cursos.length],
+    ['Promedio general', general.avg],
+    ['Mediana',         general.median],
+    ['Becarios (≥300)', becarios.length],
+  ];
+  cards.forEach(([label, val]) => {
+    html += `<div style="background:rgba(255,255,255,.04);border:1px solid var(--card-border);
+                  border-radius:10px;padding:10px;text-align:center;">
+      <div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">${val}</div>
+      <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">${label}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // Resumen del contenido del PDF
+  html += `<div style="background:rgba(99,102,241,.06);border:1px solid var(--card-border);
+                border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:.85rem;">
+    <strong>El PDF incluirá:</strong>
+    <ul style="margin:6px 0 0 18px;line-height:1.7;">
+      <li>Portada con datos generales</li>`;
+  if (scopeType === 'grado') {
+    html += `<li>Tabla 1 · Puntajes por curso (resumen del grado ${gradeF}°)</li>
+             <li>Tabla 2 · Puntajes por asignatura desagregado por curso</li>`;
+  }
+  html += `<li>Tabla · Posibles becarios (≥300) — ${becarios.length} estudiante(s)</li>
+           <li>${cursos.length === 1 ? 'Hoja' : `${cursos.length} hojas`} con el listado de estudiantes (una por curso)</li>
+    </ul></div>`;
+
+  html += `<button onclick="downloadIntegralPdf()"
+    style="padding:12px 20px;font-size:.92rem;
+           background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+           color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;
+           box-shadow:0 4px 12px rgba(99,102,241,.3);">
+    📥 Descargar análisis integral en PDF
+  </button>`;
+  out.innerHTML = html;
+}
+
+async function downloadIntegralPdf() {
+  if (!unifiedResults || !unifiedResults.length) return;
+  const gradeF = document.getElementById('r-grade-select')?.value || '';
+  const cursoF = document.getElementById('r-course-select')?.value || '';
+  if (!gradeF && !cursoF) return;
+  const status = document.getElementById('r-status');
+  status.innerHTML = '<p style="color:var(--muted);">Generando PDF integral…</p>';
+
+  try {
+    await _loadLogo();
+    const jsPDF = getJsPDF();
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+
+    let view = unifiedResults.slice();
+    if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
+    if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
+    const scopeLabel = cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`;
+    const simName = unifiedSimulacro ? unifiedSimulacro.nombre : '';
+    const cursos = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
+    const general = _statsFor(view.map(r => +r.general || 0));
+    const becarios = view.filter(r => (+r.general||0) >= 300)
+                         .sort((a,b) => (+b.general||0) - (+a.general||0));
+
+    const pw = 215.9 - 20;
+
+    // ── PORTADA ──
+    let y = _drawReportHeader(doc, `Análisis integral`, `${simName} · ${scopeLabel}`);
+    y = _drawSummaryCards(doc, 10, y, [
+      {label:'Estudiantes',     value: general.n},
+      {label:'Cursos',          value: cursos.length},
+      {label:'Promedio',        value: general.avg},
+      {label:'Mediana',         value: general.median},
+      {label:'Mín',             value: general.min},
+      {label:'Máx',             value: general.max},
+      {label:'Desv. estándar',  value: general.std},
+      {label:'Becarios (≥300)', value: becarios.length},
+    ]);
+
+    // ── TABLA 1: Puntajes por curso (solo si scope=grado) ──
+    if (gradeF && !cursoF && cursos.length >= 1) {
+      doc.addPage('letter','p'); y = 20;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.setTextColor(67,56,202);
+      doc.text(`Tabla 1 · Puntajes por curso (${scopeLabel})`, 10, y);
+      y += 6;
+      const cursoRows = cursos.map(c => {
+        const arr = view.filter(r => (r.curso||'').trim() === c);
+        const n = arr.length;
+        const avg = (k) => Math.round(arr.reduce((s,r)=>s+(+r[k]||0),0)/n);
+        return [c, n, avg('mat'), avg('lect'), avg('soc'), avg('nat'), avg('ing'), avg('general')];
+      }).sort((a,b) => b[7] - a[7]);
+      const avgRow = ['PROMEDIO', general.n, general.avg /* aquí promediamos los promedios mejor: avg directo */,
+                       Math.round(view.reduce((s,r)=>s+(+r.lect||0),0)/general.n),
+                       Math.round(view.reduce((s,r)=>s+(+r.soc||0),0)/general.n),
+                       Math.round(view.reduce((s,r)=>s+(+r.nat||0),0)/general.n),
+                       Math.round(view.reduce((s,r)=>s+(+r.ing||0),0)/general.n),
+                       general.avg];
+      // Recalcular avg de mat correctamente
+      avgRow[2] = Math.round(view.reduce((s,r)=>s+(+r.mat||0),0)/general.n);
+      _drawPdfTable(doc, 10, y,
+        ['Curso','Estudiantes','Mat','Lect','Soc','Nat','Ing','General'],
+        cursoRows, [30, 24, 20, 20, 20, 20, 20, 41.9], avgRow);
+    }
+
+    // ── TABLA 2: Asignaturas desagregado por curso ──
+    if (gradeF && !cursoF && cursos.length >= 1) {
+      doc.addPage('letter','p'); y = 20;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.setTextColor(67,56,202);
+      doc.text(`Tabla 2 · Puntajes por asignatura desagregado por curso`, 10, y);
+      y += 6;
+      // Por cada asignatura, una columna por curso + total
+      const subjects = REP_SUBJECTS.filter(s => s.key !== 'general');
+      const headers2 = ['Asignatura', ...cursos, 'Promedio'];
+      const rows2 = subjects.map(s => {
+        const cursoVals = cursos.map(c => {
+          const arr = view.filter(r => (r.curso||'').trim() === c);
+          if (!arr.length) return '—';
+          return Math.round(arr.reduce((sum,r)=>sum+(+r[s.key]||0),0)/arr.length);
+        });
+        const allAvg = Math.round(view.reduce((sum,r)=>sum+(+r[s.key]||0),0)/view.length);
+        return [s.label, ...cursoVals, allAvg];
+      });
+      const totalRow = ['PUNTAJE GENERAL',
+        ...cursos.map(c => {
+          const arr = view.filter(r => (r.curso||'').trim() === c);
+          if (!arr.length) return '—';
+          return Math.round(arr.reduce((sum,r)=>sum+(+r.general||0),0)/arr.length);
+        }),
+        general.avg
+      ];
+      // Calcular widths: primer columna fija, resto se reparten
+      const firstW = 45;
+      const rest = (215.9 - 20) - firstW;
+      const others = cursos.length + 1;
+      const colW = Math.max(15, rest / others);
+      const widths = [firstW, ...Array(others).fill(colW)];
+      // Ajustar último para que sume bien
+      const sum = widths.reduce((a,b)=>a+b,0);
+      widths[widths.length-1] += (215.9 - 20) - sum;
+      _drawPdfTable(doc, 10, y, headers2, rows2, widths, totalRow);
+    }
+
+    // ── TABLA: Posibles becarios ──
+    doc.addPage('letter','p'); y = 20;
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.setTextColor(67,56,202);
+    doc.text(`Posibles becarios (≥300) — ${becarios.length} estudiante(s)`, 10, y);
+    y += 6;
+    if (!becarios.length) {
+      doc.setFont('helvetica','normal'); doc.setFontSize(10);
+      doc.setTextColor(120,120,120);
+      doc.text('Ningún estudiante alcanzó 300 puntos en este ámbito.', 10, y + 6);
+    } else {
+      const becRows = becarios.map((r, i) => [
+        i+1, (r.name || '—').slice(0, 32), r.curso || '—',
+        gradoDeCurso(r.curso) ? gradoDeCurso(r.curso)+'°' : '—',
+        r.general
+      ]);
+      const avgGen = Math.round(becarios.reduce((s,r)=>s+(+r.general||0),0)/becarios.length);
+      const becAvg = ['', 'PROMEDIO', '', '', avgGen];
+      _drawPdfTable(doc, 10, y,
+        ['#','Estudiante','Curso','Grado','General'],
+        becRows, [12, 90, 22, 22, 49.9], becAvg);
+    }
+
+    // ── Una hoja por curso con sus estudiantes ──
+    cursos.forEach(c => {
+      doc.addPage('letter','p'); y = 20;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.setTextColor(67,56,202);
+      doc.text(`Estudiantes — Curso ${c}`, 10, y);
+      y += 6;
+      const arr = view.filter(r => (r.curso||'').trim() === c)
+                       .sort((a,b)=>(+b.general||0)-(+a.general||0));
+      const n = arr.length;
+      const avg = {
+        mat:  Math.round(arr.reduce((s,r)=>s+(+r.mat||0),0)/n),
+        lect: Math.round(arr.reduce((s,r)=>s+(+r.lect||0),0)/n),
+        soc:  Math.round(arr.reduce((s,r)=>s+(+r.soc||0),0)/n),
+        nat:  Math.round(arr.reduce((s,r)=>s+(+r.nat||0),0)/n),
+        ing:  Math.round(arr.reduce((s,r)=>s+(+r.ing||0),0)/n),
+        gen:  Math.round(arr.reduce((s,r)=>s+(+r.general||0),0)/n),
+      };
+      const stRows = arr.map((r,i) => [
+        i+1, (r.name || '—').slice(0, 30), r.id || '—',
+        r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
+      ]);
+      const stAvg = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc, avg.nat, avg.ing, avg.gen];
+      _drawPdfTable(doc, 10, y,
+        ['#','Estudiante','ID','Mat','Lect','Soc','Nat','Ing','Gen'],
+        stRows, [10, 55, 20, 14, 14, 14, 14, 14, 40.9], stAvg);
+    });
+
+    _drawReportFooter(doc, `Análisis integral · ${simName} · ${scopeLabel}`);
+    const safeScope = scopeLabel.replace(/[^a-z0-9]+/gi,'_');
+    const safeSim = simName.replace(/[^a-z0-9]+/gi,'_');
+    doc.save(`Analisis_Integral_${safeSim}_${safeScope}.pdf`);
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
+  } catch(e) {
+    console.error(e);
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
 }
 
 // ── ANÁLISIS POR PREGUNTA ──────────────────────────────────────────────
