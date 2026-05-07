@@ -1558,8 +1558,24 @@ function _renderTableGroupedByCurso(view, gradeF) {
     <td class="score">${totalRow.ing}</td>
     <td class="general-score">${totalRow.general}</td>
   </tr>`;
-  html += `</tbody></table></div>
-    <button onclick="downloadCursosTablePdf()"
+  html += `</tbody></table></div>`;
+  // Boxplot por curso (puntaje general)
+  if (cursos.length >= 2) {
+    const boxGroups = cursos.map(c => ({
+      label:  c,
+      values: groups[c].map(r => +r.general || 0),
+      color:  '#6366f1', colorEnd: '#06b6d4',
+    }));
+    const boxCanvas = drawBoxplotCanvas(boxGroups, {
+      title: `Distribución del puntaje general por curso (Grado ${gradeF}°)`,
+      max: 500,
+    });
+    html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📦 Distribución por curso</h3>`;
+    html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+      <img src="${boxCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+    </div>`;
+  }
+  html += `<button onclick="downloadCursosTablePdf()"
       style="margin-top:10px;padding:9px 14px;font-size:.85rem;
              background:linear-gradient(135deg,var(--primary),var(--primary-dark));
              color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
@@ -1852,6 +1868,136 @@ function drawBarChartCanvas(items, opts) {
   return c;
 }
 
+// Boxplot: groups = [{label, values}, ...]
+function drawBoxplotCanvas(groups, opts) {
+  const W = 900, H = 460;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const title = opts?.title || '';
+  const max = opts?.max || 100;
+  // Padding
+  const padL = 60, padR = 30, padT = title ? 50 : 20, padB = 80;
+  const cw = W - padL - padR;
+  const ch = H - padT - padB;
+
+  // Título
+  if (title) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 22px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, 30);
+  }
+  // Cuadrícula horizontal + etiquetas eje Y
+  ctx.fillStyle = '#64748b';
+  ctx.font = '14px Inter, Arial';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 5; i++) {
+    const yy = padT + ch - (ch * i / 5);
+    const val = Math.round(max * i / 5);
+    ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#e2e8f0';
+    ctx.beginPath();
+    ctx.moveTo(padL, yy); ctx.lineTo(padL + cw, yy);
+    ctx.stroke();
+    ctx.fillText(val, padL - 8, yy);
+  }
+  // Eje Y línea base
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + ch);
+  ctx.lineTo(padL + cw, padT + ch);
+  ctx.stroke();
+
+  // Función auxiliar de cuartiles
+  function quartiles(values) {
+    if (!values.length) return null;
+    const s = values.slice().sort((a,b) => a-b);
+    const n = s.length;
+    const q = (p) => {
+      const idx = (n - 1) * p;
+      const lo = Math.floor(idx);
+      const hi = Math.ceil(idx);
+      if (lo === hi) return s[lo];
+      return s[lo] + (s[hi] - s[lo]) * (idx - lo);
+    };
+    return { min: s[0], q1: q(0.25), med: q(0.5), q3: q(0.75), max: s[n-1] };
+  }
+
+  const n = groups.length;
+  const slot = cw / n;
+  const boxW = slot * 0.55;
+
+  groups.forEach((g, i) => {
+    const stats = quartiles(g.values);
+    if (!stats) return;
+    const cx = padL + slot * (i + 0.5);
+    const yFor = (v) => padT + ch - (ch * v / max);
+
+    const yMin = yFor(stats.min);
+    const yMax = yFor(stats.max);
+    const yQ1  = yFor(stats.q1);
+    const yQ3  = yFor(stats.q3);
+    const yMed = yFor(stats.med);
+    const x1   = cx - boxW/2;
+    const x2   = cx + boxW/2;
+
+    // Whiskers verticales
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, yMin); ctx.lineTo(cx, yQ1);
+    ctx.moveTo(cx, yQ3);  ctx.lineTo(cx, yMax);
+    ctx.stroke();
+    // Topes horizontales
+    ctx.beginPath();
+    ctx.moveTo(cx - boxW*0.25, yMin); ctx.lineTo(cx + boxW*0.25, yMin);
+    ctx.moveTo(cx - boxW*0.25, yMax); ctx.lineTo(cx + boxW*0.25, yMax);
+    ctx.stroke();
+    // Caja Q1-Q3 con gradiente
+    const grad = ctx.createLinearGradient(0, yQ3, 0, yQ1);
+    grad.addColorStop(0, g.color || '#6366f1');
+    grad.addColorStop(1, g.colorEnd || '#06b6d4');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x1, yQ3, boxW, yQ1 - yQ3);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x1, yQ3, boxW, yQ1 - yQ3);
+    // Mediana
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x1, yMed); ctx.lineTo(x2, yMed);
+    ctx.stroke();
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, yMed); ctx.lineTo(x2, yMed);
+    ctx.stroke();
+
+    // Valor de mediana arriba de la caja
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 14px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`med ${Math.round(stats.med)}`, cx, yMax - 6);
+
+    // Etiqueta del grupo
+    ctx.fillStyle = '#475569';
+    ctx.font = '14px Inter, Arial';
+    ctx.textBaseline = 'top';
+    const lbl = g.label;
+    const words = lbl.split(' ');
+    if (lbl.length > 9 && words.length > 1) {
+      ctx.fillText(words[0], cx, padT + ch + 8);
+      ctx.fillText(words.slice(1).join(' '), cx, padT + ch + 26);
+    } else {
+      ctx.fillText(lbl, cx, padT + ch + 8);
+    }
+  });
+
+  return c;
+}
+
 // Histograma: distribución de valores en bins
 function drawHistogramCanvas(values, opts) {
   const W = 900, H = 380;
@@ -1918,15 +2064,20 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
       {label:'Becarios (≥300)', value: extra.becarios},
     ]);
     // Gráficos
+    const pw = 215.9 - 20;
     if (extra.barChart) {
-      const pw = 215.9 - 20;
       const imgH = pw * 420/900;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
       try { doc.addImage(extra.barChart, 'PNG', 10, y, pw, imgH); } catch(e){}
       y += imgH + 4;
     }
+    if (extra.boxChart) {
+      const imgH = pw * 460/900;
+      if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(extra.boxChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      y += imgH + 4;
+    }
     if (extra.histChart) {
-      const pw = 215.9 - 20;
       const imgH = pw * 380/900;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
       try { doc.addImage(extra.histChart, 'PNG', 10, y, pw, imgH); } catch(e){}
@@ -2106,12 +2257,26 @@ function generateSubjectReport() {
     max: 500,
     binSize: 50,
   });
+  // Boxplot por asignatura (distribución de cada materia)
+  const boxGroups = REP_SUBJECTS.filter(s => s.key !== 'general').map(s => ({
+    label:  s.label.replace('Lectura Crítica', 'Lectura').replace('Sociales y Ciudadanas', 'Sociales').replace('Ciencias Naturales', 'Naturales'),
+    values: view.map(r => +r[s.key] || 0),
+    color:  '#6366f1', colorEnd: '#06b6d4',
+  }));
+  const boxCanvas = drawBoxplotCanvas(boxGroups, {
+    title: `Distribución por asignatura (boxplot)`,
+    max: 100,
+  });
 
   html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📊 Promedio por asignatura</h3>`;
   html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
     <img src="${barCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
   </div>`;
-  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📉 Distribución de puntajes</h3>`;
+  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📦 Distribución por asignatura</h3>`;
+  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+    <img src="${boxCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+  </div>`;
+  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📉 Distribución de puntajes generales</h3>`;
   html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
     <img src="${histCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
   </div>`;
@@ -2133,6 +2298,7 @@ function generateSubjectReport() {
     extra: {
       generalStats: general, becarios, cursosCount, byGrado,
       barChart:  barCanvas.toDataURL('image/png'),
+      boxChart:  boxCanvas.toDataURL('image/png'),
       histChart: histCanvas.toDataURL('image/png'),
     }
   };
