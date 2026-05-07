@@ -867,10 +867,13 @@
       <div id="r-view-bar" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:10px;
            padding:6px;background:rgba(255,255,255,.04);border-radius:10px;
            border:1px solid var(--card-border);">
-        <button class="r-view-pill active" data-view="tabla"   onclick="setResultsView('tabla')">
+        <button class="r-view-pill active" data-view="integral" onclick="setResultsView('integral')">
+          📚 Integral
+        </button>
+        <button class="r-view-pill"        data-view="tabla"    onclick="setResultsView('tabla')">
           📋 Cursos o estudiantes
         </button>
-        <button class="r-view-pill"        data-view="asign"   onclick="setResultsView('asign')">
+        <button class="r-view-pill"        data-view="asign"    onclick="setResultsView('asign')">
           📊 Por asignatura
         </button>
         <button class="r-view-pill"        data-view="becarios" onclick="setResultsView('becarios')">
@@ -878,9 +881,6 @@
         </button>
         <button class="r-view-pill"        data-view="pregunta" onclick="setResultsView('pregunta')">
           ❓ Por pregunta
-        </button>
-        <button class="r-view-pill"        data-view="integral" onclick="setResultsView('integral')">
-          📚 Integral
         </button>
       </div>
 
@@ -1243,8 +1243,8 @@ function _refreshUnifiedSimSelect() {
   if (prev) sel.value = prev;
 }
 
-// Vista actual en el panel de resultados: 'tabla' | 'asign' | 'becarios'
-let _currentView = 'tabla';
+// Vista actual en el panel de resultados: 'integral' | 'tabla' | 'asign' | 'becarios' | 'pregunta'
+let _currentView = 'integral';
 
 function onResultsSimChange() {
   const simSel   = document.getElementById('r-sim-select');
@@ -1302,7 +1302,7 @@ function onResultsSimChange() {
     document.getElementById('r-filter-bar').style.display = 'flex';
     document.getElementById('r-view-bar').style.display = 'flex';
     _populateUnifiedCourseFilter();
-    _renderCurrentView();
+    setResultsView('integral');   // siempre arrancar en integral
     btnGen.textContent = '🔄 Actualizar resultados';
     btnGen.disabled = false;
     btnAll.disabled = false;
@@ -1948,7 +1948,7 @@ async function generateUnifiedResults() {
       document.getElementById('r-filter-bar').style.display = 'flex';
       document.getElementById('r-view-bar').style.display = 'flex';
       _populateUnifiedCourseFilter();
-      _renderCurrentView();
+      setResultsView('integral');   // arrancar siempre en integral
       document.getElementById('btn-r-all').disabled = false;
       btn.textContent = '🔄 Actualizar resultados';
     } else {
