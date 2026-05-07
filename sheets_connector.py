@@ -425,8 +425,10 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
             'total':   total,
             'correct': correct,
             'pct':     round(correct / total * 100) if total else 0,
-            'by_grade': {g: round(c/t*100) for g, (t,c) in by_grade.items() if t},
-            'by_curso': {cc: round(c/t*100) for cc, (t,c) in by_curso.items() if t},
+            'by_grade': {g: {'n': t, 'c': c, 'pct': round(c/t*100)}
+                         for g, (t,c) in by_grade.items() if t},
+            'by_curso': {cc: {'n': t, 'c': c, 'pct': round(c/t*100)}
+                         for cc, (t,c) in by_curso.items() if t},
         }
 
     questions = []

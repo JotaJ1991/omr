@@ -1375,19 +1375,26 @@ function renderQuestionAnalysis(data) {
   const groupBy = cursoF ? 'curso' : (gradeF ? 'grado' : 'all');
   const groupKey = cursoF ? cursoF : gradeF;
 
-  // Función para tomar el pct relevante según filtro
-  const pctOf = (q) => {
-    if (groupBy === 'curso') return (q.by_curso || {})[groupKey] ?? null;
-    if (groupBy === 'grado') return (q.by_grade || {})[groupKey] ?? null;
-    return q.pct;
+  // Función para tomar las stats relevantes según filtro
+  // Retorna {pct, n, c} o null si no hay datos para ese grupo.
+  const statsOf = (q) => {
+    if (groupBy === 'curso') {
+      const e = (q.by_curso || {})[groupKey];
+      return e ? {pct: e.pct, n: e.n, c: e.c} : null;
+    }
+    if (groupBy === 'grado') {
+      const e = (q.by_grade || {})[groupKey];
+      return e ? {pct: e.pct, n: e.n, c: e.c} : null;
+    }
+    return {pct: q.pct, n: q.total, c: q.correct};
   };
 
   // Agrupar por asignatura
   const bySubject = {};
   data.questions.forEach(q => {
     if (!bySubject[q.subject]) bySubject[q.subject] = [];
-    const pct = pctOf(q);
-    if (pct !== null) bySubject[q.subject].push({...q, _pct: pct});
+    const st = statsOf(q);
+    if (st !== null) bySubject[q.subject].push({...q, _pct: st.pct, _n: st.n, _c: st.c});
   });
   Object.values(bySubject).forEach(arr => arr.sort((a,b) => a._pct - b._pct));
 
@@ -1436,7 +1443,7 @@ function renderQuestionAnalysis(data) {
         <td>${i+1}</td>
         <td><strong>${subjLabel.split(' ')[0]} ${q.q}</strong></td>
         <td><code>${q.key}</code></td>
-        <td>${q.correct}/${q.total}</td>
+        <td>${q._c}/${q._n}</td>
         <td>
           <div style="display:flex;align-items:center;gap:6px;">
             <div style="flex:1;height:8px;background:rgba(255,255,255,.06);
