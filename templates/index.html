@@ -407,6 +407,21 @@
   }
   .results-table-wrap { overflow-x: auto; }
 
+  /* ── Selector de vista en Resultados ── */
+  .r-view-pill {
+    flex: 1; min-width: 100px;
+    padding: 8px 12px; border-radius: 8px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--muted); font-size: .82rem; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+  }
+  .r-view-pill:hover { background: rgba(99,102,241,.08); color: var(--text); }
+  .r-view-pill.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white; border-color: var(--primary);
+    box-shadow: 0 2px 8px rgba(99,102,241,.3);
+  }
+
   /* ── CAMERA MODAL (cámara guiada) ── */
   .cam-modal {
     display: none; position: fixed; inset: 0; z-index: 200;
@@ -794,108 +809,77 @@
     </div>
   </div><!-- /tab-key -->
 
-  <!-- ══ TAB RESULTADOS (UNIFICADO) ════════════════════════════════════════ -->
+  <!-- ══ TAB RESULTADOS (UNIFICADO + REPORTES) ═════════════════════════════ -->
   <div id="tab-results" class="tab-content">
     <div class="card">
-      <h2>📊 Resultados</h2>
+      <h2>📊 Resultados y Reportes</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
-        Selecciona el simulacro y opcionalmente filtra por grado o curso.
-        El sistema detecta automáticamente si es media o jornada completa.
+        Selecciona el simulacro, aplica filtros y elige la vista que necesites.
+        El tipo de simulacro (media o completo) se detecta automáticamente.
       </p>
 
-      <!-- Selector simulacro + grado en una fila -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="flex:2;min-width:160px;">
-          <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
-          <select id="r-sim-select" onchange="onResultsSimChange()">
-            <option value="">— selecciona simulacro —</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:90px;">
-          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
-          <select id="r-grade-select" onchange="renderUnifiedTable()">
-            <option value="">— todos —</option>
-          </select>
-        </div>
+      <!-- Selector simulacro -->
+      <div style="margin-bottom:10px;">
+        <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
+        <select id="r-sim-select" onchange="onResultsSimChange()">
+          <option value="">— selecciona simulacro —</option>
+        </select>
       </div>
 
-      <!-- Info del simulacro elegido -->
+      <!-- Info simulacro -->
       <div id="r-sim-info" style="display:none;background:rgba(99,102,241,.06);
            border:1px solid var(--card-border);border-radius:10px;
            padding:10px 14px;margin-bottom:12px;font-size:.82rem;"></div>
 
-      <!-- Botones generar -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <!-- Botones generar / descargar todos -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <button class="btn-success" onclick="generateUnifiedResults()" id="btn-r-gen"
-                style="flex:1;padding:13px;font-size:.92rem;" disabled>
+                style="flex:1;min-width:160px;padding:12px;font-size:.9rem;" disabled>
           Generar Resultados
         </button>
         <button class="btn-primary" onclick="downloadUnifiedAll()" id="btn-r-all"
-                style="flex:1;padding:13px;font-size:.92rem;" disabled>
-          Descargar Todos PDF
+                style="flex:1;min-width:160px;padding:12px;font-size:.9rem;" disabled>
+          📥 Descargar Todos PDF
         </button>
       </div>
 
-      <!-- Filtro adicional por curso + descarga filtrada -->
-      <div id="r-course-bar" style="display:none;margin-top:10px;
-           gap:8px;align-items:end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:.78rem;color:var(--muted);">Filtrar por curso</label>
-          <select id="r-course-select" onchange="renderUnifiedTable()">
+      <!-- Filtros (aparecen tras generar) -->
+      <div id="r-filter-bar" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:end;">
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
+          <select id="r-grade-select" onchange="onResultsFilterChange()">
+            <option value="">— todos —</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:110px;">
+          <label style="font-size:.78rem;color:var(--muted);">Curso</label>
+          <select id="r-course-select" onchange="onResultsFilterChange()">
             <option value="">— todos —</option>
           </select>
         </div>
         <button class="btn-accent" onclick="downloadUnifiedFiltered()" id="btn-r-course"
-                style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
-          📥 Descargar filtrado
+                style="padding:10px 14px;font-size:.82rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
+          📥 Filtrado
         </button>
       </div>
 
-      <div id="r-status" style="margin-top:10px;"></div>
-      <div id="r-students-list" style="margin-top:12px;"></div>
-    </div>
-
-    <!-- Card Reportes -->
-    <div class="card">
-      <h2>📈 Reportes</h2>
-      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
-        Análisis estadísticos sobre los resultados generados.
-        Selecciona el ámbito y luego el tipo de reporte.
-      </p>
-
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="flex:1;min-width:130px;">
-          <label style="font-size:.78rem;color:var(--muted);">Análisis</label>
-          <select id="rep-scope" onchange="_onRepScopeChange()">
-            <option value="general">General (todos los estudiantes)</option>
-            <option value="grado">Por grado</option>
-            <option value="curso">Por curso</option>
-            <option value="asignatura">Por asignatura</option>
-          </select>
-        </div>
-        <div id="rep-extra-wrap" style="flex:1;min-width:130px;display:none;">
-          <label style="font-size:.78rem;color:var(--muted);" id="rep-extra-label">Filtro</label>
-          <select id="rep-extra"></select>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-primary" onclick="generateSubjectReport()"
-                style="flex:1;min-width:160px;padding:11px;font-size:.85rem;">
+      <!-- Selector de vista (aparecen tras generar) -->
+      <div id="r-view-bar" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:10px;
+           padding:6px;background:rgba(255,255,255,.04);border-radius:10px;
+           border:1px solid var(--card-border);">
+        <button class="r-view-pill active" data-view="tabla"   onclick="setResultsView('tabla')">
+          📋 Tabla
+        </button>
+        <button class="r-view-pill"        data-view="asign"   onclick="setResultsView('asign')">
           📊 Por asignatura
         </button>
-        <button class="btn-primary" onclick="generateStudentTableReport()"
-                style="flex:1;min-width:160px;padding:11px;font-size:.85rem;">
-          📋 Tabla de estudiantes
-        </button>
-        <button class="btn-warning" onclick="generateBecariosReport()"
-                style="flex:1;min-width:160px;padding:11px;font-size:.85rem;">
-          🏆 Potenciales becarios
+        <button class="r-view-pill"        data-view="becarios" onclick="setResultsView('becarios')">
+          🏆 Becarios (≥300)
         </button>
       </div>
 
-      <div id="rep-status" style="margin-top:10px;"></div>
-      <div id="rep-output" style="margin-top:12px;"></div>
+      <div id="r-status" style="margin-top:6px;"></div>
+      <div id="r-output" style="margin-top:12px;"></div>
     </div>
   </div>
 
@@ -1243,6 +1227,9 @@ function _refreshUnifiedSimSelect() {
   if (prev) sel.value = prev;
 }
 
+// Vista actual en el panel de resultados: 'tabla' | 'asign' | 'becarios'
+let _currentView = 'tabla';
+
 function onResultsSimChange() {
   const simSel   = document.getElementById('r-sim-select');
   const gradeSel = document.getElementById('r-grade-select');
@@ -1254,21 +1241,21 @@ function onResultsSimChange() {
                      ? _simulacrosCache.find(s => s.nombre === simSel.value)
                      : null;
 
-  // Limpiar resultados al cambiar de simulacro
+  // Limpiar al cambiar simulacro
   unifiedResults = null;
-  document.getElementById('r-students-list').innerHTML = '';
+  document.getElementById('r-output').innerHTML = '';
   document.getElementById('r-status').innerHTML = '';
-  document.getElementById('r-course-bar').style.display = 'none';
+  document.getElementById('r-filter-bar').style.display = 'none';
+  document.getElementById('r-view-bar').style.display = 'none';
 
   if (!unifiedSimulacro) {
     info.style.display = 'none';
     btnGen.disabled = true;
     btnAll.disabled = true;
-    gradeSel.innerHTML = '<option value="">— todos —</option>';
+    if (gradeSel) gradeSel.innerHTML = '<option value="">— todos —</option>';
     return;
   }
 
-  // Mostrar info
   const tipoLabel = unifiedSimulacro.tipo === 'completo'
                     ? '🌓 Jornada completa (1S + 2S)'
                     : '☀️ Media jornada (M)';
@@ -1279,15 +1266,38 @@ function onResultsSimChange() {
                           : '—'}`;
   info.style.display = 'block';
 
-  // Poblar grados según los del simulacro
-  let gradeHtml = '<option value="">— todos —</option>';
-  unifiedSimulacro.grados.forEach(g => {
-    gradeHtml += `<option value="${g}">${g}°</option>`;
-  });
-  gradeSel.innerHTML = gradeHtml;
+  if (gradeSel) {
+    let gradeHtml = '<option value="">— todos —</option>';
+    unifiedSimulacro.grados.forEach(g => {
+      gradeHtml += `<option value="${g}">${g}°</option>`;
+    });
+    gradeSel.innerHTML = gradeHtml;
+  }
 
   btnGen.disabled = false;
-  btnAll.disabled = true;  // se habilita al generar
+  btnAll.disabled = true;
+}
+
+// Cambia la vista (tabla / asignatura / becarios) y re-renderiza
+function setResultsView(view) {
+  _currentView = view;
+  document.querySelectorAll('.r-view-pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  _renderCurrentView();
+}
+
+function onResultsFilterChange() {
+  // Repoblar curso para que dependa del grado actual
+  _populateUnifiedCourseFilter();
+  _renderCurrentView();
+}
+
+function _renderCurrentView() {
+  if (!unifiedResults) return;
+  if (_currentView === 'asign')    return generateSubjectReport();
+  if (_currentView === 'becarios') return generateBecariosReport();
+  return renderUnifiedTable();   // por defecto: tabla
 }
 
 async function generateUnifiedResults() {
@@ -1324,9 +1334,11 @@ async function generateUnifiedResults() {
       status.innerHTML = `<p style="color:var(--success);font-weight:600;">
         Listo: ${data.students} estudiantes procesados.
         <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
+      // Mostrar barras de filtros + selector de vista
+      document.getElementById('r-filter-bar').style.display = 'flex';
+      document.getElementById('r-view-bar').style.display = 'flex';
       _populateUnifiedCourseFilter();
-      renderUnifiedTable();
-      _onRepScopeChange();   // refrescar dropdown extra de Reportes
+      _renderCurrentView();
       document.getElementById('btn-r-all').disabled = false;
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error'}</p>`;
@@ -1354,7 +1366,7 @@ function _populateUnifiedCourseFilter() {
 }
 
 function renderUnifiedTable() {
-  const list = document.getElementById('r-students-list');
+  const list = document.getElementById('r-output');
   if (!unifiedResults || !unifiedResults.length) { list.innerHTML = ''; return; }
   const gradeF = document.getElementById('r-grade-select').value;
   const cursoF = document.getElementById('r-course-select').value;
@@ -1423,7 +1435,13 @@ function renderUnifiedTable() {
           </tr>
         </tbody>
       </table>
-    </div>`;
+    </div>
+    <button onclick="downloadTablePdfReport()"
+      style="margin-top:10px;padding:9px 14px;font-size:.85rem;
+             background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+             color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
+      📥 Descargar tabla en PDF
+    </button>`;
 }
 
 async function _generateUnifiedPdf(filtered, fname) {
@@ -1632,36 +1650,6 @@ function _repNeedResults() {
   return true;
 }
 
-function _onRepScopeChange() {
-  const scope = document.getElementById('rep-scope').value;
-  const wrap  = document.getElementById('rep-extra-wrap');
-  const label = document.getElementById('rep-extra-label');
-  const sel   = document.getElementById('rep-extra');
-  if (!unifiedResults || !unifiedResults.length) {
-    wrap.style.display = 'none'; return;
-  }
-  if (scope === 'grado') {
-    label.textContent = 'Grado';
-    const grados = [...new Set(unifiedResults.map(r => gradoDeCurso(r.curso)).filter(g => g))]
-                    .sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99));
-    sel.innerHTML = '<option value="">— todos —</option>' +
-                    grados.map(g => `<option value="${g}">${g}°</option>`).join('');
-    wrap.style.display = 'block';
-  } else if (scope === 'curso') {
-    label.textContent = 'Curso';
-    const cursos = [...new Set(unifiedResults.map(r => (r.curso||'').trim()).filter(c => c))].sort();
-    sel.innerHTML = '<option value="">— todos —</option>' +
-                    cursos.map(c => `<option value="${c}">${c}</option>`).join('');
-    wrap.style.display = 'block';
-  } else if (scope === 'asignatura') {
-    label.textContent = 'Asignatura';
-    sel.innerHTML = REP_SUBJECTS.map(s => `<option value="${s.key}">${s.label}</option>`).join('');
-    wrap.style.display = 'block';
-  } else {
-    wrap.style.display = 'none';
-  }
-}
-
 function _statsFor(values) {
   if (!values.length) return {n:0, avg:0, min:0, max:0};
   const sum = values.reduce((s,v) => s + v, 0);
@@ -1674,18 +1662,22 @@ function _statsFor(values) {
 }
 
 function _filteredByScope() {
-  const scope = document.getElementById('rep-scope').value;
-  const extra = document.getElementById('rep-extra').value;
+  // Usa los filtros únicos (grado + curso) del panel unificado
+  const gradeF = document.getElementById('r-grade-select')?.value || '';
+  const cursoF = document.getElementById('r-course-select')?.value || '';
   let view = unifiedResults.slice();
-  let scopeLabel = 'General';
-  if (scope === 'grado' && extra) {
-    view = view.filter(r => gradoDeCurso(r.curso) === extra);
-    scopeLabel = `Grado ${extra}°`;
-  } else if (scope === 'curso' && extra) {
-    view = view.filter(r => (r.curso||'').trim() === extra);
-    scopeLabel = `Curso ${extra}`;
+  const labels = [];
+  if (gradeF) {
+    view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
+    labels.push(`Grado ${gradeF}°`);
   }
-  return {view, scope, extra, scopeLabel};
+  if (cursoF) {
+    view = view.filter(r => (r.curso||'').trim() === cursoF);
+    labels.push(`Curso ${cursoF}`);
+  }
+  const scopeLabel = labels.length ? labels.join(' · ') : 'General';
+  // 'scope' y 'extra' obsoletos: lo dejamos vacíos para no romper otros consumidores
+  return {view, scope: '', extra: '', scopeLabel};
 }
 
 function _btnPdfHtml(fnName) {
@@ -1700,54 +1692,16 @@ let _lastSubjectReportData   = null;
 let _lastStudentTableData    = null;
 let _lastBecariosData        = null;
 
-// Reporte 1 — Estadísticas por asignatura (avg/min/max)
+// Reporte: Estadísticas por asignatura (avg/min/max)
 function generateSubjectReport() {
   if (!_repNeedResults()) return;
-  const {view, scope, extra, scopeLabel} = _filteredByScope();
-  const out = document.getElementById('rep-output');
+  const {view, scopeLabel} = _filteredByScope();
+  const out = document.getElementById('r-output');
   if (!view.length) {
     out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
       Sin estudiantes con ese filtro.</p>`;
     return;
   }
-  // Caso: por asignatura específica
-  if (scope === 'asignatura' && extra) {
-    const subj = REP_SUBJECTS.find(s => s.key === extra);
-    const byGrado = {};
-    view.forEach(r => {
-      const g = gradoDeCurso(r.curso) || 'sin grado';
-      if (!byGrado[g]) byGrado[g] = [];
-      byGrado[g].push(r);
-    });
-    const headers = ['Grupo', 'Estudiantes', 'Promedio', 'Mín', 'Máx'];
-    const rows = [];
-    Object.keys(byGrado).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99)).forEach(g => {
-      const stats = _statsFor(byGrado[g].map(r => +r[extra] || 0));
-      const label = g === 'sin grado' ? 'Sin grado' : 'Grado '+g+'°';
-      rows.push([label, stats.n, stats.avg, stats.min, stats.max]);
-    });
-    const all = _statsFor(view.map(r => +r[extra] || 0));
-    const avgRow = ['PROMEDIO TOTAL', all.n, all.avg, all.min, all.max];
-
-    let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">📊 ${subj.label} — desglose por grado</h3>`;
-    html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
-      ${headers.map(h => `<th>${h}</th>`).join('')}
-      </tr></thead><tbody>
-      ${rows.map(r => `<tr>${r.map((c,i) => i===2 ? `<td class="score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
-      <tr class="avg-row">${avgRow.map((c,i) => i===2 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
-      </tbody></table></div>`;
-    html += _btnPdfHtml('downloadSubjectReportPdf');
-    out.innerHTML = html;
-    _lastSubjectReportData = {
-      title: `Análisis por asignatura: ${subj.label}`,
-      subtitle: `${scopeLabel} · ${view.length} estudiantes`,
-      headers, rows, avgRow,
-      colWidths: [55, 35, 35, 35, 35.9],
-      fileName: `Reporte_${subj.label}_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
-    };
-    return;
-  }
-  // Caso General/Grado/Curso: stats por asignatura
   const headers = ['Asignatura', 'Promedio', 'Mín', 'Máx'];
   const rows = [];
   REP_SUBJECTS.filter(s => s.key !== 'general').forEach(s => {
@@ -1780,74 +1734,34 @@ async function downloadSubjectReportPdf() {
   if (_lastSubjectReportData) await _saveReportPdf(_lastSubjectReportData);
 }
 
-// Reporte 2 — Tabla de resultados por estudiante
-function generateStudentTableReport() {
+// PDF de la tabla actual (vista 'tabla')
+async function downloadTablePdfReport() {
   if (!_repNeedResults()) return;
   const {view, scopeLabel} = _filteredByScope();
-  const out = document.getElementById('rep-output');
-  if (!view.length) {
-    out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
-      Sin estudiantes con ese filtro.</p>`;
-    return;
-  }
-  const sorted = view.slice().sort((a,b) => (+b.general||0) - (+a.general||0));
-  // Promedios por columna
+  if (!view.length) return;
+  const sorted = view.slice().sort((a,b)=>(+b.general||0)-(+a.general||0));
+  const n = sorted.length;
   const avg = {
-    mat:  Math.round(sorted.reduce((s,r)=>s+(+r.mat||0),0)/sorted.length),
-    lect: Math.round(sorted.reduce((s,r)=>s+(+r.lect||0),0)/sorted.length),
-    soc:  Math.round(sorted.reduce((s,r)=>s+(+r.soc||0),0)/sorted.length),
-    nat:  Math.round(sorted.reduce((s,r)=>s+(+r.nat||0),0)/sorted.length),
-    ing:  Math.round(sorted.reduce((s,r)=>s+(+r.ing||0),0)/sorted.length),
-    gen:  Math.round(sorted.reduce((s,r)=>s+(+r.general||0),0)/sorted.length),
+    mat:  Math.round(sorted.reduce((s,r)=>s+(+r.mat||0),0)/n),
+    lect: Math.round(sorted.reduce((s,r)=>s+(+r.lect||0),0)/n),
+    soc:  Math.round(sorted.reduce((s,r)=>s+(+r.soc||0),0)/n),
+    nat:  Math.round(sorted.reduce((s,r)=>s+(+r.nat||0),0)/n),
+    ing:  Math.round(sorted.reduce((s,r)=>s+(+r.ing||0),0)/n),
+    gen:  Math.round(sorted.reduce((s,r)=>s+(+r.general||0),0)/n),
   };
-  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
-    📋 Tabla de estudiantes — ${scopeLabel} (${sorted.length})</h3>`;
-  html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
-    <th>#</th><th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th><th>Nat</th><th>Ing</th><th>General</th>
-    </tr></thead><tbody>`;
-  sorted.forEach((r, i) => {
-    html += `<tr>
-      <td>${i+1}</td>
-      <td><div style="font-weight:600;">${r.name || '—'}</div>
-          <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id || '—'}</div></td>
-      <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
-      <td class="score">${r.mat}</td><td class="score">${r.lect}</td>
-      <td class="score">${r.soc}</td><td class="score">${r.nat}</td>
-      <td class="score">${r.ing}</td>
-      <td class="general-score">${r.general}</td>
-    </tr>`;
-  });
-  html += `<tr class="avg-row">
-    <td colspan="3" style="text-align:right;font-weight:700;">PROMEDIO</td>
-    <td class="score">${avg.mat}</td><td class="score">${avg.lect}</td>
-    <td class="score">${avg.soc}</td><td class="score">${avg.nat}</td>
-    <td class="score">${avg.ing}</td>
-    <td class="general-score">${avg.gen}</td>
-  </tr>`;
-  html += `</tbody></table></div>`;
-  html += _btnPdfHtml('downloadStudentTableReportPdf');
-  out.innerHTML = html;
-
-  // Cachear datos para PDF
   const headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'Gen'];
   const rows = sorted.map((r, i) => [
-    i+1,
-    (r.name || '—').slice(0, 28),
-    r.curso || '—',
+    i+1, (r.name || '—').slice(0, 28), r.curso || '—',
     r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
   ]);
   const avgRow = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc, avg.nat, avg.ing, avg.gen];
-  _lastStudentTableData = {
+  await _saveReportPdf({
     title: 'Tabla de estudiantes',
-    subtitle: `${scopeLabel} · ${sorted.length} estudiantes`,
+    subtitle: `${scopeLabel} · ${n} estudiantes`,
     headers, rows, avgRow,
     colWidths: [10, 60, 18, 14, 14, 14, 14, 14, 17.9],
     fileName: `Tabla_Estudiantes_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
-  };
-}
-
-async function downloadStudentTableReportPdf() {
-  if (_lastStudentTableData) await _saveReportPdf(_lastStudentTableData);
+  });
 }
 
 // Reporte 3 — Potenciales becarios (general >= 300)
@@ -1855,7 +1769,7 @@ const BECARIO_UMBRAL = 300;
 function generateBecariosReport() {
   if (!_repNeedResults()) return;
   const {view, scopeLabel} = _filteredByScope();
-  const out = document.getElementById('rep-output');
+  const out = document.getElementById('r-output');
   const becarios = view.filter(r => (+r.general||0) >= BECARIO_UMBRAL)
                        .sort((a,b)=> (+b.general||0)-(+a.general||0));
   if (!becarios.length) {
