@@ -1618,12 +1618,55 @@ function _drawReportFooter(doc, label) {
   }
 }
 
-async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths, fileName}) {
+function _drawSummaryCards(doc, x, y, items) {
+  const pw = 215.9 - 20;
+  const cellW = pw / Math.min(items.length, 4);
+  const cellH = 18;
+  let cx = x, cy = y;
+  items.forEach((it, i) => {
+    if (i > 0 && i % 4 === 0) { cy += cellH + 2; cx = x; }
+    doc.setFillColor(245, 247, 252);
+    doc.roundedRect(cx + 1, cy, cellW - 2, cellH, 1.5, 1.5, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.setTextColor(67, 56, 202);
+    doc.text(String(it.value), cx + cellW/2, cy + 9, {align:'center'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(String(it.label).toUpperCase(), cx + cellW/2, cy + 15, {align:'center'});
+    cx += cellW;
+  });
+  return cy + cellH + 3;
+}
+
+async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths, fileName, extra}) {
   await _loadLogo();
   const jsPDF = getJsPDF();
   const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
-  const y0 = _drawReportHeader(doc, title, subtitle);
-  _drawPdfTable(doc, 10, y0, headers, rows, colWidths, avgRow);
+  let y = _drawReportHeader(doc, title, subtitle);
+  // Si hay datos extra (estadísticas generales), dibujar tarjetas resumen
+  if (extra && extra.generalStats) {
+    const g = extra.generalStats;
+    y = _drawSummaryCards(doc, 10, y, [
+      {label:'Estudiantes',     value: g.n},
+      {label:'Cursos',          value: extra.cursosCount},
+      {label:'Promedio',        value: g.avg},
+      {label:'Mediana',         value: g.median},
+      {label:'Mínimo',          value: g.min},
+      {label:'Máximo',          value: g.max},
+      {label:'Desv. Estándar',  value: g.std},
+      {label:'Becarios (≥300)', value: extra.becarios},
+    ]);
+    if (extra.top) {
+      doc.setFillColor(220, 245, 230);
+      doc.roundedRect(10, y, 215.9 - 20, 9, 1.5, 1.5, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9);
+      doc.setTextColor(20, 83, 45);
+      doc.text(`MEJOR PUNTAJE: ${extra.top.name || '—'}${extra.top.curso ? ' · '+extra.top.curso : ''}  ·  ${extra.top.general} pts`,
+               10 + (215.9-20)/2, y + 6, {align:'center'});
+      y += 12;
+    }
+  }
+  _drawPdfTable(doc, 10, y, headers, rows, colWidths, avgRow);
   const simLabel = unifiedSimulacro
                    ? `Simulacro ${unifiedSimulacro.nombre}`
                    : 'Simulacro';
@@ -1651,13 +1694,32 @@ function _repNeedResults() {
 }
 
 function _statsFor(values) {
-  if (!values.length) return {n:0, avg:0, min:0, max:0};
+  if (!values.length) return {n:0, avg:0, min:0, max:0, median:0, std:0, q1:0, q3:0, aprob:0, aprobPct:0};
   const sum = values.reduce((s,v) => s + v, 0);
+  const avg = sum / values.length;
+  const sorted = values.slice().sort((a,b) => a-b);
+  const m = sorted.length;
+  const median = m % 2 === 1
+                 ? sorted[(m-1)/2]
+                 : (sorted[m/2 - 1] + sorted[m/2]) / 2;
+  const q1 = sorted[Math.floor(m * 0.25)];
+  const q3 = sorted[Math.floor(m * 0.75)];
+  const variance = values.reduce((s,v) => s + (v - avg)**2, 0) / values.length;
+  const std = Math.sqrt(variance);
+  // Aprobados: >= 60 (60% del puntaje máximo de la materia: max 100)
+  const APROB = 60;
+  const aprob = values.filter(v => v >= APROB).length;
   return {
-    n:   values.length,
-    avg: Math.round(sum / values.length),
-    min: Math.min(...values),
-    max: Math.max(...values),
+    n:        values.length,
+    avg:      Math.round(avg),
+    min:      sorted[0],
+    max:      sorted[m-1],
+    median:   Math.round(median),
+    std:      Math.round(std * 10) / 10,
+    q1:       Math.round(q1),
+    q3:       Math.round(q3),
+    aprob:    aprob,
+    aprobPct: Math.round(aprob / values.length * 100),
   };
 }
 
@@ -1692,7 +1754,7 @@ let _lastSubjectReportData   = null;
 let _lastStudentTableData    = null;
 let _lastBecariosData        = null;
 
-// Reporte: Estadísticas por asignatura (avg/min/max)
+// Reporte: Estadísticas generales + por asignatura
 function generateSubjectReport() {
   if (!_repNeedResults()) return;
   const {view, scopeLabel} = _filteredByScope();
@@ -1702,31 +1764,86 @@ function generateSubjectReport() {
       Sin estudiantes con ese filtro.</p>`;
     return;
   }
-  const headers = ['Asignatura', 'Promedio', 'Mín', 'Máx'];
+  const general = _statsFor(view.map(r => +r.general || 0));
+  const top = view.slice().sort((a,b)=>(+b.general||0)-(+a.general||0))[0];
+  const becarios = view.filter(r => (+r.general||0) >= 300).length;
+  // Distribución por grado
+  const byGrado = {};
+  view.forEach(r => {
+    const g = gradoDeCurso(r.curso) || 'sin grado';
+    byGrado[g] = (byGrado[g] || 0) + 1;
+  });
+  const cursosCount = new Set(view.map(r => (r.curso||'').trim()).filter(c => c)).size;
+
+  // Generales: tarjetas resumen
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
+    📊 Estadísticas generales — ${scopeLabel}</h3>`;
+  html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+                gap:10px;margin-bottom:14px;">`;
+  const cards = [
+    ['Estudiantes',     general.n,     'var(--primary-light)'],
+    ['Cursos',          cursosCount,   'var(--primary-light)'],
+    ['Puntaje promedio', general.avg,  'var(--primary-light)'],
+    ['Mediana',         general.median,'var(--primary-light)'],
+    ['Mín',             general.min,   'var(--danger)'],
+    ['Máx',             general.max,   'var(--success)'],
+    ['Desv. estándar',  general.std,   'var(--muted)'],
+    ['Becarios (≥300)', becarios,      'var(--accent)'],
+  ];
+  cards.forEach(([label, val, color]) => {
+    html += `<div style="background:rgba(255,255,255,.04);border:1px solid var(--card-border);
+                  border-radius:10px;padding:10px;text-align:center;">
+      <div style="font-size:1.4rem;font-weight:800;color:${color};">${val}</div>
+      <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;">${label}</div>
+    </div>`;
+  });
+  html += `</div>`;
+  // Distribución por grado (si hay más de uno)
+  const gradeKeys = Object.keys(byGrado).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99));
+  if (gradeKeys.length > 1) {
+    html += `<div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.82rem;">
+      <strong>Distribución por grado:</strong> ` +
+      gradeKeys.map(g => `<span style="margin-right:10px;">${g==='sin grado'?'Sin grado':g+'°'}: <strong>${byGrado[g]}</strong></span>`).join('') +
+      `</div>`;
+  }
+  // Top estudiante
+  if (top) {
+    html += `<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);
+                  border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.85rem;">
+      🏆 <strong>Mejor puntaje:</strong> ${top.name || '—'}
+      ${top.curso ? '· '+top.curso : ''} · <strong style="color:var(--success);">${top.general}</strong>
+    </div>`;
+  }
+
+  // Tabla por asignatura con estadísticos extendidos
+  const headers = ['Asignatura', 'n', 'Prom.', 'Med.', 'Mín', 'Máx', 'Desv.', '% ≥60'];
   const rows = [];
   REP_SUBJECTS.filter(s => s.key !== 'general').forEach(s => {
-    const stats = _statsFor(view.map(r => +r[s.key] || 0));
-    rows.push([s.label, stats.avg, stats.min, stats.max]);
+    const st = _statsFor(view.map(r => +r[s.key] || 0));
+    rows.push([s.label, st.n, st.avg, st.median, st.min, st.max, st.std, st.aprobPct + '%']);
   });
-  const genStats = _statsFor(view.map(r => +r.general || 0));
-  const avgRow = ['PUNTAJE GENERAL', genStats.avg, genStats.min, genStats.max];
+  const avgRow = ['PUNTAJE GENERAL', general.n, general.avg, general.median,
+                  general.min, general.max, general.std, general.aprobPct + '%'];
 
-  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
-    📊 Estadísticas por asignatura — ${scopeLabel} (${view.length} estudiantes)</h3>`;
+  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📚 Por asignatura</h3>`;
   html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
     ${headers.map(h => `<th>${h}</th>`).join('')}
     </tr></thead><tbody>
-    ${rows.map(r => `<tr>${r.map((c,i) => i===1 ? `<td class="score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
-    <tr class="avg-row">${avgRow.map((c,i) => i===1 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
+    ${rows.map(r => `<tr>${r.map((c,i) => i===2 ? `<td class="score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
+    <tr class="avg-row">${avgRow.map((c,i) => i===2 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
     </tbody></table></div>`;
   html += _btnPdfHtml('downloadSubjectReportPdf');
   out.innerHTML = html;
   _lastSubjectReportData = {
-    title: `Estadísticas por asignatura`,
+    title: `Estadísticas generales y por asignatura`,
     subtitle: `${scopeLabel} · ${view.length} estudiantes`,
     headers, rows, avgRow,
-    colWidths: [60, 45, 45, 45.9],
+    colWidths: [50, 12, 18, 18, 18, 18, 22, 39.9],
     fileName: `Reporte_Asignaturas_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
+    extra: {
+      generalStats: general, top, becarios, cursosCount, byGrado,
+    }
   };
 }
 

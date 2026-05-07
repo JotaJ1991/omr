@@ -372,6 +372,43 @@ def add_simulacro(nombre: str, fecha: str, tipo: str, grados: list) -> dict:
         return {'success': False, 'error': str(e)}
 
 
+def uppercase_all_student_names() -> dict:
+    """Recorre todas las hojas de respuestas y convierte la columna Nombre (col C)
+       a MAYÚSCULAS, excepto en filas KEY o TOTALES y hojas administrativas."""
+    spreadsheet = _open_spreadsheet()
+    skip_titles = {COURSES_SHEET, SIMULACROS_SHEET}
+    total_changes = 0
+    sheets_touched = 0
+    errors = []
+    for ws in spreadsheet.worksheets():
+        if ws.title in skip_titles or ws.title.startswith('Resultados '):
+            continue
+        try:
+            col = ws.col_values(3)  # columna C: Nombre
+            updates = []
+            for i, name in enumerate(col):
+                if i == 0:  # encabezado
+                    continue
+                clean = (name or '').strip()
+                if not clean or clean in (KEY_ROW_NAME, '--- TOTALES ---'):
+                    continue
+                upper = clean.upper()
+                if upper != name:
+                    updates.append({'range': f'C{i+1}', 'values': [[upper]]})
+            if updates:
+                ws.batch_update(updates, value_input_option='RAW')
+                total_changes += len(updates)
+                sheets_touched += 1
+        except Exception as e:
+            errors.append(f'{ws.title}: {e}')
+    return {
+        'success': True,
+        'changes': total_changes,
+        'sheets':  sheets_touched,
+        'errors':  errors,
+    }
+
+
 def delete_simulacro(nombre: str) -> dict:
     """Elimina del catálogo (NO borra las hojas con datos)."""
     nombre = (nombre or '').strip()
@@ -610,7 +647,9 @@ def save_to_sheets(student_name: str, exam_id: str,
     """
     Guarda una fila de respuestas, calcula correctas vs clave,
     y mantiene UNA SOLA fila de totales al final.
+    El nombre del estudiante se almacena siempre en MAYÚSCULAS.
     """
+    student_name = (student_name or '').upper()
     spreadsheet  = _open_spreadsheet()
 
     try:

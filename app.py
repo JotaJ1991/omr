@@ -15,6 +15,7 @@ from sheets_connector import (
     generate_msipagre_results,
     list_courses, add_course, delete_course,
     list_simulacros, add_simulacro, delete_simulacro,
+    uppercase_all_student_names,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -313,6 +314,16 @@ def simulacros_add():
     try:
         result = add_simulacro(nombre, fecha, tipo, grados)
         return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/uppercase_names', methods=['POST'])
+def uppercase_names_endpoint():
+    """Convierte todos los nombres de estudiantes a MAYÚSCULAS en todas las hojas."""
+    try:
+        return jsonify(uppercase_all_student_names())
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
