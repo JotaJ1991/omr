@@ -1351,18 +1351,21 @@ async function generateUnifiedResults() {
 
 function _populateUnifiedCourseFilter() {
   const sel = document.getElementById('r-course-select');
-  const bar = document.getElementById('r-course-bar');
+  if (!sel) return;
   if (!unifiedResults || !unifiedResults.length) {
-    bar.style.display = 'none'; return;
+    sel.innerHTML = '<option value="">— todos —</option>';
+    return;
   }
-  const gradeF = document.getElementById('r-grade-select').value;
+  const prev = sel.value;
+  const gradeF = document.getElementById('r-grade-select')?.value || '';
   let pool = unifiedResults;
   if (gradeF) pool = pool.filter(r => gradoDeCurso(r.curso) === gradeF);
   const courses = [...new Set(pool.map(r => (r.curso||'').trim()).filter(c => c))].sort();
   let html = '<option value="">— todos —</option>';
   courses.forEach(c => { html += `<option value="${c}">${c}</option>`; });
   sel.innerHTML = html;
-  bar.style.display = 'flex';
+  // Mantener selección si el curso aún existe en el pool filtrado
+  if (prev && courses.includes(prev)) sel.value = prev;
 }
 
 function renderUnifiedTable() {
