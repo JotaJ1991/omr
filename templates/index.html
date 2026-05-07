@@ -1658,6 +1658,111 @@ function _drawReportFooter(doc, label) {
   }
 }
 
+// Bar chart: array de {label, value, max?, color?} → canvas
+function drawBarChartCanvas(items, opts) {
+  const W = 900, H = 420;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const title = opts?.title || '';
+  const maxVal = opts?.max || Math.max(100, ...items.map(i => i.value));
+  // Título
+  if (title) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 22px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, 30);
+  }
+  // Área del gráfico
+  const padL = 60, padR = 30, padT = title ? 50 : 20, padB = 70;
+  const cw = W - padL - padR;
+  const ch = H - padT - padB;
+  // Ejes
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + ch);
+  ctx.lineTo(padL + cw, padT + ch);
+  ctx.stroke();
+  // Líneas de cuadrícula horizontales (5 niveles)
+  ctx.fillStyle = '#64748b';
+  ctx.font = '14px Inter, Arial';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 5; i++) {
+    const yy = padT + ch - (ch * i / 5);
+    const val = Math.round(maxVal * i / 5);
+    ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#e2e8f0';
+    ctx.beginPath();
+    ctx.moveTo(padL, yy); ctx.lineTo(padL + cw, yy);
+    ctx.stroke();
+    ctx.fillText(val, padL - 8, yy);
+  }
+  // Barras
+  const n = items.length;
+  const barW = (cw / n) * 0.6;
+  const gap  = (cw / n) * 0.4;
+  items.forEach((it, i) => {
+    const x = padL + (cw / n) * i + gap/2;
+    const h = Math.max(0, ch * Math.min(it.value / maxVal, 1));
+    const yy = padT + ch - h;
+    // Barra con gradiente
+    const grad = ctx.createLinearGradient(0, yy, 0, padT + ch);
+    grad.addColorStop(0, it.color || '#6366f1');
+    grad.addColorStop(1, it.colorEnd || '#818cf8');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, yy, barW, h, 4);
+    ctx.fill();
+    // Valor encima
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 16px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(String(it.value), x + barW/2, yy - 4);
+    // Etiqueta debajo
+    ctx.fillStyle = '#475569';
+    ctx.font = '14px Inter, Arial';
+    ctx.textBaseline = 'top';
+    // Multilínea si es muy largo
+    const lbl = it.label;
+    const words = lbl.split(' ');
+    if (lbl.length > 9 && words.length > 1) {
+      ctx.fillText(words[0], x + barW/2, padT + ch + 8);
+      ctx.fillText(words.slice(1).join(' '), x + barW/2, padT + ch + 26);
+    } else {
+      ctx.fillText(lbl, x + barW/2, padT + ch + 8);
+    }
+  });
+  return c;
+}
+
+// Histograma: distribución de valores en bins
+function drawHistogramCanvas(values, opts) {
+  const W = 900, H = 380;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const title = opts?.title || '';
+  const max = opts?.max || 500;
+  const binSize = opts?.binSize || 50;
+  const bins = [];
+  for (let lo = 0; lo < max; lo += binSize) {
+    bins.push({lo, hi: lo + binSize, count: 0});
+  }
+  values.forEach(v => {
+    const idx = Math.min(Math.floor(v / binSize), bins.length - 1);
+    if (idx >= 0) bins[idx].count++;
+  });
+  const items = bins.map(b => ({
+    label: `${b.lo}-${b.hi}`,
+    value: b.count,
+    color: b.lo >= 300 ? '#22c55e' : b.lo >= 200 ? '#eab308' : b.lo >= 100 ? '#f59e0b' : '#ef4444',
+  }));
+  return drawBarChartCanvas(items, {
+    title: title || 'Distribución por puntaje general',
+    max: Math.max(1, ...items.map(i => i.value)),
+  });
+}
+
 function _drawSummaryCards(doc, x, y, items) {
   const pw = 215.9 - 20;
   const cellW = pw / Math.min(items.length, 4);
@@ -1696,16 +1801,23 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
       {label:'Desv. Estándar',  value: g.std},
       {label:'Becarios (≥300)', value: extra.becarios},
     ]);
-    if (extra.top) {
-      doc.setFillColor(220, 245, 230);
-      doc.roundedRect(10, y, 215.9 - 20, 9, 1.5, 1.5, 'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(9);
-      doc.setTextColor(20, 83, 45);
-      doc.text(`MEJOR PUNTAJE: ${extra.top.name || '—'}${extra.top.curso ? ' · '+extra.top.curso : ''}  ·  ${extra.top.general} pts`,
-               10 + (215.9-20)/2, y + 6, {align:'center'});
-      y += 12;
+    // Gráficos
+    if (extra.barChart) {
+      const pw = 215.9 - 20;
+      const imgH = pw * 420/900;
+      if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(extra.barChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      y += imgH + 4;
+    }
+    if (extra.histChart) {
+      const pw = 215.9 - 20;
+      const imgH = pw * 380/900;
+      if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(extra.histChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      y += imgH + 4;
     }
   }
+  if (y > 240) { doc.addPage('letter','p'); y = 20; }
   _drawPdfTable(doc, 10, y, headers, rows, colWidths, avgRow);
   const simLabel = unifiedSimulacro
                    ? `Simulacro ${unifiedSimulacro.nombre}`
@@ -1847,14 +1959,6 @@ function generateSubjectReport() {
       gradeKeys.map(g => `<span style="margin-right:10px;">${g==='sin grado'?'Sin grado':g+'°'}: <strong>${byGrado[g]}</strong></span>`).join('') +
       `</div>`;
   }
-  // Top estudiante
-  if (top) {
-    html += `<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);
-                  border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.85rem;">
-      🏆 <strong>Mejor puntaje:</strong> ${top.name || '—'}
-      ${top.curso ? '· '+top.curso : ''} · <strong style="color:var(--success);">${top.general}</strong>
-    </div>`;
-  }
 
   // Tabla por asignatura con estadísticos extendidos
   const headers = ['Asignatura', 'n', 'Prom.', 'Med.', 'Mín', 'Máx', 'Desv.', '% ≥60'];
@@ -1866,7 +1970,36 @@ function generateSubjectReport() {
   const avgRow = ['PUNTAJE GENERAL', general.n, general.avg, general.median,
                   general.min, general.max, general.std, general.aprobPct + '%'];
 
-  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📚 Por asignatura</h3>`;
+  // Gráfico de barras: promedio por asignatura
+  const barItems = REP_SUBJECTS.filter(s => s.key !== 'general').map(s => {
+    const st = _statsFor(view.map(r => +r[s.key] || 0));
+    return {
+      label: s.label,
+      value: st.avg,
+      color: '#6366f1',
+      colorEnd: '#06b6d4',
+    };
+  });
+  const barCanvas = drawBarChartCanvas(barItems, {
+    title: `Promedio por asignatura — ${scopeLabel}`,
+    max: 100,
+  });
+  // Histograma de puntajes generales
+  const histCanvas = drawHistogramCanvas(view.map(r => +r.general || 0), {
+    title: 'Distribución de puntajes generales (de 0 a 500)',
+    max: 500,
+    binSize: 50,
+  });
+
+  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📊 Promedio por asignatura</h3>`;
+  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+    <img src="${barCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+  </div>`;
+  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📉 Distribución de puntajes</h3>`;
+  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+    <img src="${histCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+  </div>`;
+  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📚 Estadísticos por asignatura</h3>`;
   html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
     ${headers.map(h => `<th>${h}</th>`).join('')}
     </tr></thead><tbody>
@@ -1882,7 +2015,9 @@ function generateSubjectReport() {
     colWidths: [50, 12, 18, 18, 18, 18, 22, 39.9],
     fileName: `Reporte_Asignaturas_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
     extra: {
-      generalStats: general, top, becarios, cursosCount, byGrado,
+      generalStats: general, becarios, cursosCount, byGrado,
+      barChart:  barCanvas.toDataURL('image/png'),
+      histChart: histCanvas.toDataURL('image/png'),
     }
   };
 }
