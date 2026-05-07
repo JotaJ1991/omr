@@ -253,9 +253,9 @@ def _ensure_simulacros_sheet():
             existing_titles = {w.title for w in ss.worksheets()}
             rows_to_add = []
             if '1S SIPAGRE' in existing_titles and '2S SIPAGRE' in existing_titles:
-                rows_to_add.append(['SIPAGRE Legacy', '', SIM_COMPLETO, '10,11'])
+                rows_to_add.append(['SIPAGRE Legacy', '', SIM_COMPLETO, '11'])
             if 'M SIPAGRE' in existing_titles:
-                rows_to_add.append(['SIPAGRE M Legacy', '', SIM_MEDIA, '6,7,8,9'])
+                rows_to_add.append(['SIPAGRE M Legacy', '', SIM_MEDIA, '6,7,8,9,10'])
             for r in rows_to_add:
                 ws.append_row(r, value_input_option='RAW')
         except Exception:

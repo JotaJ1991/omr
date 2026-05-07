@@ -886,19 +886,6 @@
       <div id="simulacros-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
-    <!-- ── Ayuda: flujo ── -->
-    <div class="card">
-      <h2>💾 Flujo de trabajo</h2>
-      <div style="display:flex;flex-direction:column;gap:10px;font-size:.88rem;color:var(--muted);">
-        <div>📷 <strong style="color:var(--text);">Analizar</strong> — procesa la imagen sin guardar nada.</div>
-        <div>📷➕ <strong style="color:var(--text);">Otra foto</strong> — agrega fotos adicionales para completar respuestas no detectadas.</div>
-        <div>🔑 <strong style="color:var(--text);">Clave</strong> — define las respuestas correctas antes de escanear. El sistema calculará el puntaje automáticamente.</div>
-        <div>💾 <strong style="color:var(--text);">Guardar</strong> — escribe el nombre del estudiante y confirma. Solo entonces se guarda en Sheets.</div>
-        <div>🗑️ <strong style="color:var(--text);">Descartar</strong> — cancela el escaneo actual sin guardar nada.</div>
-        <div>🔄 <strong style="color:var(--text);">Nuevo escaneo</strong> — limpia todo para el siguiente estudiante.</div>
-      </div>
-    </div>
-
     <!-- ── Diagnóstico ── -->
     <div class="card">
       <h2>🔬 Diagnóstico OMR</h2>
@@ -966,8 +953,8 @@
     <input type="date" id="new-simulacro-fecha">
     <label>Tipo</label>
     <select id="new-simulacro-tipo" onchange="_onSimulacroTipoChange()">
-      <option value="completo">Completo (1S + 2S) — grados 10 y 11</option>
-      <option value="media">Media jornada (M) — grados 6 a 9</option>
+      <option value="completo">Completo (1S + 2S) — grado 11</option>
+      <option value="media">Media jornada (M) — grados 6 a 10</option>
     </select>
     <label style="margin-top:6px;">Grados objetivo</label>
     <div id="simulacro-grados-checks"
@@ -1603,7 +1590,7 @@ function renderSimulacrosList() {
 
 function _onSimulacroTipoChange() {
   const tipo = document.getElementById('new-simulacro-tipo').value;
-  const def = tipo === 'completo' ? ['10','11'] : ['6','7','8','9'];
+  const def = tipo === 'completo' ? ['11'] : ['6','7','8','9','10'];
   _renderGradosChecks(def);
 }
 
@@ -1626,7 +1613,7 @@ function showNewSimulacroModal() {
   document.getElementById('new-simulacro-fecha').value =
     new Date().toISOString().slice(0, 10);
   document.getElementById('new-simulacro-tipo').value = 'completo';
-  _renderGradosChecks(['10','11']);
+  _renderGradosChecks(['11']);
   document.getElementById('simulacro-modal-error').style.display = 'none';
   document.getElementById('simulacro-modal').classList.add('show');
   setTimeout(() => document.getElementById('new-simulacro-name').focus(), 100);
