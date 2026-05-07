@@ -1413,13 +1413,18 @@ function renderUnifiedTable() {
   let view = unifiedResults.slice();
   if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
   if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
-  // Orden mayor a menor
-  view = view.slice().sort((a,b) => (+b.general||0) - (+a.general||0));
   // Repoblar el filtro de curso con las opciones validas para el grado actual
   _populateUnifiedCourseFilter();
-  // Restaurar valor del curso si existe
   const csel = document.getElementById('r-course-select');
   if (csel && cursoF) csel.value = cursoF;
+
+  // ─── CASO ESPECIAL: grado seleccionado SIN curso → agregar por curso ───
+  if (gradeF && !cursoF) {
+    return _renderTableGroupedByCurso(view, gradeF);
+  }
+
+  // Orden mayor a menor (vista normal por estudiante)
+  view = view.slice().sort((a,b) => (+b.general||0) - (+a.general||0));
 
   if (!view.length) {
     list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
@@ -1482,6 +1487,117 @@ function renderUnifiedTable() {
              color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
       📥 Descargar tabla en PDF
     </button>`;
+}
+
+function _renderTableGroupedByCurso(view, gradeF) {
+  const list = document.getElementById('r-output');
+  if (!view.length) {
+    list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      No hay estudiantes en grado ${gradeF}°.</p>`;
+    return;
+  }
+  // Agrupar por curso
+  const groups = {};
+  view.forEach(r => {
+    const c = (r.curso || 'Sin curso').trim() || 'Sin curso';
+    if (!groups[c]) groups[c] = [];
+    groups[c].push(r);
+  });
+  const cursos = Object.keys(groups).sort();
+  const rows = cursos.map(c => {
+    const arr = groups[c];
+    const n = arr.length;
+    const avg = (k) => Math.round(arr.reduce((s,r) => s + (+r[k] || 0), 0) / n);
+    return {
+      curso: c, n,
+      mat: avg('mat'), lect: avg('lect'), soc: avg('soc'),
+      nat: avg('nat'), ing: avg('ing'), general: avg('general'),
+    };
+  });
+  // Promedio del grado completo
+  const gN = view.length;
+  const gAvg = (k) => Math.round(view.reduce((s,r) => s + (+r[k] || 0), 0) / gN);
+  const totalRow = {
+    n: gN,
+    mat: gAvg('mat'), lect: gAvg('lect'), soc: gAvg('soc'),
+    nat: gAvg('nat'), ing: gAvg('ing'), general: gAvg('general'),
+  };
+
+  // Ordenar por puntaje general desc
+  rows.sort((a,b) => b.general - a.general);
+
+  let html = `
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">
+      📊 Vista agregada por curso · Grado ${gradeF}° (${cursos.length} cursos, ${gN} estudiantes).
+      Selecciona un curso del filtro para ver los estudiantes individuales.
+    </p>
+    <div class="results-table-wrap"><table class="results-table">
+    <thead><tr>
+      <th>Curso</th><th>Estudiantes</th>
+      <th>Mat</th><th>Lect</th><th>Soc</th><th>Nat</th><th>Ing</th><th>General</th>
+    </tr></thead><tbody>`;
+  rows.forEach(r => {
+    html += `<tr style="cursor:pointer;" onclick="_selectCursoFromTable('${r.curso.replace(/'/g,"\\'")}')">
+      <td><strong>${r.curso}</strong></td>
+      <td>${r.n}</td>
+      <td class="score">${r.mat}</td>
+      <td class="score">${r.lect}</td>
+      <td class="score">${r.soc}</td>
+      <td class="score">${r.nat}</td>
+      <td class="score">${r.ing}</td>
+      <td class="general-score">${r.general}</td>
+    </tr>`;
+  });
+  html += `<tr class="avg-row">
+    <td><strong>PROMEDIO GRADO ${gradeF}°</strong></td>
+    <td>${totalRow.n}</td>
+    <td class="score">${totalRow.mat}</td>
+    <td class="score">${totalRow.lect}</td>
+    <td class="score">${totalRow.soc}</td>
+    <td class="score">${totalRow.nat}</td>
+    <td class="score">${totalRow.ing}</td>
+    <td class="general-score">${totalRow.general}</td>
+  </tr>`;
+  html += `</tbody></table></div>
+    <button onclick="downloadCursosTablePdf()"
+      style="margin-top:10px;padding:9px 14px;font-size:.85rem;
+             background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+             color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
+      📥 Descargar tabla en PDF
+    </button>`;
+  list.innerHTML = html;
+
+  // Cachear data para PDF
+  const headers = ['Curso', 'Estudiantes', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General'];
+  const pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.nat, r.ing, r.general]);
+  const avgRow  = [`PROMEDIO ${gradeF}°`, totalRow.n, totalRow.mat, totalRow.lect,
+                   totalRow.soc, totalRow.nat, totalRow.ing, totalRow.general];
+  _lastCursosTableData = {
+    title: `Resultados por curso — Grado ${gradeF}°`,
+    subtitle: `${cursos.length} cursos · ${gN} estudiantes`,
+    headers, rows: pdfRows, avgRow,
+    colWidths: [35, 22, 22, 22, 22, 22, 22, 28.9],
+    fileName: `Tabla_Cursos_${gradeF}grado_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
+  };
+}
+
+let _lastCursosTableData = null;
+async function downloadCursosTablePdf() {
+  if (_lastCursosTableData) await _saveReportPdf(_lastCursosTableData);
+}
+
+// Drill-down: al hacer click en una fila de curso, se filtra por ese curso
+function _selectCursoFromTable(curso) {
+  const sel = document.getElementById('r-course-select');
+  if (!sel) return;
+  // Si la opción no existe (puede ser por filtro de grado), la añadimos temporalmente
+  if (!Array.from(sel.options).some(o => o.value === curso)) {
+    const opt = document.createElement('option');
+    opt.value = curso; opt.textContent = curso;
+    sel.appendChild(opt);
+  }
+  sel.value = curso;
+  onResultsFilterChange();
 }
 
 async function _generateUnifiedPdf(filtered, fname) {
