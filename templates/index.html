@@ -1847,25 +1847,25 @@ function _pctColor(pct) {
 // Dibuja todas las tablas (una por asignatura) en el PDF con barras de %
 function _drawQuestionTablesInPdf(doc, startY, questions, groupBy, groupKey, headerText) {
   const subjects = ['Matematica','Lectura Critica','Sociales','Naturales','Ingles'];
-  const subjEmojis = {
-    'Matematica':'🧮', 'Lectura Critica':'📖', 'Sociales':'🌎',
-    'Naturales':'🔬', 'Ingles':'🌐'
-  };
   let y = startY;
   if (headerText) {
-    y = _drawSectionTitle(doc, 10, y, '❓', headerText);
+    y = _drawSectionTitle(doc, 10, y, '', headerText);
     y += 2;
   }
   subjects.forEach(subj => {
     const data = _questionRowsForSubjectFull(questions, subj, groupBy, groupKey);
     if (!data.items.length) return;
     if (y > 240) { doc.addPage('letter','p'); y = 20; }
-    // Subtítulo asignatura
+    // Subtítulo asignatura con fondo + acento dorado
+    const pw = 215.9 - 20;
+    doc.setFillColor(254, 243, 199);
+    doc.roundedRect(10, y - 3, pw, 7, 1, 1, 'F');
+    doc.setFillColor(...SIPAGRE_GOLD);
+    doc.rect(10, y - 3, 2, 7, 'F');
     doc.setFont('helvetica','bold'); doc.setFontSize(10);
     doc.setTextColor(...SIPAGRE_BLUE_DARK);
-    doc.text(`${subjEmojis[subj] || '📚'}  ${data.label}  (${data.items.length} preguntas)`, 10, y);
-    y += 4;
-    // Tabla con barras
+    doc.text(`${data.label}  (${data.items.length} preguntas)`, 14, y + 1.5);
+    y += 6;
     y = _drawQuestionTableWithBars(doc, 10, y, data.items);
     y += 4;
   });
@@ -2482,8 +2482,8 @@ function _drawReportFooter(doc, label) {
   }
 }
 
-// Título de sección con emoji y barra dorada lateral
-function _drawSectionTitle(doc, x, y, emoji, text) {
+// Título de sección con barra dorada lateral (el primer parámetro emoji se ignora en PDF)
+function _drawSectionTitle(doc, x, y, _emoji, text) {
   const pw = 215.9 - 20;
   doc.setFillColor(245, 247, 252);
   doc.roundedRect(x, y - 4, pw, 10, 1.5, 1.5, 'F');
@@ -2491,7 +2491,7 @@ function _drawSectionTitle(doc, x, y, emoji, text) {
   doc.rect(x, y - 4, 3, 10, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
   doc.setTextColor(...SIPAGRE_BLUE_DARK);
-  doc.text(`${emoji}  ${text}`, x + 7, y + 2.5);
+  doc.text(String(text), x + 7, y + 2.5);
   return y + 11;
 }
 
