@@ -868,7 +868,7 @@
            padding:6px;background:rgba(255,255,255,.04);border-radius:10px;
            border:1px solid var(--card-border);">
         <button class="r-view-pill active" data-view="tabla"   onclick="setResultsView('tabla')">
-          📋 Tabla
+          📋 Cursos o estudiantes
         </button>
         <button class="r-view-pill"        data-view="asign"   onclick="setResultsView('asign')">
           📊 Por asignatura
@@ -1868,6 +1868,114 @@ function drawBarChartCanvas(items, opts) {
   return c;
 }
 
+// Radar comparativo: groups = [{name, values, color}, ...]
+function drawRadarMultiCanvas(labels, groups, maxVal) {
+  const W = 800, H = 700;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const cx = W/2, cy = H/2 - 20, R = 230;
+  const N = labels.length;
+
+  // Niveles concéntricos
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1.5;
+  for (let lvl = 1; lvl <= 4; lvl++) {
+    const r = R * lvl / 4;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI/2 + 2*Math.PI*i/N;
+      const x = cx + r*Math.cos(a);
+      const y = cy + r*Math.sin(a);
+      if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+  // Ejes radiales
+  ctx.setLineDash([4,4]);
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI/2 + 2*Math.PI*i/N;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R*Math.cos(a), cy + R*Math.sin(a));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Paleta de colores para grupos
+  const palette = [
+    {fill:'rgba(99,102,241,.25)',  line:'#6366f1'},
+    {fill:'rgba(34,197,94,.25)',   line:'#16a34a'},
+    {fill:'rgba(245,158,11,.25)',  line:'#f59e0b'},
+    {fill:'rgba(239,68,68,.25)',   line:'#dc2626'},
+    {fill:'rgba(6,182,212,.25)',   line:'#06b6d4'},
+    {fill:'rgba(168,85,247,.25)',  line:'#a855f7'},
+    {fill:'rgba(236,72,153,.25)',  line:'#ec4899'},
+    {fill:'rgba(20,184,166,.25)',  line:'#14b8a6'},
+  ];
+
+  // Polígonos por grupo
+  groups.forEach((g, gi) => {
+    const c = palette[gi % palette.length];
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI/2 + 2*Math.PI*i/N;
+      const v = Math.min((g.values[i] || 0) / maxVal, 1);
+      const x = cx + R*v*Math.cos(a);
+      const y = cy + R*v*Math.sin(a);
+      if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = c.fill;
+    ctx.fill();
+    ctx.strokeStyle = c.line;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Vértices
+    ctx.fillStyle = c.line;
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI/2 + 2*Math.PI*i/N;
+      const v = Math.min((g.values[i] || 0) / maxVal, 1);
+      const x = cx + R*v*Math.cos(a);
+      const y = cy + R*v*Math.sin(a);
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2); ctx.fill();
+    }
+  });
+
+  // Etiquetas de ejes
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 18px Inter, Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < N; i++) {
+    const a = -Math.PI/2 + 2*Math.PI*i/N;
+    const lblR = R + 32;
+    const x = cx + lblR*Math.cos(a);
+    const y = cy + lblR*Math.sin(a);
+    ctx.fillText(labels[i], x, y);
+  }
+
+  // Leyenda inferior
+  const legendY = H - 50;
+  const legendItems = groups.map((g, gi) => ({label: g.name, color: palette[gi % palette.length].line}));
+  ctx.font = 'bold 14px Inter, Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  // Calcular ancho total y centrar
+  const itemW = 130;
+  const totalW = legendItems.length * itemW;
+  const startX = Math.max(20, (W - totalW) / 2);
+  legendItems.forEach((it, i) => {
+    const x = startX + itemW * i;
+    ctx.fillStyle = it.color;
+    ctx.fillRect(x, legendY - 6, 14, 12);
+    ctx.fillStyle = '#1e293b';
+    ctx.fillText(it.label, x + 20, legendY);
+  });
+
+  return c;
+}
+
 // Heatmap: rows = ['Curso 901', 'Curso 902', ...]
 //          cols = ['Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General']
 //          data = matriz [filas][columnas] de números (0-100 ó 0-500 según col)
@@ -2153,11 +2261,11 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
       try { doc.addImage(extra.boxChart, 'PNG', 10, y, pw, imgH); } catch(e){}
       y += imgH + 4;
     }
-    if (extra.heatChart) {
-      // Altura proporcional según número de filas (estimado)
-      const imgH = pw * 0.45;
+    if (extra.radarChart) {
+      // Radar es 800x700 → proporción 0.875
+      const imgH = pw * 700/800;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
-      try { doc.addImage(extra.heatChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      try { doc.addImage(extra.radarChart, 'PNG', 10, y, pw, imgH); } catch(e){}
       y += imgH + 4;
     }
     if (extra.histChart) {
@@ -2363,32 +2471,35 @@ function generateSubjectReport() {
     <tr class="avg-row">${avgRow.map((c,i) => i===2 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
     </tbody></table></div>`;
 
-  // Heatmap: filas = cursos (si >=2) o grados (si >=2). Columnas = materias + general
-  let heatRowsLabels = [];
-  let heatRowsData = [];
+  // Radar comparativo: filas = cursos (si >=2) o grados (si >=2). Solo materias (sin general)
+  const radarSubjects = REP_SUBJECTS.filter(s => s.key !== 'general');
+  const radarLabels = radarSubjects.map(s =>
+    s.label.replace('Lectura Crítica','Lect. Crítica')
+           .replace('Sociales y Ciudadanas','Sociales')
+           .replace('Ciencias Naturales','Naturales')
+           .replace('Matemáticas','Matem.'));
+  let radarGroups = [];
   const cursosInView = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
   if (cursosInView.length >= 2) {
     cursosInView.forEach(c => {
-      heatRowsLabels.push(c);
       const arr = view.filter(r => (r.curso||'').trim() === c);
-      heatRowsData.push(REP_SUBJECTS.map(s => Math.round(arr.reduce((a,r) => a + (+r[s.key]||0), 0) / arr.length)));
+      radarGroups.push({
+        name:   c,
+        values: radarSubjects.map(s => Math.round(arr.reduce((a,r) => a + (+r[s.key]||0), 0) / arr.length)),
+      });
     });
   } else if (gradeKeys.length >= 2) {
     gradeKeys.forEach(g => {
-      heatRowsLabels.push(g === 'sin grado' ? 'Sin grado' : 'Grado ' + g + '°');
       const arr = view.filter(r => (gradoDeCurso(r.curso)||'sin grado') === g);
-      heatRowsData.push(REP_SUBJECTS.map(s => Math.round(arr.reduce((a,r) => a + (+r[s.key]||0), 0) / arr.length)));
+      radarGroups.push({
+        name:   g === 'sin grado' ? 'Sin grado' : 'Grado ' + g + '°',
+        values: radarSubjects.map(s => Math.round(arr.reduce((a,r) => a + (+r[s.key]||0), 0) / arr.length)),
+      });
     });
   }
-  let heatCanvas = null;
-  if (heatRowsLabels.length >= 2) {
-    heatCanvas = drawHeatmapCanvas(
-      heatRowsLabels,
-      ['Mat', 'Lectura', 'Sociales', 'Naturales', 'Inglés', 'General'],
-      heatRowsData,
-      { title: 'Heatmap de promedios',
-        maxByCol: REP_SUBJECTS.map(s => s.key === 'general' ? 500 : 100) }
-    );
+  let radarCanvas = null;
+  if (radarGroups.length >= 2) {
+    radarCanvas = drawRadarMultiCanvas(radarLabels, radarGroups, 100);
   }
 
   // ════ SECCIÓN 3: GRÁFICOS ════
@@ -2403,10 +2514,10 @@ function generateSubjectReport() {
   html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
     <img src="${boxCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
   </div>`;
-  if (heatCanvas) {
-    html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">🔥 Heatmap (curso × asignatura)</p>`;
+  if (radarCanvas) {
+    html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">🕸️ Radar comparativo</p>`;
     html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
-      <img src="${heatCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+      <img src="${radarCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
     </div>`;
   }
   html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">📉 Distribución de puntajes generales</p>`;
@@ -2423,10 +2534,10 @@ function generateSubjectReport() {
     fileName: `Reporte_Asignaturas_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
     extra: {
       generalStats: general, becarios, cursosCount, byGrado,
-      barChart:  barCanvas.toDataURL('image/png'),
-      boxChart:  boxCanvas.toDataURL('image/png'),
-      heatChart: heatCanvas ? heatCanvas.toDataURL('image/png') : null,
-      histChart: histCanvas.toDataURL('image/png'),
+      barChart:   barCanvas.toDataURL('image/png'),
+      boxChart:   boxCanvas.toDataURL('image/png'),
+      radarChart: radarCanvas ? radarCanvas.toDataURL('image/png') : null,
+      histChart:  histCanvas.toDataURL('image/png'),
     }
   };
 }
