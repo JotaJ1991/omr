@@ -1868,6 +1868,82 @@ function drawBarChartCanvas(items, opts) {
   return c;
 }
 
+// Heatmap: rows = ['Curso 901', 'Curso 902', ...]
+//          cols = ['Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General']
+//          data = matriz [filas][columnas] de números (0-100 ó 0-500 según col)
+//          maxByCol = array con el max de cada columna (para escalar el color)
+function drawHeatmapCanvas(rows, cols, data, opts) {
+  const W = 900, H = 60 + 40 * rows.length + 60;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const title = opts?.title || '';
+  const maxByCol = opts?.maxByCol || cols.map(() => 100);
+  const padL = 130, padR = 30, padT = title ? 50 : 20, padB = 30;
+  const cw = W - padL - padR;
+  const ch = H - padT - padB;
+  // Título
+  if (title) {
+    ctx.fillStyle = '#1e293b';
+    ctx.font = 'bold 22px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, 30);
+  }
+  const cellW = cw / cols.length;
+  const cellH = ch / rows.length;
+
+  function colorFor(value, max) {
+    const p = Math.min(Math.max(value / max, 0), 1);
+    // Interpolación rojo → naranja → amarillo → verde
+    let r, g, b;
+    if (p < 0.33) {
+      const t = p / 0.33;
+      r = 239; g = Math.round(68 + (158-68)*t); b = Math.round(68 + (11-68)*t);
+    } else if (p < 0.66) {
+      const t = (p - 0.33) / 0.33;
+      r = Math.round(245 + (234-245)*t); g = Math.round(158 + (179-158)*t); b = Math.round(11 + (8-11)*t);
+    } else {
+      const t = (p - 0.66) / 0.34;
+      r = Math.round(234 + (34-234)*t); g = Math.round(179 + (197-179)*t); b = Math.round(8 + (94-8)*t);
+    }
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Encabezados de columnas
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 14px Inter, Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  cols.forEach((col, j) => {
+    const cx = padL + cellW * j + cellW/2;
+    ctx.fillText(col, cx, padT - 12);
+  });
+
+  // Filas + celdas
+  rows.forEach((row, i) => {
+    // Etiqueta de fila
+    ctx.fillStyle = '#475569';
+    ctx.font = 'bold 14px Inter, Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText(row, padL - 8, padT + cellH * i + cellH/2);
+    // Celdas
+    cols.forEach((col, j) => {
+      const v = data[i][j];
+      ctx.fillStyle = colorFor(v, maxByCol[j]);
+      ctx.fillRect(padL + cellW*j + 2, padT + cellH*i + 2, cellW - 4, cellH - 4);
+      // Valor
+      const lum = (v / maxByCol[j]);
+      ctx.fillStyle = lum > 0.55 ? '#0f172a' : '#fff';
+      ctx.font = 'bold 16px Inter, Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(Math.round(v)), padL + cellW*j + cellW/2,
+                                            padT + cellH*i + cellH/2);
+    });
+  });
+
+  return c;
+}
+
 // Boxplot: groups = [{label, values}, ...]
 function drawBoxplotCanvas(groups, opts) {
   const W = 900, H = 460;
@@ -2077,6 +2153,13 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
       try { doc.addImage(extra.boxChart, 'PNG', 10, y, pw, imgH); } catch(e){}
       y += imgH + 4;
     }
+    if (extra.heatChart) {
+      // Altura proporcional según número de filas (estimado)
+      const imgH = pw * 0.45;
+      if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(extra.heatChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      y += imgH + 4;
+    }
     if (extra.histChart) {
       const imgH = pw * 380/900;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
@@ -2184,7 +2267,6 @@ function generateSubjectReport() {
     return;
   }
   const general = _statsFor(view.map(r => +r.general || 0));
-  const top = view.slice().sort((a,b)=>(+b.general||0)-(+a.general||0))[0];
   const becarios = view.filter(r => (+r.general||0) >= 300).length;
   // Distribución por grado
   const byGrado = {};
@@ -2194,9 +2276,10 @@ function generateSubjectReport() {
   });
   const cursosCount = new Set(view.map(r => (r.curso||'').trim()).filter(c => c)).size;
 
-  // Generales: tarjetas resumen
-  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;">
-    📊 Estadísticas generales — ${scopeLabel}</h3>`;
+  // ════ SECCIÓN 1: DATOS RELEVANTES ════
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;color:var(--primary-light);
+              border-bottom:1px solid var(--card-border);padding-bottom:6px;">
+    1️⃣ Datos relevantes — ${scopeLabel}</h3>`;
   html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
                 gap:10px;margin-bottom:14px;">`;
   const cards = [
@@ -2268,29 +2351,72 @@ function generateSubjectReport() {
     max: 100,
   });
 
-  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📊 Promedio por asignatura</h3>`;
-  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
-    <img src="${barCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
-  </div>`;
-  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📦 Distribución por asignatura</h3>`;
-  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
-    <img src="${boxCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
-  </div>`;
-  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📉 Distribución de puntajes generales</h3>`;
-  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
-    <img src="${histCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
-  </div>`;
-  html += `<h3 style="font-size:.95rem;margin:14px 0 10px;">📚 Estadísticos por asignatura</h3>`;
+  // ════ SECCIÓN 2: TABLAS E INFORMACIÓN ════
+  html += `<h3 style="font-size:.95rem;margin:18px 0 10px;color:var(--primary-light);
+              border-bottom:1px solid var(--card-border);padding-bottom:6px;">
+    2️⃣ Tablas e información</h3>`;
+  html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">📚 Estadísticos por asignatura</p>`;
   html += `<div class="results-table-wrap"><table class="results-table"><thead><tr>
     ${headers.map(h => `<th>${h}</th>`).join('')}
     </tr></thead><tbody>
     ${rows.map(r => `<tr>${r.map((c,i) => i===2 ? `<td class="score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>`).join('')}
     <tr class="avg-row">${avgRow.map((c,i) => i===2 ? `<td class="general-score">${c}</td>` : `<td>${c}</td>`).join('')}</tr>
     </tbody></table></div>`;
+
+  // Heatmap: filas = cursos (si >=2) o grados (si >=2). Columnas = materias + general
+  let heatRowsLabels = [];
+  let heatRowsData = [];
+  const cursosInView = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
+  if (cursosInView.length >= 2) {
+    cursosInView.forEach(c => {
+      heatRowsLabels.push(c);
+      const arr = view.filter(r => (r.curso||'').trim() === c);
+      heatRowsData.push(REP_SUBJECTS.map(s => Math.round(arr.reduce((a,r) => a + (+r[s.key]||0), 0) / arr.length)));
+    });
+  } else if (gradeKeys.length >= 2) {
+    gradeKeys.forEach(g => {
+      heatRowsLabels.push(g === 'sin grado' ? 'Sin grado' : 'Grado ' + g + '°');
+      const arr = view.filter(r => (gradoDeCurso(r.curso)||'sin grado') === g);
+      heatRowsData.push(REP_SUBJECTS.map(s => Math.round(arr.reduce((a,r) => a + (+r[s.key]||0), 0) / arr.length)));
+    });
+  }
+  let heatCanvas = null;
+  if (heatRowsLabels.length >= 2) {
+    heatCanvas = drawHeatmapCanvas(
+      heatRowsLabels,
+      ['Mat', 'Lectura', 'Sociales', 'Naturales', 'Inglés', 'General'],
+      heatRowsData,
+      { title: 'Heatmap de promedios',
+        maxByCol: REP_SUBJECTS.map(s => s.key === 'general' ? 500 : 100) }
+    );
+  }
+
+  // ════ SECCIÓN 3: GRÁFICOS ════
+  html += `<h3 style="font-size:.95rem;margin:18px 0 10px;color:var(--primary-light);
+              border-bottom:1px solid var(--card-border);padding-bottom:6px;">
+    3️⃣ Gráficos</h3>`;
+  html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">📊 Promedio por asignatura</p>`;
+  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+    <img src="${barCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+  </div>`;
+  html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">📦 Distribución por asignatura (boxplot)</p>`;
+  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+    <img src="${boxCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+  </div>`;
+  if (heatCanvas) {
+    html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">🔥 Heatmap (curso × asignatura)</p>`;
+    html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+      <img src="${heatCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+    </div>`;
+  }
+  html += `<p style="font-size:.82rem;color:var(--muted);margin:6px 0;">📉 Distribución de puntajes generales</p>`;
+  html += `<div style="background:#fff;border-radius:10px;padding:8px;margin-bottom:14px;">
+    <img src="${histCanvas.toDataURL('image/png')}" style="width:100%;display:block;border-radius:6px;">
+  </div>`;
   html += _btnPdfHtml('downloadSubjectReportPdf');
   out.innerHTML = html;
   _lastSubjectReportData = {
-    title: `Estadísticas generales y por asignatura`,
+    title: `Análisis por asignatura`,
     subtitle: `${scopeLabel} · ${view.length} estudiantes`,
     headers, rows, avgRow,
     colWidths: [50, 12, 18, 18, 18, 18, 22, 39.9],
@@ -2299,6 +2425,7 @@ function generateSubjectReport() {
       generalStats: general, becarios, cursosCount, byGrado,
       barChart:  barCanvas.toDataURL('image/png'),
       boxChart:  boxCanvas.toDataURL('image/png'),
+      heatChart: heatCanvas ? heatCanvas.toDataURL('image/png') : null,
       histChart: histCanvas.toDataURL('image/png'),
     }
   };
