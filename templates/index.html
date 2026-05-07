@@ -1285,27 +1285,44 @@ function renderSimulacrosList() {
       No hay simulacros aún. Toca "Nuevo simulacro" para empezar.</p>`;
     return;
   }
-  cont.innerHTML = _simulacrosCache.map(s => `
+  cont.innerHTML = _simulacrosCache.map(s => {
+    const safeNombre = s.nombre.replace(/'/g,"\\'");
+    return `
     <div style="border:1px solid var(--card-border);border-radius:10px;padding:12px 14px;
-                display:flex;align-items:center;justify-content:space-between;gap:10px;
-                background:rgba(255,255,255,.02);">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:700;font-size:.95rem;">${s.nombre}</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">
-          ${s.fecha || 'sin fecha'} · ${s.tipo === 'completo' ? 'Completo' : 'Media jornada'} ·
-          Grados: ${s.grados.length ? s.grados.map(g => g+'°').join(', ') : '—'}
+                display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.02);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.95rem;">${s.nombre}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">
+            ${s.fecha || 'sin fecha'} · ${s.tipo === 'completo' ? 'Completo' : 'Media jornada'} ·
+            Grados: ${s.grados.length ? s.grados.map(g => g+'°').join(', ') : '—'}
+          </div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">
+            📄 ${s.sheets.join(' · ')}
+          </div>
         </div>
-        <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">
-          📄 ${s.sheets.join(' · ')}
-        </div>
+        <button onclick="confirmDeleteSimulacro('${safeNombre}')"
+                title="Eliminar del catálogo (no borra hojas)"
+                style="border:1px solid rgba(239,68,68,.3);background:transparent;
+                       color:var(--danger);padding:6px 10px;border-radius:8px;
+                       cursor:pointer;font-size:.78rem;">🗑️</button>
       </div>
-      <button onclick="confirmDeleteSimulacro('${s.nombre.replace(/'/g,"\\'")}')"
-              title="Eliminar del catálogo (no borra hojas)"
-              style="border:1px solid rgba(239,68,68,.3);background:transparent;
-                     color:var(--danger);padding:6px 10px;border-radius:8px;
-                     cursor:pointer;font-size:.78rem;">🗑️</button>
-    </div>
-  `).join('');
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button onclick="jumpToScan('${safeNombre}')"
+                style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
+                       background:rgba(99,102,241,.08);color:var(--primary-light);
+                       border-radius:6px;cursor:pointer;">📷 Escanear</button>
+        <button onclick="jumpToKey('${safeNombre}')"
+                style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
+                       background:rgba(99,102,241,.08);color:var(--primary-light);
+                       border-radius:6px;cursor:pointer;">🔑 Clave</button>
+        <button onclick="jumpToResults('${safeNombre}')"
+                style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
+                       background:rgba(6,182,212,.1);color:var(--accent);
+                       border-radius:6px;cursor:pointer;">📊 Resultados</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function _onSimulacroTipoChange() {
@@ -1373,6 +1390,65 @@ async function createNewSimulacro() {
   } finally {
     btn.disabled = false; btn.textContent = '✅ Crear';
   }
+}
+
+// ── Acciones rápidas desde una card de simulacro ────────────────────────
+async function jumpToScan(nombre) {
+  switchTab('scan');
+  setTimeout(() => {
+    const sel = document.getElementById('simulacro-select');
+    if (sel) {
+      sel.value = nombre;
+      sel.dispatchEvent(new Event('change'));
+      // Si es Completo, no hay sesión preseleccionada — el usuario elige
+    }
+    document.getElementById('tab-scan').scrollIntoView({behavior:'smooth'});
+  }, 150);
+}
+
+async function jumpToKey(nombre) {
+  const sim = _simulacrosCache.find(s => s.nombre === nombre);
+  if (!sim || !sim.sheets.length) return;
+  // Activar la primera hoja del simulacro como hoja activa para la clave
+  const targetSheet = sim.sheets[0];
+  try {
+    const resp = await fetch('/active_sheet', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name: targetSheet})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      state.activeSheet = targetSheet;
+      updateActiveBadge(targetSheet);
+    }
+  } catch(e) { console.warn(e); }
+  switchTab('key');
+  initKeyPanel();
+  if (sim.sheets.length > 1) {
+    setTimeout(() => alert(
+      `Recuerda: este simulacro tiene ${sim.sheets.length} hojas (${sim.sheets.join(', ')}).\n` +
+      `Carga la clave en cada una. Hoja activa ahora: "${targetSheet}".`
+    ), 200);
+  }
+}
+
+async function jumpToResults(nombre) {
+  const sim = _simulacrosCache.find(s => s.nombre === nombre);
+  if (!sim) return;
+  switchTab('results');
+  setTimeout(() => {
+    if (sim.tipo === 'completo') {
+      const sel = document.getElementById('sipagre-sim-select');
+      if (sel) { sel.value = nombre; _onSipagreSimChange(); }
+      document.querySelector('#tab-results .card:first-child')
+              ?.scrollIntoView({behavior:'smooth'});
+    } else {
+      const sel = document.getElementById('msipagre-sim-select');
+      if (sel) { sel.value = nombre; _onMSipagreSimChange(); }
+      document.querySelector('#tab-results .card:nth-child(2)')
+              ?.scrollIntoView({behavior:'smooth'});
+    }
+  }, 150);
 }
 
 async function confirmDeleteSimulacro(nombre) {
