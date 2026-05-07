@@ -570,21 +570,53 @@
   <!-- ══ TAB ESCANEAR ══════════════════════════════════════════════════════ -->
   <div id="tab-scan" class="tab-content active">
 
-    <!-- 1. Curso/grupo -->
+    <!-- 1. Simulacro + Sesión -->
     <div class="card">
-      <h2>📋 Curso / Grupo</h2>
+      <h2>🎯 Simulacro</h2>
       <div class="sheet-badge">
         <span class="dot"></span>
         <span id="active-badge-text">Cargando…</span>
       </div>
-      <label>Seleccionar hoja existente</label>
-      <div class="sheet-selector">
-        <select id="sheet-select" onchange="selectSheet(this.value)">
-          <option value="">— cargando hojas —</option>
+
+      <label>Simulacro activo</label>
+      <div class="sheet-selector" style="margin-bottom:8px;">
+        <select id="simulacro-select" onchange="selectSimulacroSession()">
+          <option value="">— sin simulacro —</option>
         </select>
-        <button class="btn-icon" title="Recargar" onclick="loadSheets()">🔄</button>
-        <button class="btn-icon" title="Nueva hoja" onclick="showNewSheetModal()">➕</button>
+        <button class="btn-icon" title="Recargar" onclick="loadSimulacros().then(() => _refreshSimulacroSelect())">🔄</button>
+        <button class="btn-icon" title="Nuevo simulacro" onclick="showNewSimulacroModal()">➕</button>
       </div>
+
+      <!-- Sesión (solo se muestra para Completo) -->
+      <div id="session-picker" style="display:none;">
+        <label>Sesión</label>
+        <div style="display:flex;gap:8px;">
+          <label style="flex:1;display:flex;align-items:center;gap:6px;
+                        padding:10px;border:1.5px solid var(--card-border);
+                        border-radius:10px;cursor:pointer;background:rgba(255,255,255,.04);">
+            <input type="radio" name="session" value="1S" onchange="selectSimulacroSession()"> Sesión 1 (mañana)
+          </label>
+          <label style="flex:1;display:flex;align-items:center;gap:6px;
+                        padding:10px;border:1.5px solid var(--card-border);
+                        border-radius:10px;cursor:pointer;background:rgba(255,255,255,.04);">
+            <input type="radio" name="session" value="2S" onchange="selectSimulacroSession()"> Sesión 2 (tarde)
+          </label>
+        </div>
+      </div>
+
+      <!-- Modo manual: hoja existente (avanzado, opcional) -->
+      <details style="margin-top:14px;">
+        <summary style="cursor:pointer;font-size:.78rem;color:var(--muted);">
+          ⚙️ Modo avanzado: seleccionar hoja existente
+        </summary>
+        <div class="sheet-selector" style="margin-top:8px;">
+          <select id="sheet-select" onchange="selectSheet(this.value)">
+            <option value="">— cargando hojas —</option>
+          </select>
+          <button class="btn-icon" title="Recargar" onclick="loadSheets()">🔄</button>
+          <button class="btn-icon" title="Nueva hoja" onclick="showNewSheetModal()">➕</button>
+        </div>
+      </details>
     </div>
 
     <!-- 2. Datos estudiante -->
@@ -1117,7 +1149,71 @@ async function loadSimulacros() {
     const data = await resp.json();
     _simulacrosCache = data.simulacros || [];
     renderSimulacrosList();
+    _refreshSimulacroSelect();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
+}
+
+// Llena el selector de simulacro de la pestaña Escanear
+function _refreshSimulacroSelect() {
+  const sel = document.getElementById('simulacro-select');
+  if (!sel) return;
+  const prev = sel.value;
+  let html = '<option value="">— sin simulacro —</option>';
+  _simulacrosCache.forEach(s => {
+    const tipoLabel = s.tipo === 'completo' ? 'Completo' : 'Media';
+    html += `<option value="${s.nombre}">${s.nombre}  ·  ${tipoLabel}</option>`;
+  });
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+// Cuando cambia el simulacro o la sesión, ajusta hoja activa y perfil OMR
+async function selectSimulacroSession() {
+  const sel = document.getElementById('simulacro-select');
+  const nombre = sel ? sel.value : '';
+  const sessionPicker = document.getElementById('session-picker');
+  if (!nombre) {
+    sessionPicker.style.display = 'none';
+    return;
+  }
+  const sim = _simulacrosCache.find(s => s.nombre === nombre);
+  if (!sim) { sessionPicker.style.display = 'none'; return; }
+
+  // Mostrar selector de sesión solo si es Completo
+  if (sim.tipo === 'completo') {
+    sessionPicker.style.display = 'block';
+    const session = document.querySelector('input[name="session"]:checked');
+    if (!session) return;  // todavia no eligio sesion
+    const targetSheet = session.value === '1S' ? sim.sheets[0] : sim.sheets[1];
+    const targetProfile = session.value === '1S' ? '1SSIPAGRE' : '2SSIPAGRE';
+    await _activateSimulacroSheet(targetSheet, targetProfile);
+  } else {
+    sessionPicker.style.display = 'none';
+    const targetSheet = sim.sheets[0];   // unica hoja M
+    await _activateSimulacroSheet(targetSheet, 'MSIPAGRE');
+  }
+}
+
+async function _activateSimulacroSheet(sheetName, profileId) {
+  // Activar hoja
+  try {
+    const resp = await fetch('/active_sheet', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name: sheetName})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      state.activeSheet = sheetName;
+      updateActiveBadge(sheetName);
+      const ss = document.getElementById('sheet-select');
+      if (ss) ss.value = sheetName;
+    }
+  } catch(e) { console.warn('No se pudo activar hoja:', e); }
+  // Cambiar perfil OMR si es distinto
+  if (profileId && profileId !== state.profileId) {
+    try { await selectProfile(profileId); }
+    catch(e) { console.warn('No se pudo cambiar perfil:', e); }
+  }
 }
 
 function renderSimulacrosList() {
