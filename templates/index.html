@@ -786,21 +786,25 @@
   <!-- ══ TAB RESULTADOS ════════════════════════════════════════════════════ -->
   <div id="tab-results" class="tab-content">
     <div class="card">
-      <h2>📋 Resultados SIPAGRE</h2>
+      <h2>📋 Resultados SIPAGRE (Completo)</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
         Combina las sesiones 1S y 2S para calcular puntajes por materia y puntaje general.
         Ambas hojas deben tener la clave de respuestas cargada.
       </p>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
+        <select id="sipagre-sim-select" onchange="_onSipagreSimChange()">
+          <option value="">— manual: configurar hojas abajo —</option>
+        </select>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <div style="flex:1;min-width:120px;">
           <label style="font-size:.78rem;color:var(--muted);">Hoja 1S</label>
-          <input type="text" id="sipagre-1s" value="1S SIPAGRE"
-                 style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;">
+          <input type="text" id="sipagre-1s" value="1S SIPAGRE">
         </div>
         <div style="flex:1;min-width:120px;">
           <label style="font-size:.78rem;color:var(--muted);">Hoja 2S</label>
-          <input type="text" id="sipagre-2s" value="2S SIPAGRE"
-                 style="width:100%;padding:8px;border:1.5px solid var(--border);border-radius:6px;">
+          <input type="text" id="sipagre-2s" value="2S SIPAGRE">
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -838,10 +842,16 @@
 
     <!-- ── M SIPAGRE Resultados (una sola jornada) ── -->
     <div class="card">
-      <h2>📋 Resultados M SIPAGRE</h2>
+      <h2>📋 Resultados M SIPAGRE (Media jornada)</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
         Simulacro de una sola jornada (125 preguntas). La hoja debe tener la clave de respuestas cargada.
       </p>
+      <div style="margin-bottom:10px;">
+        <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
+        <select id="msipagre-sim-select" onchange="_onMSipagreSimChange()">
+          <option value="">— manual: configurar hoja abajo —</option>
+        </select>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         <div style="flex:1;min-width:120px;">
           <label style="font-size:.78rem;color:var(--muted);">Hoja M SIPAGRE</label>
@@ -1168,15 +1178,54 @@ async function loadSimulacros() {
 // Llena el selector de simulacro de la pestaña Escanear
 function _refreshSimulacroSelect() {
   const sel = document.getElementById('simulacro-select');
-  if (!sel) return;
-  const prev = sel.value;
-  let html = '<option value="">— sin simulacro —</option>';
-  _simulacrosCache.forEach(s => {
-    const tipoLabel = s.tipo === 'completo' ? 'Completo' : 'Media';
-    html += `<option value="${s.nombre}">${s.nombre}  ·  ${tipoLabel}</option>`;
-  });
-  sel.innerHTML = html;
-  if (prev) sel.value = prev;
+  if (sel) {
+    const prev = sel.value;
+    let html = '<option value="">— sin simulacro —</option>';
+    _simulacrosCache.forEach(s => {
+      const tipoLabel = s.tipo === 'completo' ? 'Completo' : 'Media';
+      html += `<option value="${s.nombre}">${s.nombre}  ·  ${tipoLabel}</option>`;
+    });
+    sel.innerHTML = html;
+    if (prev) sel.value = prev;
+  }
+  // Selectores en panel Resultados (Completo y Media)
+  const simSel = document.getElementById('sipagre-sim-select');
+  if (simSel) {
+    const prev = simSel.value;
+    let html = '<option value="">— manual —</option>';
+    _simulacrosCache.filter(s => s.tipo === 'completo').forEach(s => {
+      html += `<option value="${s.nombre}">${s.nombre}</option>`;
+    });
+    simSel.innerHTML = html;
+    if (prev) simSel.value = prev;
+  }
+  const mSimSel = document.getElementById('msipagre-sim-select');
+  if (mSimSel) {
+    const prev = mSimSel.value;
+    let html = '<option value="">— manual —</option>';
+    _simulacrosCache.filter(s => s.tipo === 'media').forEach(s => {
+      html += `<option value="${s.nombre}">${s.nombre}</option>`;
+    });
+    mSimSel.innerHTML = html;
+    if (prev) mSimSel.value = prev;
+  }
+}
+
+function _onSipagreSimChange() {
+  const sel = document.getElementById('sipagre-sim-select');
+  if (!sel || !sel.value) return;
+  const sim = _simulacrosCache.find(s => s.nombre === sel.value);
+  if (!sim || !sim.sheets || sim.sheets.length < 2) return;
+  document.getElementById('sipagre-1s').value = sim.sheets[0];
+  document.getElementById('sipagre-2s').value = sim.sheets[1];
+}
+
+function _onMSipagreSimChange() {
+  const sel = document.getElementById('msipagre-sim-select');
+  if (!sel || !sel.value) return;
+  const sim = _simulacrosCache.find(s => s.nombre === sel.value);
+  if (!sim || !sim.sheets || !sim.sheets.length) return;
+  document.getElementById('msipagre-sheet').value = sim.sheets[0];
 }
 
 // Cuando cambia el simulacro o la sesión, ajusta hoja activa y perfil OMR
@@ -1719,8 +1768,10 @@ async function loadSheets() {
     state.activeSheet = data.active;
     updateActiveBadge(data.active);
 
+    // Ocultar hojas administrativas y de resultados
     const filtered = data.sheets.filter(s =>
-      s !== 'Resultados SIPAGRE' && s !== 'Resultados M SIPAGRE' && s !== 'Cursos');
+      s !== 'Cursos' && s !== 'Simulacros' &&
+      !s.startsWith('Resultados '));
     const opts = filtered.length
       ? filtered.map(s =>
           `<option value="${s}" ${s===data.active?'selected':''}>${s}</option>`).join('')

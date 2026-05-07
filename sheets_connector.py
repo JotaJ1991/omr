@@ -222,8 +222,10 @@ def delete_course(name: str) -> dict:
 
 # ── Simulacros ────────────────────────────────────────────────────────────
 def _ensure_simulacros_sheet():
-    """Crea/verifica la hoja 'Simulacros'. Columnas: Nombre, Fecha, Tipo, Grados."""
+    """Crea/verifica la hoja 'Simulacros'. Columnas: Nombre, Fecha, Tipo, Grados.
+       Si la hoja se acaba de crear, registra simulacros legacy detectados."""
     ss = _open_spreadsheet()
+    fresh = False
     try:
         ws = ss.worksheet(SIMULACROS_SHEET)
         header = ws.row_values(1) or []
@@ -243,7 +245,31 @@ def _ensure_simulacros_sheet():
             })
         except Exception:
             pass
+        fresh = True
+
+    # Migracion de simulacros legacy (hojas '1S SIPAGRE', '2S SIPAGRE', 'M SIPAGRE')
+    if fresh:
+        try:
+            existing_titles = {w.title for w in ss.worksheets()}
+            rows_to_add = []
+            if '1S SIPAGRE' in existing_titles and '2S SIPAGRE' in existing_titles:
+                rows_to_add.append(['SIPAGRE Legacy', '', SIM_COMPLETO, '10,11'])
+            if 'M SIPAGRE' in existing_titles:
+                rows_to_add.append(['SIPAGRE M Legacy', '', SIM_MEDIA, '6,7,8,9'])
+            for r in rows_to_add:
+                ws.append_row(r, value_input_option='RAW')
+        except Exception:
+            pass
     return ws
+
+
+def simulacro_sheet_names_for_legacy(nombre):
+    """Mapeo especial para simulacros legacy con hojas con nombres distintos."""
+    if nombre == 'SIPAGRE Legacy':
+        return {'sheets': ['1S SIPAGRE', '2S SIPAGRE'], 'results': 'Resultados SIPAGRE'}
+    if nombre == 'SIPAGRE M Legacy':
+        return {'sheets': ['M SIPAGRE'], 'results': 'Resultados M SIPAGRE'}
+    return None
 
 
 def simulacro_sheet_names(nombre: str, tipo: str) -> dict:
@@ -286,7 +312,8 @@ def list_simulacros() -> list:
             if tipo not in (SIM_COMPLETO, SIM_MEDIA):
                 tipo = SIM_COMPLETO
             grados_list = [g.strip() for g in grados.split(',') if g.strip()]
-            sn = simulacro_sheet_names(nombre, tipo)
+            # Si es un simulacro legacy, usar mapeo especial
+            sn = simulacro_sheet_names_for_legacy(nombre) or simulacro_sheet_names(nombre, tipo)
             out.append({
                 'nombre':  nombre,
                 'fecha':   fecha,
