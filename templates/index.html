@@ -783,112 +783,65 @@
     </div>
   </div><!-- /tab-key -->
 
-  <!-- ══ TAB RESULTADOS ════════════════════════════════════════════════════ -->
+  <!-- ══ TAB RESULTADOS (UNIFICADO) ════════════════════════════════════════ -->
   <div id="tab-results" class="tab-content">
     <div class="card">
-      <h2>📋 Resultados SIPAGRE (Completo)</h2>
+      <h2>📊 Resultados</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
-        Combina las sesiones 1S y 2S para calcular puntajes por materia y puntaje general.
-        Ambas hojas deben tener la clave de respuestas cargada.
+        Selecciona el simulacro y opcionalmente filtra por grado o curso.
+        El sistema detecta automáticamente si es media o jornada completa.
       </p>
-      <div style="margin-bottom:10px;">
-        <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
-        <select id="sipagre-sim-select" onchange="_onSipagreSimChange()">
-          <option value="">— manual: configurar hojas abajo —</option>
-        </select>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:.78rem;color:var(--muted);">Hoja 1S</label>
-          <input type="text" id="sipagre-1s" value="1S SIPAGRE">
-        </div>
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:.78rem;color:var(--muted);">Hoja 2S</label>
-          <input type="text" id="sipagre-2s" value="2S SIPAGRE">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-success" onclick="generateSipagreResults()" id="btn-sipagre"
-                style="flex:1;padding:13px;font-size:.92rem;">
-          Generar Resultados
-        </button>
-        <button class="btn-primary" onclick="downloadAllPdfs()" id="btn-pdf-all"
-                style="flex:1;padding:13px;font-size:.92rem;">
-          Descargar Todos PDF
-        </button>
-      </div>
-      <div id="sipagre-course-bar" style="display:none;margin-top:10px;
-           gap:8px;align-items:end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:90px;">
-          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
-          <select id="sipagre-grade-filter">
-            <option value="">— todos —</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:110px;">
-          <label style="font-size:.78rem;color:var(--muted);">Curso</label>
-          <select id="sipagre-course-filter">
-            <option value="">— todos —</option>
-          </select>
-        </div>
-        <button class="btn-accent" onclick="downloadCoursePdfs()" id="btn-course-pdf"
-                style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
-          📥 Descargar
-        </button>
-      </div>
-      <div id="sipagre-status" style="margin-top:10px;"></div>
-      <div id="sipagre-students-list" style="margin-top:12px;"></div>
-    </div>
 
-    <!-- ── M SIPAGRE Resultados (una sola jornada) ── -->
-    <div class="card">
-      <h2>📋 Resultados M SIPAGRE (Media jornada)</h2>
-      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
-        Simulacro de una sola jornada (125 preguntas). La hoja debe tener la clave de respuestas cargada.
-      </p>
-      <div style="margin-bottom:10px;">
-        <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
-        <select id="msipagre-sim-select" onchange="_onMSipagreSimChange()">
-          <option value="">— manual: configurar hoja abajo —</option>
-        </select>
-      </div>
+      <!-- Selector simulacro + grado en una fila -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:.78rem;color:var(--muted);">Hoja M SIPAGRE</label>
-          <input type="text" id="msipagre-sheet" value="M SIPAGRE">
+        <div style="flex:2;min-width:160px;">
+          <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
+          <select id="r-sim-select" onchange="onResultsSimChange()">
+            <option value="">— selecciona simulacro —</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
+          <select id="r-grade-select" onchange="renderUnifiedTable()">
+            <option value="">— todos —</option>
+          </select>
         </div>
       </div>
+
+      <!-- Info del simulacro elegido -->
+      <div id="r-sim-info" style="display:none;background:rgba(99,102,241,.06);
+           border:1px solid var(--card-border);border-radius:10px;
+           padding:10px 14px;margin-bottom:12px;font-size:.82rem;"></div>
+
+      <!-- Botones generar -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-success" onclick="generateMSipagreResults()" id="btn-msipagre"
-                style="flex:1;padding:13px;font-size:.92rem;">
+        <button class="btn-success" onclick="generateUnifiedResults()" id="btn-r-gen"
+                style="flex:1;padding:13px;font-size:.92rem;" disabled>
           Generar Resultados
         </button>
-        <button class="btn-primary" onclick="downloadAllMPdfs()" id="btn-mpdf-all"
-                style="flex:1;padding:13px;font-size:.92rem;">
+        <button class="btn-primary" onclick="downloadUnifiedAll()" id="btn-r-all"
+                style="flex:1;padding:13px;font-size:.92rem;" disabled>
           Descargar Todos PDF
         </button>
       </div>
-      <div id="msipagre-course-bar" style="display:none;margin-top:10px;
+
+      <!-- Filtro adicional por curso + descarga filtrada -->
+      <div id="r-course-bar" style="display:none;margin-top:10px;
            gap:8px;align-items:end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:90px;">
-          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
-          <select id="msipagre-grade-filter">
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:.78rem;color:var(--muted);">Filtrar por curso</label>
+          <select id="r-course-select" onchange="renderUnifiedTable()">
             <option value="">— todos —</option>
           </select>
         </div>
-        <div style="flex:1;min-width:110px;">
-          <label style="font-size:.78rem;color:var(--muted);">Curso</label>
-          <select id="msipagre-course-filter">
-            <option value="">— todos —</option>
-          </select>
-        </div>
-        <button class="btn-accent" onclick="downloadMCoursePdfs()" id="btn-mcourse-pdf"
+        <button class="btn-accent" onclick="downloadUnifiedFiltered()" id="btn-r-course"
                 style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
-          📥 Descargar
+          📥 Descargar filtrado
         </button>
       </div>
-      <div id="msipagre-status" style="margin-top:10px;"></div>
-      <div id="msipagre-students-list" style="margin-top:12px;"></div>
+
+      <div id="r-status" style="margin-top:10px;"></div>
+      <div id="r-students-list" style="margin-top:12px;"></div>
     </div>
   </div>
 
@@ -1172,6 +1125,7 @@ async function loadSimulacros() {
     _simulacrosCache = data.simulacros || [];
     renderSimulacrosList();
     _refreshSimulacroSelect();
+    _refreshUnifiedSimSelect();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
 }
 
@@ -1216,8 +1170,10 @@ function _onSipagreSimChange() {
   if (!sel || !sel.value) return;
   const sim = _simulacrosCache.find(s => s.nombre === sel.value);
   if (!sim || !sim.sheets || sim.sheets.length < 2) return;
-  document.getElementById('sipagre-1s').value = sim.sheets[0];
-  document.getElementById('sipagre-2s').value = sim.sheets[1];
+  const i1 = document.getElementById('sipagre-1s');
+  const i2 = document.getElementById('sipagre-2s');
+  if (i1) i1.value = sim.sheets[0];
+  if (i2) i2.value = sim.sheets[1];
 }
 
 function _onMSipagreSimChange() {
@@ -1225,7 +1181,287 @@ function _onMSipagreSimChange() {
   if (!sel || !sel.value) return;
   const sim = _simulacrosCache.find(s => s.nombre === sel.value);
   if (!sim || !sim.sheets || !sim.sheets.length) return;
-  document.getElementById('msipagre-sheet').value = sim.sheets[0];
+  const i = document.getElementById('msipagre-sheet');
+  if (i) i.value = sim.sheets[0];
+}
+
+// ── Lógica unificada del panel Resultados ─────────────────────────────
+let unifiedResults = null;
+let unifiedSimulacro = null;
+
+function _refreshUnifiedSimSelect() {
+  const sel = document.getElementById('r-sim-select');
+  if (!sel) return;
+  const prev = sel.value;
+  let html = '<option value="">— selecciona simulacro —</option>';
+  _simulacrosCache.forEach(s => {
+    const tipoLabel = s.tipo === 'completo' ? 'Completo (1S+2S)' : 'Media jornada';
+    html += `<option value="${s.nombre}">${s.nombre}  ·  ${tipoLabel}</option>`;
+  });
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+function onResultsSimChange() {
+  const simSel   = document.getElementById('r-sim-select');
+  const gradeSel = document.getElementById('r-grade-select');
+  const info     = document.getElementById('r-sim-info');
+  const btnGen   = document.getElementById('btn-r-gen');
+  const btnAll   = document.getElementById('btn-r-all');
+
+  unifiedSimulacro = simSel.value
+                     ? _simulacrosCache.find(s => s.nombre === simSel.value)
+                     : null;
+
+  // Limpiar resultados al cambiar de simulacro
+  unifiedResults = null;
+  document.getElementById('r-students-list').innerHTML = '';
+  document.getElementById('r-status').innerHTML = '';
+  document.getElementById('r-course-bar').style.display = 'none';
+
+  if (!unifiedSimulacro) {
+    info.style.display = 'none';
+    btnGen.disabled = true;
+    btnAll.disabled = true;
+    gradeSel.innerHTML = '<option value="">— todos —</option>';
+    return;
+  }
+
+  // Mostrar info
+  const tipoLabel = unifiedSimulacro.tipo === 'completo'
+                    ? '🌓 Jornada completa (1S + 2S)'
+                    : '☀️ Media jornada (M)';
+  info.innerHTML = `<strong>${tipoLabel}</strong><br>
+    📄 Hojas: ${unifiedSimulacro.sheets.join(' · ')}<br>
+    🎓 Grados objetivo: ${unifiedSimulacro.grados.length
+                          ? unifiedSimulacro.grados.map(g => g+'°').join(', ')
+                          : '—'}`;
+  info.style.display = 'block';
+
+  // Poblar grados según los del simulacro
+  let gradeHtml = '<option value="">— todos —</option>';
+  unifiedSimulacro.grados.forEach(g => {
+    gradeHtml += `<option value="${g}">${g}°</option>`;
+  });
+  gradeSel.innerHTML = gradeHtml;
+
+  btnGen.disabled = false;
+  btnAll.disabled = true;  // se habilita al generar
+}
+
+async function generateUnifiedResults() {
+  if (!unifiedSimulacro) return;
+  const sim = unifiedSimulacro;
+  const status = document.getElementById('r-status');
+  const btn = document.getElementById('btn-r-gen');
+  btn.disabled = true; btn.textContent = 'Generando…';
+  status.innerHTML = '<p style="color:var(--muted);">Leyendo y calculando…</p>';
+  unifiedResults = null;
+
+  try {
+    let resp;
+    if (sim.tipo === 'completo') {
+      resp = await fetch('/sipagre_results', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          sheet_1s: sim.sheets[0], sheet_2s: sim.sheets[1],
+          results_sheet: sim.results,
+        })
+      });
+    } else {
+      resp = await fetch('/msipagre_results', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          sheet_m: sim.sheets[0],
+          results_sheet: sim.results,
+        })
+      });
+    }
+    const data = await resp.json();
+    if (data.success) {
+      unifiedResults = data.results || [];
+      status.innerHTML = `<p style="color:var(--success);font-weight:600;">
+        Listo: ${data.students} estudiantes procesados.
+        <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
+      _populateUnifiedCourseFilter();
+      renderUnifiedTable();
+      document.getElementById('btn-r-all').disabled = false;
+    } else {
+      status.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error'}</p>`;
+    }
+  } catch(e) {
+    status.innerHTML = '<p style="color:var(--danger);">Error de conexión.</p>';
+  }
+  btn.disabled = false; btn.textContent = 'Generar Resultados';
+}
+
+function _populateUnifiedCourseFilter() {
+  const sel = document.getElementById('r-course-select');
+  const bar = document.getElementById('r-course-bar');
+  if (!unifiedResults || !unifiedResults.length) {
+    bar.style.display = 'none'; return;
+  }
+  const gradeF = document.getElementById('r-grade-select').value;
+  let pool = unifiedResults;
+  if (gradeF) pool = pool.filter(r => gradoDeCurso(r.curso) === gradeF);
+  const courses = [...new Set(pool.map(r => (r.curso||'').trim()).filter(c => c))].sort();
+  let html = '<option value="">— todos —</option>';
+  courses.forEach(c => { html += `<option value="${c}">${c}</option>`; });
+  sel.innerHTML = html;
+  bar.style.display = 'flex';
+}
+
+function renderUnifiedTable() {
+  const list = document.getElementById('r-students-list');
+  if (!unifiedResults || !unifiedResults.length) { list.innerHTML = ''; return; }
+  const gradeF = document.getElementById('r-grade-select').value;
+  const cursoF = document.getElementById('r-course-select').value;
+  let view = unifiedResults.slice();
+  if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
+  if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
+  // Orden mayor a menor
+  view = view.slice().sort((a,b) => (+b.general||0) - (+a.general||0));
+  // Repoblar el filtro de curso con las opciones validas para el grado actual
+  _populateUnifiedCourseFilter();
+  // Restaurar valor del curso si existe
+  const csel = document.getElementById('r-course-select');
+  if (csel && cursoF) csel.value = cursoF;
+
+  if (!view.length) {
+    list.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      No hay estudiantes con esos filtros.</p>`;
+    return;
+  }
+  const n = view.length;
+  const avg = {
+    mat:  Math.round(view.reduce((s,r) => s + (+r.mat ||0), 0) / n),
+    lect: Math.round(view.reduce((s,r) => s + (+r.lect||0), 0) / n),
+    soc:  Math.round(view.reduce((s,r) => s + (+r.soc ||0), 0) / n),
+    nat:  Math.round(view.reduce((s,r) => s + (+r.nat ||0), 0) / n),
+    ing:  Math.round(view.reduce((s,r) => s + (+r.ing ||0), 0) / n),
+    gen:  Math.round(view.reduce((s,r) => s + (+r.general||0), 0) / n),
+  };
+  const rows = view.map(r => {
+    const idx = unifiedResults.indexOf(r);
+    return `
+    <tr>
+      <td>
+        <div style="font-weight:600;">${r.name || '—'}</div>
+        <div style="font-size:.7rem;color:var(--muted);">ID: ${r.id || '—'}</div>
+      </td>
+      <td style="font-size:.78rem;color:var(--muted);">${r.curso || '—'}</td>
+      <td class="score">${r.mat}</td>
+      <td class="score">${r.lect}</td>
+      <td class="score">${r.soc}</td>
+      <td class="score">${r.nat}</td>
+      <td class="score">${r.ing}</td>
+      <td class="general-score">${r.general}</td>
+      <td><button class="pdf-btn" onclick="downloadUnifiedStudent(${idx})">PDF</button></td>
+    </tr>`;
+  }).join('');
+  list.innerHTML = `
+    <div class="results-table-wrap">
+      <table class="results-table">
+        <thead><tr>
+          <th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th>
+          <th>Nat</th><th>Ing</th><th>General</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="avg-row">
+            <td style="font-weight:700;color:var(--text);">PROMEDIO</td>
+            <td>—</td>
+            <td class="score">${avg.mat}</td>
+            <td class="score">${avg.lect}</td>
+            <td class="score">${avg.soc}</td>
+            <td class="score">${avg.nat}</td>
+            <td class="score">${avg.ing}</td>
+            <td class="general-score">${avg.gen}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function _generateUnifiedPdf(filtered, fname) {
+  await _loadLogo();
+  const jsPDF = getJsPDF();
+  const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+  const pcts = calcPercentiles(unifiedResults);
+  const label = unifiedSimulacro
+                ? `${unifiedSimulacro.nombre}${unifiedSimulacro.tipo === 'media' ? ' (Media)' : ''}`
+                : 'SIPAGRE';
+  filtered.forEach((st, i) => {
+    const origIdx = unifiedResults.indexOf(st);
+    const pctKey = st.id ? String(st.id) : `_idx${origIdx}`;
+    renderStudentPage(doc, st, pcts[pctKey] || {}, i > 0, label);
+  });
+  doc.save(fname);
+}
+
+async function downloadUnifiedAll() {
+  if (!unifiedResults || !unifiedResults.length) return;
+  const status = document.getElementById('r-status');
+  const btn = document.getElementById('btn-r-all');
+  btn.disabled = true; btn.textContent = 'Generando…';
+  try {
+    const fname = `Resultados_${unifiedSimulacro.nombre.replace(/[^a-z0-9]+/gi,'_')}.pdf`;
+    await _generateUnifiedPdf(unifiedResults, fname);
+    status.innerHTML = `<p style="color:var(--success);font-weight:600;">PDF descargado (${unifiedResults.length} estudiantes).</p>`;
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+  btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
+}
+
+async function downloadUnifiedFiltered() {
+  if (!unifiedResults || !unifiedResults.length) return;
+  const gradeF = document.getElementById('r-grade-select').value;
+  const cursoF = document.getElementById('r-course-select').value;
+  let filtered = unifiedResults.slice();
+  if (gradeF) filtered = filtered.filter(r => gradoDeCurso(r.curso) === gradeF);
+  if (cursoF) filtered = filtered.filter(r => (r.curso||'').trim() === cursoF);
+  const status = document.getElementById('r-status');
+  if (!filtered.length) {
+    status.innerHTML = '<p style="color:var(--danger);">No hay estudiantes con esos filtros.</p>';
+    return;
+  }
+  const btn = document.getElementById('btn-r-course');
+  btn.disabled = true; btn.textContent = 'Generando…';
+  try {
+    const tag = cursoF || (gradeF ? `${gradeF}grado` : '');
+    const safeSim = unifiedSimulacro.nombre.replace(/[^a-z0-9]+/gi,'_');
+    const fname = tag ? `Resultados_${safeSim}_${tag}.pdf`
+                      : `Resultados_${safeSim}.pdf`;
+    await _generateUnifiedPdf(filtered, fname);
+    status.innerHTML = `<p style="color:var(--success);font-weight:600;">PDF descargado (${filtered.length} estudiantes).</p>`;
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+  btn.disabled = false; btn.textContent = '📥 Descargar filtrado';
+}
+
+async function downloadUnifiedStudent(idx) {
+  if (!unifiedResults) return;
+  const st = unifiedResults[idx];
+  if (!st) return;
+  try {
+    await _loadLogo();
+    const jsPDF = getJsPDF();
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const pcts = calcPercentiles(unifiedResults);
+    const pctKey = st.id ? String(st.id) : `_idx${idx}`;
+    const label = unifiedSimulacro
+                  ? `${unifiedSimulacro.nombre}${unifiedSimulacro.tipo === 'media' ? ' (Media)' : ''}`
+                  : 'SIPAGRE';
+    renderStudentPage(doc, st, pcts[pctKey] || {}, false, label);
+    const safeName = (st.name || st.id || `est_${idx+1}`).replace(/[^a-z0-9]+/gi,'_').slice(0,30);
+    doc.save(`Resultado_${safeName}.pdf`);
+  } catch(e) {
+    document.getElementById('r-status').innerHTML =
+      `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
 }
 
 // Cuando cambia el simulacro o la sesión, ajusta hoja activa y perfil OMR
@@ -1437,17 +1673,10 @@ async function jumpToResults(nombre) {
   if (!sim) return;
   switchTab('results');
   setTimeout(() => {
-    if (sim.tipo === 'completo') {
-      const sel = document.getElementById('sipagre-sim-select');
-      if (sel) { sel.value = nombre; _onSipagreSimChange(); }
-      document.querySelector('#tab-results .card:first-child')
-              ?.scrollIntoView({behavior:'smooth'});
-    } else {
-      const sel = document.getElementById('msipagre-sim-select');
-      if (sel) { sel.value = nombre; _onMSipagreSimChange(); }
-      document.querySelector('#tab-results .card:nth-child(2)')
-              ?.scrollIntoView({behavior:'smooth'});
-    }
+    const sel = document.getElementById('r-sim-select');
+    if (sel) { sel.value = nombre; onResultsSimChange(); }
+    document.querySelector('#tab-results .card')
+            ?.scrollIntoView({behavior:'smooth'});
   }, 150);
 }
 
