@@ -1407,10 +1407,11 @@ function generateIntegralReport() {
     <ul style="margin:6px 0 0 18px;line-height:1.7;">
       <li>Portada con datos generales</li>`;
   if (scopeType === 'grado') {
-    html += `<li>Tabla 1 · Puntajes por curso (resumen del grado ${gradeF}°)</li>
-             <li>Tabla 2 · Puntajes por asignatura desagregado por curso</li>`;
+    html += `<li>Tabla · Puntajes por curso (resumen del grado ${gradeF}°)</li>
+             <li>Gráficos comparativos: barras, boxplot y radar de cursos</li>`;
   }
-  html += `<li>Tabla · Posibles becarios (≥300) — ${becarios.length} estudiante(s)</li>
+  html += `<li>Histograma de distribución de puntajes</li>
+           <li>Tabla · Posibles becarios (≥300) — ${becarios.length} estudiante(s)</li>
            <li>${cursos.length === 1 ? 'Hoja' : `${cursos.length} hojas`} con el listado de estudiantes (una por curso)</li>
            <li>Análisis por pregunta para ${scopeLabel} (5 tablas, una por asignatura)</li>
     </ul></div>`;
@@ -1468,7 +1469,7 @@ async function downloadIntegralPdf() {
       doc.addPage('letter','p'); y = 20;
       doc.setFont('helvetica','bold'); doc.setFontSize(12);
       doc.setTextColor(67,56,202);
-      doc.text(`Tabla 1 · Puntajes por curso (${scopeLabel})`, 10, y);
+      doc.text(`Puntajes por curso — ${scopeLabel}`, 10, y);
       y += 6;
       const cursoRows = cursos.map(c => {
         const arr = view.filter(r => (r.curso||'').trim() === c);
@@ -1489,43 +1490,75 @@ async function downloadIntegralPdf() {
         cursoRows, [30, 24, 20, 20, 20, 20, 20, 41.9], avgRow);
     }
 
-    // ── TABLA 2: Asignaturas desagregado por curso ──
-    if (gradeF && !cursoF && cursos.length >= 1) {
+    // ── GRÁFICOS (reemplazan a la antigua Tabla 2) ──
+    if (cursos.length >= 2) {
+      // Bar chart: promedio general por curso
+      const cursoAvgItems = cursos.map(c => {
+        const arr = view.filter(r => (r.curso||'').trim() === c);
+        const avg = arr.length
+          ? Math.round(arr.reduce((s,r)=>s+(+r.general||0),0)/arr.length) : 0;
+        return {label: c, value: avg, color: '#6366f1', colorEnd: '#06b6d4'};
+      }).sort((a,b) => b.value - a.value);
+      const barCanvas = drawBarChartCanvas(cursoAvgItems, {
+        title: `Promedio general por curso — ${scopeLabel}`,
+        max: 500,
+      });
       doc.addPage('letter','p'); y = 20;
       doc.setFont('helvetica','bold'); doc.setFontSize(12);
       doc.setTextColor(67,56,202);
-      doc.text(`Tabla 2 · Puntajes por asignatura desagregado por curso`, 10, y);
-      y += 6;
-      // Por cada asignatura, una columna por curso + total
-      const subjects = REP_SUBJECTS.filter(s => s.key !== 'general');
-      const headers2 = ['Asignatura', ...cursos, 'Promedio'];
-      const rows2 = subjects.map(s => {
-        const cursoVals = cursos.map(c => {
-          const arr = view.filter(r => (r.curso||'').trim() === c);
-          if (!arr.length) return '—';
-          return Math.round(arr.reduce((sum,r)=>sum+(+r[s.key]||0),0)/arr.length);
-        });
-        const allAvg = Math.round(view.reduce((sum,r)=>sum+(+r[s.key]||0),0)/view.length);
-        return [s.label, ...cursoVals, allAvg];
+      doc.text('Gráficos comparativos por curso', 10, y);
+      y += 4;
+      const imgW = pw, imgH1 = pw * 420/900;
+      try { doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', 10, y, imgW, imgH1); } catch(e){}
+      y += imgH1 + 4;
+
+      // Boxplot: distribución de puntaje general por curso
+      const boxGroups = cursos.map(c => ({
+        label:  c,
+        values: view.filter(r => (r.curso||'').trim() === c).map(r => +r.general || 0),
+        color:  '#6366f1', colorEnd: '#06b6d4',
+      }));
+      const boxCanvas = drawBoxplotCanvas(boxGroups, {
+        title: `Distribución del puntaje general por curso`,
+        max: 500,
       });
-      const totalRow = ['PUNTAJE GENERAL',
-        ...cursos.map(c => {
-          const arr = view.filter(r => (r.curso||'').trim() === c);
-          if (!arr.length) return '—';
-          return Math.round(arr.reduce((sum,r)=>sum+(+r.general||0),0)/arr.length);
-        }),
-        general.avg
-      ];
-      // Calcular widths: primer columna fija, resto se reparten
-      const firstW = 45;
-      const rest = (215.9 - 20) - firstW;
-      const others = cursos.length + 1;
-      const colW = Math.max(15, rest / others);
-      const widths = [firstW, ...Array(others).fill(colW)];
-      // Ajustar último para que sume bien
-      const sum = widths.reduce((a,b)=>a+b,0);
-      widths[widths.length-1] += (215.9 - 20) - sum;
-      _drawPdfTable(doc, 10, y, headers2, rows2, widths, totalRow);
+      const imgH2 = pw * 460/900;
+      if (y + imgH2 > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(boxCanvas.toDataURL('image/png'), 'PNG', 10, y, imgW, imgH2); } catch(e){}
+      y += imgH2 + 4;
+
+      // Radar comparativo entre cursos (asignaturas)
+      const radarSubjects = REP_SUBJECTS.filter(s => s.key !== 'general');
+      const radarLabels = radarSubjects.map(s =>
+        s.label.replace('Lectura Crítica','Lect. Crítica')
+               .replace('Sociales y Ciudadanas','Sociales')
+               .replace('Ciencias Naturales','Naturales')
+               .replace('Matemáticas','Matem.'));
+      const radarGroups = cursos.map(c => {
+        const arr = view.filter(r => (r.curso||'').trim() === c);
+        return {
+          name:   c,
+          values: radarSubjects.map(s =>
+            arr.length ? Math.round(arr.reduce((a,r)=>a+(+r[s.key]||0),0)/arr.length) : 0),
+        };
+      });
+      const radarCanvas = drawRadarMultiCanvas(radarLabels, radarGroups, 100);
+      const imgH3 = pw * 700/800;
+      if (y + imgH3 > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y, imgW, imgH3); } catch(e){}
+      y += imgH3 + 4;
+    }
+
+    // Histograma de puntajes generales del scope
+    if (view.length >= 5) {
+      const histCanvas = drawHistogramCanvas(view.map(r => +r.general || 0), {
+        title: `Distribución de puntajes — ${scopeLabel}`,
+        max: 500, binSize: 50,
+      });
+      const imgH4 = pw * 380/900;
+      if (y + imgH4 > 260) { doc.addPage('letter','p'); y = 20; }
+      try { doc.addImage(histCanvas.toDataURL('image/png'), 'PNG', 10, y, pw, imgH4); } catch(e){}
+      y += imgH4 + 4;
     }
 
     // ── TABLA: Posibles becarios ──
