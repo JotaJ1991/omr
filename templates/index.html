@@ -1412,6 +1412,7 @@ function generateIntegralReport() {
   }
   html += `<li>Tabla · Posibles becarios (≥300) — ${becarios.length} estudiante(s)</li>
            <li>${cursos.length === 1 ? 'Hoja' : `${cursos.length} hojas`} con el listado de estudiantes (una por curso)</li>
+           <li>Análisis por pregunta para ${scopeLabel} (5 tablas, una por asignatura)</li>
     </ul></div>`;
 
   html += `<button onclick="downloadIntegralPdf()"
@@ -1578,6 +1579,26 @@ async function downloadIntegralPdf() {
         stRows, [10, 55, 20, 14, 14, 14, 14, 14, 40.9], stAvg);
     });
 
+    // ── Análisis por pregunta para el scope ──
+    try {
+      status.innerHTML = '<p style="color:var(--muted);">Cargando análisis por pregunta…</p>';
+      const qa = await _ensureQuestionAnalysis(simName);
+      doc.addPage('letter','p'); let y2 = 20;
+      const groupBy  = cursoF ? 'curso' : 'grado';
+      const groupKey = cursoF ? cursoF : gradeF;
+      doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.setTextColor(67,56,202);
+      doc.text(`Análisis por pregunta — ${scopeLabel}`, 10, y2);
+      y2 += 4;
+      doc.setFont('helvetica','italic'); doc.setFontSize(8);
+      doc.setTextColor(120,120,120);
+      doc.text('Preguntas ordenadas de menor a mayor % de aciertos (más difíciles primero).', 10, y2);
+      y2 += 6;
+      _drawQuestionTablesInPdf(doc, y2, qa.questions, groupBy, groupKey, '');
+    } catch(e) {
+      console.warn('No se pudo incluir análisis por pregunta:', e);
+    }
+
     _drawReportFooter(doc, `Análisis integral · ${simName} · ${scopeLabel}`);
     const safeScope = scopeLabel.replace(/[^a-z0-9]+/gi,'_');
     const safeSim = simName.replace(/[^a-z0-9]+/gi,'_');
@@ -1719,20 +1740,136 @@ function renderQuestionAnalysis(data) {
       Sin datos para el filtro actual.</p>`;
   }
 
-  // Botón actualizar (re-fetch del backend)
+  // Botón descargar PDF + actualizar
+  html += `<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <button onclick="downloadQuestionAnalysisPdf()"
+      style="padding:10px 16px;font-size:.85rem;
+             background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+             color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;">
+      📥 Descargar PDF
+    </button>`;
   const cached = _questionAnalysisCache[unifiedSimulacro.nombre];
   if (cached) {
-    html += `<p style="font-size:.78rem;color:var(--muted);margin-top:10px;">
+    html += `<span style="font-size:.78rem;color:var(--muted);">
       💾 Análisis cacheado (${_formatAgo(cached.ts)}).
       <a href="#" onclick="_refreshQuestionAnalysis();return false;"
-         style="color:var(--primary-light);">Actualizar</a></p>`;
+         style="color:var(--primary-light);">Actualizar</a></span>`;
   }
+  html += `</div>`;
   out.innerHTML = html;
 }
 
 function _refreshQuestionAnalysis() {
   if (unifiedSimulacro) delete _questionAnalysisCache[unifiedSimulacro.nombre];
   generateQuestionReport();
+}
+
+// Asegura que el análisis por pregunta esté cargado en el cache.
+async function _ensureQuestionAnalysis(simNombre) {
+  if (_questionAnalysisCache[simNombre]) return _questionAnalysisCache[simNombre].data;
+  const resp = await fetch('/analyze_questions', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({simulacro: simNombre})
+  });
+  const data = await resp.json();
+  if (!data.success) throw new Error(data.error || 'Error analizando preguntas');
+  _questionAnalysisCache[simNombre] = {data, ts: Date.now()};
+  return data;
+}
+
+// Construye datos de tabla para una asignatura usando el filtro de grupo
+function _questionRowsForSubject(questions, subject, groupBy, groupKey) {
+  const subjLabel = ({
+    'Matematica':'Matemáticas','Lectura Critica':'Lectura Crítica',
+    'Sociales':'Sociales','Naturales':'Naturales','Ingles':'Inglés',
+  })[subject] || subject;
+  const stOf = (q) => {
+    if (groupBy === 'curso') {
+      const e = (q.by_curso || {})[groupKey];
+      return e ? {pct: e.pct, n: e.n, c: e.c} : null;
+    }
+    if (groupBy === 'grado') {
+      const e = (q.by_grade || {})[groupKey];
+      return e ? {pct: e.pct, n: e.n, c: e.c} : null;
+    }
+    return {pct: q.pct, n: q.total, c: q.correct};
+  };
+  const arr = questions
+    .filter(q => q.subject === subject)
+    .map(q => {
+      const st = stOf(q);
+      return st ? {q, st} : null;
+    })
+    .filter(Boolean)
+    .sort((a,b) => a.st.pct - b.st.pct);
+  const prefix = subjLabel.split(' ')[0];
+  return {
+    label: subjLabel,
+    rows: arr.map((it,i) => [
+      i+1, `${prefix} ${it.q.q}`, it.q.key,
+      `${it.st.c}/${it.st.n}`, `${it.st.pct}%`
+    ]),
+  };
+}
+
+// Dibuja todas las tablas (una por asignatura) en el PDF
+function _drawQuestionTablesInPdf(doc, startY, questions, groupBy, groupKey, headerText) {
+  const subjects = ['Matematica','Lectura Critica','Sociales','Naturales','Ingles'];
+  let y = startY;
+  if (headerText) {
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.setTextColor(67,56,202);
+    doc.text(headerText, 10, y);
+    y += 6;
+  }
+  subjects.forEach(subj => {
+    const data = _questionRowsForSubject(questions, subj, groupBy, groupKey);
+    if (!data.rows.length) return;
+    if (y > 240) { doc.addPage('letter','p'); y = 20; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(10);
+    doc.setTextColor(99,102,241);
+    doc.text(`${data.label} (${data.rows.length} preguntas)`, 10, y);
+    y += 4;
+    y = _drawPdfTable(doc, 10, y,
+      ['#','Pregunta','Clave','Aciertos','% Acierto'],
+      data.rows, [12, 50, 20, 35, 78.9]);
+    y += 4;
+  });
+  return y;
+}
+
+// PDF directo del análisis por pregunta
+async function downloadQuestionAnalysisPdf() {
+  if (!unifiedSimulacro) return;
+  const status = document.getElementById('r-status');
+  status.innerHTML = '<p style="color:var(--muted);">Generando PDF…</p>';
+  try {
+    const data = await _ensureQuestionAnalysis(unifiedSimulacro.nombre);
+    const gradeF = document.getElementById('r-grade-select')?.value || '';
+    const cursoF = document.getElementById('r-course-select')?.value || '';
+    const groupBy = cursoF ? 'curso' : (gradeF ? 'grado' : 'all');
+    const groupKey = cursoF ? cursoF : gradeF;
+    const filterLabel = cursoF ? `Curso ${cursoF}` :
+                        gradeF ? `Grado ${gradeF}°` : 'General';
+    await _loadLogo();
+    const jsPDF = getJsPDF();
+    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    let y = _drawReportHeader(doc,
+      `Análisis por pregunta`,
+      `${unifiedSimulacro.nombre} · ${filterLabel}`);
+    doc.setFont('helvetica','italic'); doc.setFontSize(8);
+    doc.setTextColor(120,120,120);
+    doc.text('Preguntas ordenadas de menor a mayor % de aciertos.', 10, y);
+    y += 6;
+    y = _drawQuestionTablesInPdf(doc, y, data.questions, groupBy, groupKey, '');
+    _drawReportFooter(doc, `Análisis por pregunta · ${unifiedSimulacro.nombre}`);
+    const safeSim = unifiedSimulacro.nombre.replace(/[^a-z0-9]+/gi,'_');
+    const safeF   = filterLabel.replace(/[^a-z0-9]+/gi,'_');
+    doc.save(`Por_Pregunta_${safeSim}_${safeF}.pdf`);
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
+  } catch(e) {
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
 }
 
 async function generateUnifiedResults() {
