@@ -1565,7 +1565,7 @@ async function downloadIntegralPdf() {
     doc.addPage('letter','p'); y = 20;
     doc.setFont('helvetica','bold'); doc.setFontSize(12);
     doc.setTextColor(67,56,202);
-    doc.text(`Posibles becarios (≥300) — ${becarios.length} estudiante(s)`, 10, y);
+    doc.text(`Posibles becarios (>=300) - ${becarios.length} estudiante(s)`, 10, y);
     y += 6;
     if (!becarios.length) {
       doc.setFont('helvetica','normal'); doc.setFontSize(10);
@@ -2821,7 +2821,7 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
       {label:'Mínimo',          value: g.min},
       {label:'Máximo',          value: g.max},
       {label:'Desv. Estándar',  value: g.std},
-      {label:'Becarios (≥300)', value: extra.becarios},
+      {label:'Becarios (>=300)', value: extra.becarios},
     ]);
     // Gráficos
     const pw = 215.9 - 20;
@@ -2995,7 +2995,8 @@ function generateSubjectReport() {
   }
 
   // Tabla por asignatura con estadísticos extendidos
-  const headers = ['Asignatura', 'n', 'Prom.', 'Med.', 'Mín', 'Máx', 'Desv.', '% ≥60'];
+  const headers   = ['Asignatura', 'n', 'Prom.', 'Med.', 'Mín', 'Máx', 'Desv.', '% ≥60'];
+  const headersPdf= ['Asignatura', 'n', 'Prom.', 'Med.', 'Min', 'Max', 'Desv.', '% >=60'];
   const rows = [];
   REP_SUBJECTS.filter(s => s.key !== 'general').forEach(s => {
     const st = _statsFor(view.map(r => +r[s.key] || 0));
@@ -3105,7 +3106,7 @@ function generateSubjectReport() {
   _lastSubjectReportData = {
     title: `Análisis por asignatura`,
     subtitle: `${scopeLabel} · ${view.length} estudiantes`,
-    headers, rows, avgRow,
+    headers: headersPdf, rows, avgRow,
     colWidths: [50, 12, 18, 18, 18, 18, 22, 39.9],
     fileName: `Reporte_Asignaturas_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
     extra: {
@@ -3201,7 +3202,7 @@ function generateBecariosReport() {
   ]);
   const avgRow = ['', 'PROMEDIO', '', '', avgGen];
   _lastBecariosData = {
-    title: `Potenciales becarios (≥ ${BECARIO_UMBRAL})`,
+    title: `Potenciales becarios (>= ${BECARIO_UMBRAL})`,
     subtitle: `${scopeLabel} · ${becarios.length} estudiantes`,
     headers, rows, avgRow,
     colWidths: [12, 90, 22, 22, 49.9],
