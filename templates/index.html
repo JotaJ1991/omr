@@ -1213,6 +1213,16 @@ function _onMSipagreSimChange() {
 // ── Lógica unificada del panel Resultados ─────────────────────────────
 let unifiedResults = null;
 let unifiedSimulacro = null;
+// Caché de resultados por simulacro. Cada entrada: {results, ts}
+const _resultsCache = {};
+
+function _formatAgo(ms) {
+  const sec = Math.round((Date.now() - ms) / 1000);
+  if (sec < 60)   return `hace ${sec}s`;
+  if (sec < 3600) return `hace ${Math.round(sec/60)} min`;
+  if (sec < 86400) return `hace ${Math.round(sec/3600)} h`;
+  return `hace ${Math.round(sec/86400)} días`;
+}
 
 function _refreshUnifiedSimSelect() {
   const sel = document.getElementById('r-sim-select');
@@ -1241,7 +1251,7 @@ function onResultsSimChange() {
                      ? _simulacrosCache.find(s => s.nombre === simSel.value)
                      : null;
 
-  // Limpiar al cambiar simulacro
+  // Limpiar UI de salida
   unifiedResults = null;
   document.getElementById('r-output').innerHTML = '';
   document.getElementById('r-status').innerHTML = '';
@@ -1274,8 +1284,27 @@ function onResultsSimChange() {
     gradeSel.innerHTML = gradeHtml;
   }
 
-  btnGen.disabled = false;
-  btnAll.disabled = true;
+  // Si hay caché para este simulacro, lo cargamos
+  const cached = _resultsCache[unifiedSimulacro.nombre];
+  if (cached && cached.results && cached.results.length) {
+    unifiedResults = cached.results;
+    document.getElementById('r-status').innerHTML =
+      `<p style="color:var(--muted);font-size:.82rem;">
+       💾 Mostrando datos en caché (${_formatAgo(cached.ts)}).
+       <a href="#" onclick="generateUnifiedResults();return false;"
+          style="color:var(--primary-light);">Actualizar</a></p>`;
+    document.getElementById('r-filter-bar').style.display = 'flex';
+    document.getElementById('r-view-bar').style.display = 'flex';
+    _populateUnifiedCourseFilter();
+    _renderCurrentView();
+    btnGen.textContent = '🔄 Actualizar resultados';
+    btnGen.disabled = false;
+    btnAll.disabled = false;
+  } else {
+    btnGen.textContent = 'Generar Resultados';
+    btnGen.disabled = false;
+    btnAll.disabled = true;
+  }
 }
 
 // Cambia la vista (tabla / asignatura / becarios) y re-renderiza
@@ -1305,9 +1334,10 @@ async function generateUnifiedResults() {
   const sim = unifiedSimulacro;
   const status = document.getElementById('r-status');
   const btn = document.getElementById('btn-r-gen');
-  btn.disabled = true; btn.textContent = 'Generando…';
-  status.innerHTML = '<p style="color:var(--muted);">Leyendo y calculando…</p>';
-  unifiedResults = null;
+  const isUpdate = !!_resultsCache[sim.nombre];
+  btn.disabled = true;
+  btn.textContent = isUpdate ? 'Actualizando…' : 'Generando…';
+  status.innerHTML = '<p style="color:var(--muted);">Leyendo y calculando desde Google Sheets…</p>';
 
   try {
     let resp;
@@ -1331,22 +1361,29 @@ async function generateUnifiedResults() {
     const data = await resp.json();
     if (data.success) {
       unifiedResults = data.results || [];
+      _resultsCache[sim.nombre] = {
+        results: unifiedResults,
+        ts:      Date.now(),
+      };
+      const verb = isUpdate ? 'Actualizado' : 'Listo';
       status.innerHTML = `<p style="color:var(--success);font-weight:600;">
-        Listo: ${data.students} estudiantes procesados.
+        ${verb}: ${data.students} estudiantes procesados.
         <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
-      // Mostrar barras de filtros + selector de vista
       document.getElementById('r-filter-bar').style.display = 'flex';
       document.getElementById('r-view-bar').style.display = 'flex';
       _populateUnifiedCourseFilter();
       _renderCurrentView();
       document.getElementById('btn-r-all').disabled = false;
+      btn.textContent = '🔄 Actualizar resultados';
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error'}</p>`;
+      btn.textContent = isUpdate ? '🔄 Actualizar resultados' : 'Generar Resultados';
     }
   } catch(e) {
     status.innerHTML = '<p style="color:var(--danger);">Error de conexión.</p>';
+    btn.textContent = isUpdate ? '🔄 Actualizar resultados' : 'Generar Resultados';
   }
-  btn.disabled = false; btn.textContent = 'Generar Resultados';
+  btn.disabled = false;
 }
 
 function _populateUnifiedCourseFilter() {
