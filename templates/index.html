@@ -815,15 +815,21 @@
       </div>
       <div id="sipagre-course-bar" style="display:none;margin-top:10px;
            gap:8px;align-items:end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:.78rem;color:var(--muted);">Filtrar por curso</label>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
+          <select id="sipagre-grade-filter">
+            <option value="">— todos —</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:110px;">
+          <label style="font-size:.78rem;color:var(--muted);">Curso</label>
           <select id="sipagre-course-filter">
-            <option value="">— todos los cursos —</option>
+            <option value="">— todos —</option>
           </select>
         </div>
         <button class="btn-accent" onclick="downloadCoursePdfs()" id="btn-course-pdf"
                 style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
-          📥 Descargar curso
+          📥 Descargar
         </button>
       </div>
       <div id="sipagre-status" style="margin-top:10px;"></div>
@@ -854,15 +860,21 @@
       </div>
       <div id="msipagre-course-bar" style="display:none;margin-top:10px;
            gap:8px;align-items:end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:120px;">
-          <label style="font-size:.78rem;color:var(--muted);">Filtrar por curso</label>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
+          <select id="msipagre-grade-filter">
+            <option value="">— todos —</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:110px;">
+          <label style="font-size:.78rem;color:var(--muted);">Curso</label>
           <select id="msipagre-course-filter">
-            <option value="">— todos los cursos —</option>
+            <option value="">— todos —</option>
           </select>
         </div>
         <button class="btn-accent" onclick="downloadMCoursePdfs()" id="btn-mcourse-pdf"
                 style="padding:10px 16px;font-size:.85rem;background:linear-gradient(135deg,var(--accent),#0891b2);color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;">
-          📥 Descargar curso
+          📥 Descargar
         </button>
       </div>
       <div id="msipagre-status" style="margin-top:10px;"></div>
@@ -2129,10 +2141,14 @@ async function generateSipagreResults() {
 function renderSipagreTable() {
   const list = document.getElementById('sipagre-students-list');
   if (!sipagreResults || !sipagreResults.length) { list.innerHTML = ''; return; }
-  // Filtrar por curso si hay uno seleccionado
+  // Filtros
   const filterSel = document.getElementById('sipagre-course-filter');
+  const gradeSel  = document.getElementById('sipagre-grade-filter');
   const cursoF    = filterSel ? filterSel.value : '';
-  let view = cursoF ? sipagreResults.filter(r => (r.curso||'').trim() === cursoF) : sipagreResults.slice();
+  const gradeF    = gradeSel  ? gradeSel.value  : '';
+  let view = sipagreResults.slice();
+  if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
+  if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
   // Ordenar por puntaje general descendente (mayor a menor)
   view = view.slice().sort((a, b) => (+b.general||0) - (+a.general||0));
   if (!view.length) {
@@ -2200,21 +2216,33 @@ const SUBJECTS = [
   {name:'Ingles',               key:'ing'},
 ];
 
+// Percentiles POR GRADO: cada estudiante se compara con los de su mismo grado.
+// Si el grado no se puede determinar, se agrupa con todos los demás "sin_grado".
 function calcPercentiles(results) {
   const fields = ['mat','lect','soc','nat','ing','general'];
-  const n = results.length;
-  if (!n) return {};
-  const sorted = {};
-  fields.forEach(f => { sorted[f] = results.map(r => Number(r[f])||0).sort((a,b)=>a-b); });
-  const pcts = {};
+  if (!results.length) return {};
+  // Agrupar por grado
+  const groups = {};
   results.forEach((r, idx) => {
-    // Si el estudiante no tiene id, usar un key basado en el indice
-    const key = r.id ? String(r.id) : `_idx${idx}`;
-    pcts[key] = {};
+    const g = gradoDeCurso(r.curso) || 'sin_grado';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push({ r, idx });
+  });
+  const pcts = {};
+  Object.entries(groups).forEach(([_g, members]) => {
+    const sorted = {};
     fields.forEach(f => {
-      const val = Number(r[f])||0;
-      const count = sorted[f].filter(v => v <= val).length;
-      pcts[key][f] = Math.round(count / n * 100);
+      sorted[f] = members.map(({r}) => Number(r[f])||0).sort((a,b) => a-b);
+    });
+    const n = members.length;
+    members.forEach(({r, idx}) => {
+      const key = r.id ? String(r.id) : `_idx${idx}`;
+      pcts[key] = {};
+      fields.forEach(f => {
+        const val = Number(r[f])||0;
+        const count = sorted[f].filter(v => v <= val).length;
+        pcts[key][f] = Math.round(count / n * 100);
+      });
     });
   });
   return pcts;
@@ -2744,7 +2772,7 @@ function getJsPDF() {
   throw new Error('jsPDF no ha cargado. Recarga la pagina e intenta de nuevo.');
 }
 
-// Poblar el dropdown de cursos a partir de los resultados
+// Poblar dropdowns de grado + curso a partir de los resultados
 function _populateCourseFilter(selectId, results, barId) {
   const sel = document.getElementById(selectId);
   const bar = document.getElementById(barId);
@@ -2757,14 +2785,33 @@ function _populateCourseFilter(selectId, results, barId) {
     bar.style.display = 'none';
     return;
   }
-  sel.innerHTML = '<option value="">— todos los cursos —</option>' +
+  sel.innerHTML = '<option value="">— todos —</option>' +
     courses.map(c => `<option value="${c}">${c}</option>`).join('');
+  // Poblar tambien el filtro de grado (mismo prefijo de id)
+  const gradeId   = selectId.replace('-course-filter', '-grade-filter');
+  const gradeSel  = document.getElementById(gradeId);
+  if (gradeSel) {
+    const grades = [...new Set(results.map(r => gradoDeCurso(r.curso)).filter(g => g))]
+                    .sort((a,b) => (parseInt(a)||99) - (parseInt(b)||99));
+    gradeSel.innerHTML = '<option value="">— todos —</option>' +
+      grades.map(g => `<option value="${g}">${g}°</option>`).join('');
+    gradeSel.onchange = () => {
+      // Al cambiar grado, filtrar también el dropdown de cursos
+      const g = gradeSel.value;
+      const filtered = g ? courses.filter(c => gradoDeCurso(c) === g) : courses;
+      sel.innerHTML = '<option value="">— todos —</option>' +
+        filtered.map(c => `<option value="${c}">${c}</option>`).join('');
+      sel.value = '';
+      _onResultsFilterChange(selectId);
+    };
+  }
   bar.style.display = 'flex';
-  // Re-render de la tabla cuando cambia el filtro
-  sel.onchange = () => {
-    if (selectId === 'sipagre-course-filter')  renderSipagreTable();
-    if (selectId === 'msipagre-course-filter') renderMSipagreTable();
-  };
+  sel.onchange = () => _onResultsFilterChange(selectId);
+}
+
+function _onResultsFilterChange(selectId) {
+  if (selectId === 'sipagre-course-filter')  renderSipagreTable();
+  if (selectId === 'msipagre-course-filter') renderMSipagreTable();
 }
 
 async function _generatePdfForResults(filteredResults, allResults, simulacroLabel, fileName) {
@@ -2782,28 +2829,38 @@ async function _generatePdfForResults(filteredResults, allResults, simulacroLabe
   doc.save(fileName);
 }
 
+function _applyResultFilters(allResults, gradeF, cursoF) {
+  let filtered = allResults.slice();
+  if (gradeF) filtered = filtered.filter(r => gradoDeCurso(r.curso) === gradeF);
+  if (cursoF) filtered = filtered.filter(r => (r.curso||'').trim() === cursoF);
+  return filtered;
+}
+
 async function downloadCoursePdfs() {
   if (!sipagreResults || !sipagreResults.length) {
     document.getElementById('sipagre-status').innerHTML =
       '<p style="color:var(--danger);">Primero genera los resultados.</p>'; return;
   }
   const curso = document.getElementById('sipagre-course-filter').value;
+  const grade = document.getElementById('sipagre-grade-filter').value;
   const status = document.getElementById('sipagre-status');
   const btn = document.getElementById('btn-course-pdf');
   btn.disabled = true; btn.textContent = 'Generando...';
   try {
-    const filtered = curso ? sipagreResults.filter(r => (r.curso||'').trim() === curso) : sipagreResults;
+    const filtered = _applyResultFilters(sipagreResults, grade, curso);
     if (!filtered.length) {
-      status.innerHTML = `<p style="color:var(--danger);">No hay estudiantes en el curso "${curso}".</p>`;
-      btn.disabled = false; btn.textContent = '📥 Descargar curso'; return;
+      const desc = curso ? `el curso "${curso}"` : (grade ? `el grado ${grade}°` : 'el filtro');
+      status.innerHTML = `<p style="color:var(--danger);">No hay estudiantes en ${desc}.</p>`;
+      btn.disabled = false; btn.textContent = '📥 Descargar'; return;
     }
-    const fname = curso ? `Resultados_SIPAGRE_${curso}.pdf` : 'Resultados_SIPAGRE.pdf';
+    const tag = curso || (grade ? `${grade}grado` : '');
+    const fname = tag ? `Resultados_SIPAGRE_${tag}.pdf` : 'Resultados_SIPAGRE.pdf';
     await _generatePdfForResults(filtered, sipagreResults, 'SIPAGRE', fname);
     status.innerHTML = `<p style="color:var(--success);font-weight:600;">PDF descargado (${filtered.length} estudiante${filtered.length>1?'s':''}).</p>`;
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
-  btn.disabled = false; btn.textContent = '📥 Descargar curso';
+  btn.disabled = false; btn.textContent = '📥 Descargar';
 }
 
 async function downloadMCoursePdfs() {
@@ -2812,22 +2869,25 @@ async function downloadMCoursePdfs() {
       '<p style="color:var(--danger);">Primero genera los resultados.</p>'; return;
   }
   const curso = document.getElementById('msipagre-course-filter').value;
+  const grade = document.getElementById('msipagre-grade-filter').value;
   const status = document.getElementById('msipagre-status');
   const btn = document.getElementById('btn-mcourse-pdf');
   btn.disabled = true; btn.textContent = 'Generando...';
   try {
-    const filtered = curso ? msipagreResults.filter(r => (r.curso||'').trim() === curso) : msipagreResults;
+    const filtered = _applyResultFilters(msipagreResults, grade, curso);
     if (!filtered.length) {
-      status.innerHTML = `<p style="color:var(--danger);">No hay estudiantes en el curso "${curso}".</p>`;
-      btn.disabled = false; btn.textContent = '📥 Descargar curso'; return;
+      const desc = curso ? `el curso "${curso}"` : (grade ? `el grado ${grade}°` : 'el filtro');
+      status.innerHTML = `<p style="color:var(--danger);">No hay estudiantes en ${desc}.</p>`;
+      btn.disabled = false; btn.textContent = '📥 Descargar'; return;
     }
-    const fname = curso ? `Resultados_M_SIPAGRE_${curso}.pdf` : 'Resultados_M_SIPAGRE.pdf';
+    const tag = curso || (grade ? `${grade}grado` : '');
+    const fname = tag ? `Resultados_M_SIPAGRE_${tag}.pdf` : 'Resultados_M_SIPAGRE.pdf';
     await _generatePdfForResults(filtered, msipagreResults, 'M SIPAGRE', fname);
     status.innerHTML = `<p style="color:var(--success);font-weight:600;">PDF descargado (${filtered.length} estudiante${filtered.length>1?'s':''}).</p>`;
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
-  btn.disabled = false; btn.textContent = '📥 Descargar curso';
+  btn.disabled = false; btn.textContent = '📥 Descargar';
 }
 
 async function downloadAllPdfs() {
@@ -2916,10 +2976,14 @@ async function generateMSipagreResults() {
 function renderMSipagreTable() {
   const list = document.getElementById('msipagre-students-list');
   if (!msipagreResults || !msipagreResults.length) { list.innerHTML = ''; return; }
-  // Filtrar por curso si hay uno seleccionado
+  // Filtros
   const filterSel = document.getElementById('msipagre-course-filter');
+  const gradeSel  = document.getElementById('msipagre-grade-filter');
   const cursoF    = filterSel ? filterSel.value : '';
-  let view = cursoF ? msipagreResults.filter(r => (r.curso||'').trim() === cursoF) : msipagreResults.slice();
+  const gradeF    = gradeSel  ? gradeSel.value  : '';
+  let view = msipagreResults.slice();
+  if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
+  if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
   // Ordenar por puntaje general descendente (mayor a menor)
   view = view.slice().sort((a, b) => (+b.general||0) - (+a.general||0));
   if (!view.length) {
