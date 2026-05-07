@@ -876,6 +876,9 @@
         <button class="r-view-pill"        data-view="becarios" onclick="setResultsView('becarios')">
           🏆 Becarios (≥300)
         </button>
+        <button class="r-view-pill"        data-view="pregunta" onclick="setResultsView('pregunta')">
+          ❓ Por pregunta
+        </button>
       </div>
 
       <div id="r-status" style="margin-top:6px;"></div>
@@ -1326,7 +1329,147 @@ function _renderCurrentView() {
   if (!unifiedResults) return;
   if (_currentView === 'asign')    return generateSubjectReport();
   if (_currentView === 'becarios') return generateBecariosReport();
+  if (_currentView === 'pregunta') return generateQuestionReport();
   return renderUnifiedTable();   // por defecto: tabla
+}
+
+// ── ANÁLISIS POR PREGUNTA ──────────────────────────────────────────────
+let _questionAnalysisCache = {};   // {simNombre: {data, ts}}
+
+async function generateQuestionReport() {
+  if (!unifiedSimulacro) return;
+  const out = document.getElementById('r-output');
+  const status = document.getElementById('r-status');
+  const simName = unifiedSimulacro.nombre;
+
+  // Si está en caché, lo usamos
+  let analysis = _questionAnalysisCache[simName];
+  if (!analysis) {
+    out.innerHTML = `<p style="color:var(--muted);text-align:center;padding:14px;">
+      ⏳ Calculando porcentaje de aciertos por pregunta…<br>
+      <span style="font-size:.78rem;">Esto puede tardar varios segundos.</span></p>`;
+    try {
+      const resp = await fetch('/analyze_questions', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({simulacro: simName})
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        out.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error'}</p>`;
+        return;
+      }
+      analysis = {data, ts: Date.now()};
+      _questionAnalysisCache[simName] = analysis;
+    } catch (e) {
+      out.innerHTML = '<p style="color:var(--danger);">Error de conexión.</p>';
+      return;
+    }
+  }
+  renderQuestionAnalysis(analysis.data);
+}
+
+function renderQuestionAnalysis(data) {
+  const out = document.getElementById('r-output');
+  const gradeF = document.getElementById('r-grade-select')?.value || '';
+  const cursoF = document.getElementById('r-course-select')?.value || '';
+  const groupBy = cursoF ? 'curso' : (gradeF ? 'grado' : 'all');
+  const groupKey = cursoF ? cursoF : gradeF;
+
+  // Función para tomar el pct relevante según filtro
+  const pctOf = (q) => {
+    if (groupBy === 'curso') return (q.by_curso || {})[groupKey] ?? null;
+    if (groupBy === 'grado') return (q.by_grade || {})[groupKey] ?? null;
+    return q.pct;
+  };
+
+  // Agrupar por asignatura
+  const bySubject = {};
+  data.questions.forEach(q => {
+    if (!bySubject[q.subject]) bySubject[q.subject] = [];
+    const pct = pctOf(q);
+    if (pct !== null) bySubject[q.subject].push({...q, _pct: pct});
+  });
+  Object.values(bySubject).forEach(arr => arr.sort((a,b) => a._pct - b._pct));
+
+  const labels = {
+    'Matematica': 'Matemáticas',
+    'Lectura Critica': 'Lectura Crítica',
+    'Sociales': 'Sociales',
+    'Naturales': 'Naturales',
+    'Ingles': 'Inglés',
+  };
+  const filterLabel = cursoF ? `Curso ${cursoF}` :
+                      gradeF ? `Grado ${gradeF}°` : 'General';
+
+  let html = `<h3 style="font-size:.95rem;margin-bottom:10px;color:var(--primary-light);
+              border-bottom:1px solid var(--card-border);padding-bottom:6px;">
+    ❓ Análisis por pregunta — ${filterLabel}</h3>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px;">
+      Cada asignatura ordenada de menor a mayor % de aciertos
+      (las preguntas más difíciles aparecen primero).
+    </p>`;
+
+  Object.keys(bySubject).forEach(subj => {
+    const arr = bySubject[subj];
+    if (!arr.length) return;
+    const subjLabel = labels[subj] || subj;
+    html += `<details open style="margin-bottom:14px;">
+      <summary style="cursor:pointer;padding:10px 12px;background:rgba(99,102,241,.08);
+                       border-radius:8px;font-weight:700;font-size:.9rem;
+                       color:var(--primary-light);">
+        📚 ${subjLabel} (${arr.length} preguntas)
+      </summary>
+      <div class="results-table-wrap" style="margin-top:8px;">
+        <table class="results-table">
+          <thead><tr>
+            <th style="width:50px;">#</th>
+            <th>Pregunta</th>
+            <th style="width:60px;">Clave</th>
+            <th style="width:70px;">Aciertos</th>
+            <th>% Acierto</th>
+          </tr></thead>
+          <tbody>`;
+    arr.forEach((q, i) => {
+      const pct = q._pct;
+      const color = pct < 30 ? '#ef4444' : pct < 50 ? '#f59e0b' : pct < 70 ? '#eab308' : '#22c55e';
+      html += `<tr>
+        <td>${i+1}</td>
+        <td><strong>${subjLabel.split(' ')[0]} ${q.q}</strong></td>
+        <td><code>${q.key}</code></td>
+        <td>${q.correct}/${q.total}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div style="flex:1;height:8px;background:rgba(255,255,255,.06);
+                        border-radius:4px;overflow:hidden;min-width:80px;">
+              <div style="width:${pct}%;height:100%;background:${color};"></div>
+            </div>
+            <span style="font-weight:700;color:${color};min-width:40px;text-align:right;">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></details>`;
+  });
+
+  if (!Object.keys(bySubject).length) {
+    html += `<p style="color:var(--muted);text-align:center;padding:14px;">
+      Sin datos para el filtro actual.</p>`;
+  }
+
+  // Botón actualizar (re-fetch del backend)
+  const cached = _questionAnalysisCache[unifiedSimulacro.nombre];
+  if (cached) {
+    html += `<p style="font-size:.78rem;color:var(--muted);margin-top:10px;">
+      💾 Análisis cacheado (${_formatAgo(cached.ts)}).
+      <a href="#" onclick="_refreshQuestionAnalysis();return false;"
+         style="color:var(--primary-light);">Actualizar</a></p>`;
+  }
+  out.innerHTML = html;
+}
+
+function _refreshQuestionAnalysis() {
+  if (unifiedSimulacro) delete _questionAnalysisCache[unifiedSimulacro.nombre];
+  generateQuestionReport();
 }
 
 async function generateUnifiedResults() {

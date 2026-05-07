@@ -372,6 +372,100 @@ def add_simulacro(nombre: str, fecha: str, tipo: str, grados: list) -> dict:
         return {'success': False, 'error': str(e)}
 
 
+def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
+    """
+    Para cada pregunta del simulacro: % de aciertos global, por grado y por curso.
+    Numeración relativa por asignatura (Mat-1, Mat-2, ..., Lect-1, ...).
+    """
+    sims = list_simulacros()
+    sim = next((s for s in sims if s['nombre'] == simulacro_nombre), None)
+    if not sim:
+        return {'success': False, 'error': f'Simulacro "{simulacro_nombre}" no encontrado.'}
+
+    spreadsheet = _open_spreadsheet()
+    courses = list_courses()
+    curso_to_grade = {c['name']: c.get('grado','') for c in courses}
+
+    def grade_of(curso):
+        c = (curso or '').strip()
+        if not c: return ''
+        g = curso_to_grade.get(c, '')
+        if g: return g
+        return _grade_from_course_name(c)
+
+    def collect(idx, key_arr, students_dict, q_subject, q_subj_idx):
+        if idx >= len(key_arr):
+            return None
+        correct_ans = (key_arr[idx] or '').strip()
+        if correct_ans in ('', '?', '—'):
+            return None
+        total = 0; correct = 0
+        by_grade = {}; by_curso = {}
+        for sid, stu in students_dict.items():
+            ans_list = stu.get('answers', [])
+            ans = (ans_list[idx] if idx < len(ans_list) else '').strip()
+            if not ans: continue
+            total += 1
+            ok = ans == correct_ans
+            if ok: correct += 1
+            c = stu.get('curso', '').strip()
+            g = grade_of(c)
+            if g:
+                by_grade.setdefault(g, [0, 0])
+                by_grade[g][0] += 1
+                if ok: by_grade[g][1] += 1
+            if c:
+                by_curso.setdefault(c, [0, 0])
+                by_curso[c][0] += 1
+                if ok: by_curso[c][1] += 1
+        return {
+            'subject': q_subject,
+            'q':       q_subj_idx,
+            'key':     correct_ans,
+            'total':   total,
+            'correct': correct,
+            'pct':     round(correct / total * 100) if total else 0,
+            'by_grade': {g: round(c/t*100) for g, (t,c) in by_grade.items() if t},
+            'by_curso': {cc: round(c/t*100) for cc, (t,c) in by_curso.items() if t},
+        }
+
+    questions = []
+    if sim['tipo'] == SIM_COMPLETO:
+        try:
+            ws_1s = spreadsheet.worksheet(sim['sheets'][0])
+            ws_2s = spreadsheet.worksheet(sim['sheets'][1])
+        except Exception:
+            return {'success': False, 'error': 'No se encontraron las hojas 1S/2S del simulacro.'}
+        key_1s = _get_answer_key(ws_1s)
+        key_2s = _get_answer_key(ws_2s)
+        students_1s = _extract_students(ws_1s)
+        students_2s = _extract_students(ws_2s)
+        for subj_name, ranges, _pts in SIPAGRE_SUBJECTS:
+            q_subj_idx = 0
+            for session, start, end in ranges:
+                key_arr = key_1s if session == '1S' else key_2s
+                students_dict = students_1s if session == '1S' else students_2s
+                for idx in range(start, end + 1):
+                    q_subj_idx += 1
+                    item = collect(idx, key_arr, students_dict, subj_name, q_subj_idx)
+                    if item: questions.append(item)
+    else:
+        try:
+            ws_m = spreadsheet.worksheet(sim['sheets'][0])
+        except Exception:
+            return {'success': False, 'error': 'No se encontró la hoja M del simulacro.'}
+        key_m = _get_answer_key(ws_m)
+        students_m = _extract_students(ws_m)
+        for subj_name, (start, end), _pts in M_SIPAGRE_SUBJECTS:
+            q_subj_idx = 0
+            for idx in range(start, end + 1):
+                q_subj_idx += 1
+                item = collect(idx, key_m, students_m, subj_name, q_subj_idx)
+                if item: questions.append(item)
+
+    return {'success': True, 'questions': questions, 'simulacro': simulacro_nombre, 'tipo': sim['tipo']}
+
+
 def uppercase_all_student_names() -> dict:
     """Recorre todas las hojas de respuestas y convierte la columna Nombre (col C)
        a MAYÚSCULAS, excepto en filas KEY o TOTALES y hojas administrativas."""

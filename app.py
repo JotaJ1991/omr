@@ -16,6 +16,7 @@ from sheets_connector import (
     list_courses, add_course, delete_course,
     list_simulacros, add_simulacro, delete_simulacro,
     uppercase_all_student_names,
+    analyze_simulacro_questions,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -314,6 +315,17 @@ def simulacros_add():
     try:
         result = add_simulacro(nombre, fecha, tipo, grados)
         return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/analyze_questions', methods=['POST'])
+def analyze_questions_endpoint():
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('simulacro') or '').strip()
+    try:
+        return jsonify(analyze_simulacro_questions(nombre))
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
