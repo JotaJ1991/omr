@@ -1490,25 +1490,23 @@ async function downloadIntegralPdf() {
     }
 
     // ── PÁGINA DE GRÁFICOS (cuadrícula 2×2) ──
-    // Genera todos los canvases primero
     let barCanvas = null, boxCanvas = null, radarCanvas = null, histCanvas = null;
     if (cursos.length >= 2) {
-      const cursoAvgItems = cursos.map(c => {
-        const arr = view.filter(r => (r.curso||'').trim() === c);
-        const avg = arr.length
-          ? Math.round(arr.reduce((s,r)=>s+(+r.general||0),0)/arr.length) : 0;
-        return {label: c, value: avg, color: '#6366f1', colorEnd: '#06b6d4'};
-      }).sort((a,b) => b.value - a.value);
-      barCanvas = drawBarChartCanvas(cursoAvgItems, {
-        title: `Promedio por curso`, max: 500,
-      });
-      const boxGroups = cursos.map(c => ({
+      // Combo Bar+Box: promedio + distribución por CURSO (puntaje general)
+      const cursoComboGroups = cursos.map(c => ({
         label:  c,
         values: view.filter(r => (r.curso||'').trim() === c).map(r => +r.general || 0),
-        color:  '#6366f1', colorEnd: '#06b6d4',
       }));
-      boxCanvas = drawBoxplotCanvas(boxGroups, {
-        title: `Distribución por curso`, max: 500,
+      barCanvas = drawBarBoxComboCanvas(cursoComboGroups, {
+        title: `Promedio + distribución por curso`, max: 500,
+      });
+      // Combo Bar+Box: por ASIGNATURA (todas las materias del scope)
+      const subjComboGroups = REP_SUBJECTS.filter(s => s.key !== 'general').map(s => ({
+        label:  s.label.replace('Lectura Crítica','Lectura').replace('Sociales y Ciudadanas','Sociales').replace('Ciencias Naturales','Naturales').replace('Matemáticas','Matem.'),
+        values: view.map(r => +r[s.key] || 0),
+      }));
+      boxCanvas = drawBarBoxComboCanvas(subjComboGroups, {
+        title: `Promedio + distribución por asignatura`, max: 100,
       });
       const radarSubjects = REP_SUBJECTS.filter(s => s.key !== 'general');
       const radarLabels = radarSubjects.map(s =>
@@ -2755,6 +2753,171 @@ function drawHeatmapCanvas(rows, cols, data, opts) {
                                             padT + cellH*i + cellH/2);
     });
   });
+
+  return c;
+}
+
+// Combo Bar + Boxplot: por cada grupo dibuja una barra del promedio
+// y encima el boxplot (caja Q1-Q3, mediana, whiskers min/max).
+function drawBarBoxComboCanvas(groups, opts) {
+  const W = 900, H = 460;
+  const c = _newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  const title = opts?.title || '';
+  const max = opts?.max || 100;
+  const padL = 60, padR = 30, padT = title ? 50 : 20, padB = 80;
+  const cw = W - padL - padR;
+  const ch = H - padT - padB;
+
+  // Título
+  if (title) {
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 22px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, 30);
+  }
+  // Cuadrícula
+  ctx.fillStyle = '#64748b';
+  ctx.font = '14px Inter, Arial';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 5; i++) {
+    const yy = padT + ch - (ch * i / 5);
+    const val = Math.round(max * i / 5);
+    ctx.strokeStyle = i === 0 ? '#cbd5e1' : '#e2e8f0';
+    ctx.beginPath();
+    ctx.moveTo(padL, yy); ctx.lineTo(padL + cw, yy);
+    ctx.stroke();
+    ctx.fillText(val, padL - 8, yy);
+  }
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + ch);
+  ctx.lineTo(padL + cw, padT + ch);
+  ctx.stroke();
+
+  function quartiles(values) {
+    if (!values.length) return null;
+    const s = values.slice().sort((a,b) => a-b);
+    const n = s.length;
+    const q = (p) => {
+      const idx = (n - 1) * p;
+      const lo = Math.floor(idx);
+      const hi = Math.ceil(idx);
+      if (lo === hi) return s[lo];
+      return s[lo] + (s[hi] - s[lo]) * (idx - lo);
+    };
+    const sum = values.reduce((a,b) => a+b, 0);
+    return {
+      min: s[0], q1: q(0.25), med: q(0.5), q3: q(0.75), max: s[n-1],
+      avg: sum / n,
+    };
+  }
+
+  const n = groups.length;
+  const slot = cw / n;
+  const barW = slot * 0.7;        // barra del promedio (más ancha)
+  const boxW = slot * 0.35;       // caja Q1-Q3 (más estrecha, encima)
+
+  groups.forEach((g, i) => {
+    const stats = quartiles(g.values);
+    if (!stats) return;
+    const cx = padL + slot * (i + 0.5);
+    const yFor = (v) => padT + ch - (ch * v / max);
+    const barX = cx - barW/2;
+    const yAvg = yFor(stats.avg);
+    const yBase = padT + ch;
+
+    // 1) BARRA del promedio (con gradiente, opacidad media)
+    const grad = ctx.createLinearGradient(0, yAvg, 0, yBase);
+    grad.addColorStop(0, g.barColor || 'rgba(99,102,241,0.55)');
+    grad.addColorStop(1, g.barColorEnd || 'rgba(6,182,212,0.30)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(barX, yAvg, barW, yBase - yAvg, 4);
+    ctx.fill();
+    // Línea horizontal del promedio (claramente visible)
+    ctx.strokeStyle = g.barLine || '#1e3a8a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(barX, yAvg);
+    ctx.lineTo(barX + barW, yAvg);
+    ctx.stroke();
+    // Valor del promedio sobre la barra
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 13px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`${Math.round(stats.avg)}`, cx, yAvg - 18);
+
+    // 2) BOXPLOT encima
+    const yMin = yFor(stats.min);
+    const yMax = yFor(stats.max);
+    const yQ1  = yFor(stats.q1);
+    const yQ3  = yFor(stats.q3);
+    const yMed = yFor(stats.med);
+    const x1   = cx - boxW/2;
+    const x2   = cx + boxW/2;
+    // Whiskers
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(cx, yMin); ctx.lineTo(cx, yQ1);
+    ctx.moveTo(cx, yQ3);  ctx.lineTo(cx, yMax);
+    ctx.stroke();
+    // Topes
+    ctx.beginPath();
+    ctx.moveTo(cx - boxW*0.25, yMin); ctx.lineTo(cx + boxW*0.25, yMin);
+    ctx.moveTo(cx - boxW*0.25, yMax); ctx.lineTo(cx + boxW*0.25, yMax);
+    ctx.stroke();
+    // Caja Q1-Q3
+    ctx.fillStyle = g.boxColor || 'rgba(250, 204, 21, 0.85)';   // dorado
+    ctx.fillRect(x1, yQ3, boxW, yQ1 - yQ3);
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(x1, yQ3, boxW, yQ1 - yQ3);
+    // Mediana
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, yMed); ctx.lineTo(x2, yMed);
+    ctx.stroke();
+
+    // Etiqueta
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '14px Inter, Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const lbl = g.label;
+    const words = lbl.split(' ');
+    if (lbl.length > 9 && words.length > 1) {
+      ctx.fillText(words[0], cx, padT + ch + 8);
+      ctx.fillText(words.slice(1).join(' '), cx, padT + ch + 26);
+    } else {
+      ctx.fillText(lbl, cx, padT + ch + 8);
+    }
+  });
+
+  // Leyenda
+  const legY = H - 22;
+  ctx.font = '12px Inter, Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  let lx = padL;
+  // barra promedio
+  ctx.fillStyle = 'rgba(99,102,241,0.55)';
+  ctx.fillRect(lx, legY - 5, 14, 10);
+  ctx.fillStyle = '#475569';
+  ctx.fillText('Barra = Promedio', lx + 18, legY);
+  lx += 130;
+  // caja
+  ctx.fillStyle = 'rgba(250,204,21,0.85)';
+  ctx.fillRect(lx, legY - 5, 14, 10);
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(lx, legY - 5, 14, 10);
+  ctx.fillStyle = '#475569';
+  ctx.fillText('Caja = Q1-Q3 (mediana, mín-máx)', lx + 18, legY);
 
   return c;
 }
