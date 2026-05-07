@@ -578,13 +578,27 @@
         <span id="active-badge-text">Cargando…</span>
       </div>
 
-      <label>Simulacro activo</label>
-      <div class="sheet-selector" style="margin-bottom:8px;">
-        <select id="simulacro-select" onchange="selectSimulacroSession()">
-          <option value="">— sin simulacro —</option>
-        </select>
-        <button class="btn-icon" title="Recargar" onclick="loadSimulacros().then(() => _refreshSimulacroSelect())">🔄</button>
-        <button class="btn-icon" title="Nuevo simulacro" onclick="showNewSimulacroModal()">➕</button>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <div style="flex:1;min-width:160px;">
+          <label>Simulacro activo</label>
+          <div class="sheet-selector">
+            <select id="simulacro-select" onchange="selectSimulacroSession()">
+              <option value="">— sin simulacro —</option>
+            </select>
+            <button class="btn-icon" title="Recargar" onclick="loadSimulacros()">🔄</button>
+            <button class="btn-icon" title="Nuevo simulacro" onclick="showNewSimulacroModal()">➕</button>
+          </div>
+        </div>
+        <div style="flex:1;min-width:160px;">
+          <label>Curso</label>
+          <div class="sheet-selector">
+            <select id="student-curso" onchange="onCursoChange()">
+              <option value="">— sin curso —</option>
+            </select>
+            <button class="btn-icon" title="Recargar cursos" onclick="loadCourses()" type="button">🔄</button>
+            <button class="btn-icon" title="Agregar curso" onclick="showNewCourseModal()" type="button">➕</button>
+          </div>
+        </div>
       </div>
 
       <!-- Sesión (solo se muestra para Completo) -->
@@ -603,6 +617,12 @@
           </label>
         </div>
       </div>
+
+      <!-- Aviso al combinar simulacro + curso -->
+      <div id="curso-sim-mismatch" style="display:none;margin-top:10px;
+           padding:8px 12px;border-radius:8px;font-size:.8rem;
+           background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);
+           color:#fbbf24;"></div>
 
       <!-- Modo manual: hoja existente (avanzado, opcional) -->
       <details style="margin-top:14px;">
@@ -632,15 +652,6 @@
       <p style="font-size:.78rem;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
         💡 Ingresa al menos nombre o ID
       </p>
-
-      <label>Curso</label>
-      <div class="sheet-selector">
-        <select id="student-curso">
-          <option value="">— sin curso —</option>
-        </select>
-        <button class="btn-icon" title="Recargar cursos" onclick="loadCourses()" type="button">🔄</button>
-        <button class="btn-icon" title="Agregar curso" onclick="showNewCourseModal()" type="button">➕</button>
-      </div>
     </div>
 
     <!-- 3. Captura -->
@@ -1471,6 +1482,7 @@ async function selectSimulacroSession() {
   const sessionPicker = document.getElementById('session-picker');
   if (!nombre) {
     sessionPicker.style.display = 'none';
+    _checkCursoSimMismatch();
     return;
   }
   const sim = _simulacrosCache.find(s => s.nombre === nombre);
@@ -1480,7 +1492,7 @@ async function selectSimulacroSession() {
   if (sim.tipo === 'completo') {
     sessionPicker.style.display = 'block';
     const session = document.querySelector('input[name="session"]:checked');
-    if (!session) return;  // todavia no eligio sesion
+    if (!session) { _checkCursoSimMismatch(); return; }  // todavia no eligio sesion
     const targetSheet = session.value === '1S' ? sim.sheets[0] : sim.sheets[1];
     const targetProfile = session.value === '1S' ? '1SSIPAGRE' : '2SSIPAGRE';
     await _activateSimulacroSheet(targetSheet, targetProfile);
@@ -1488,6 +1500,34 @@ async function selectSimulacroSession() {
     sessionPicker.style.display = 'none';
     const targetSheet = sim.sheets[0];   // unica hoja M
     await _activateSimulacroSheet(targetSheet, 'MSIPAGRE');
+  }
+  _checkCursoSimMismatch();
+}
+
+// Cuando cambia el curso del estudiante: validar coincidencia con grados del simulacro
+function onCursoChange() {
+  _checkCursoSimMismatch();
+}
+
+// Verifica que el grado del curso seleccionado este dentro de los grados objetivo
+// del simulacro. Si no, muestra un aviso amarillo (no bloquea).
+function _checkCursoSimMismatch() {
+  const warn = document.getElementById('curso-sim-mismatch');
+  if (!warn) return;
+  const simSel = document.getElementById('simulacro-select');
+  const cursoSel = document.getElementById('student-curso');
+  const simNombre = simSel ? simSel.value : '';
+  const curso     = cursoSel ? cursoSel.value : '';
+  if (!simNombre || !curso) { warn.style.display = 'none'; return; }
+  const sim = _simulacrosCache.find(s => s.nombre === simNombre);
+  if (!sim) { warn.style.display = 'none'; return; }
+  const cursoGrade = gradoDeCurso(curso);
+  if (!cursoGrade) { warn.style.display = 'none'; return; }
+  if (sim.grados.length && !sim.grados.includes(cursoGrade)) {
+    warn.textContent = `⚠️ El curso "${curso}" es de grado ${cursoGrade}° pero el simulacro "${sim.nombre}" es para grados ${sim.grados.map(g=>g+'°').join(', ')}.`;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
   }
 }
 
