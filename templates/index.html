@@ -1453,7 +1453,7 @@ async function downloadIntegralPdf() {
 
     // ── PORTADA ──
     let y = _drawReportHeader(doc, `Análisis integral`, `${simName} · ${scopeLabel}`);
-    y = _drawSectionTitle(doc, 10, y + 2, '📊', 'Datos relevantes');
+    y = _drawSectionTitle(doc, 10, y + 2, 'bars', 'Datos relevantes');
     y += 2;
     y = _drawSummaryCards(doc, 10, y, [
       {icon:'',  label:'Estudiantes',      value: general.n},
@@ -1469,7 +1469,7 @@ async function downloadIntegralPdf() {
     // ── PORTADA + TABLA DE CURSOS (misma página) ──
     if (gradeF && !cursoF && cursos.length >= 1) {
       y += 2;
-      y = _drawSectionTitle(doc, 10, y, '📋', `Puntajes por curso — ${scopeLabel}`);
+      y = _drawSectionTitle(doc, 10, y, 'clipboard', `Puntajes por curso - ${scopeLabel}`);
       y += 2;
       const cursoRows = cursos.map(c => {
         const arr = view.filter(r => (r.curso||'').trim() === c);
@@ -1534,7 +1534,7 @@ async function downloadIntegralPdf() {
     if (barCanvas && boxCanvas && radarCanvas && histCanvas) {
       doc.addPage('letter','p');
       let yy = 20;
-      yy = _drawSectionTitle(doc, 10, yy, '📈', 'Graficos comparativos');
+      yy = _drawSectionTitle(doc, 10, yy, 'chart-up', 'Graficos comparativos');
       yy += 4;
       // Cuadrícula: 2 columnas × 2 filas, cada celda 95×120 mm (uniforme)
       const cellW = 95, cellH = 120, gap = 5;
@@ -1551,7 +1551,7 @@ async function downloadIntegralPdf() {
       y = row2y + cellH + 4;
     } else if (histCanvas) {
       doc.addPage('letter','p'); y = 20;
-      y = _drawSectionTitle(doc, 10, y, '📉', 'Distribucion de puntajes');
+      y = _drawSectionTitle(doc, 10, y, 'histogram', 'Distribucion de puntajes');
       y += 4;
       const imgH = pw * 380/900;
       try { doc.addImage(histCanvas.toDataURL('image/png'), 'PNG', 10, y, pw, imgH); } catch(e){}
@@ -1560,7 +1560,7 @@ async function downloadIntegralPdf() {
 
     // ── TABLA: Posibles becarios ──
     doc.addPage('letter','p'); y = 20;
-    y = _drawSectionTitle(doc, 10, y, '🏆', `Posibles becarios (>=300) - ${becarios.length} estudiante(s)`);
+    y = _drawSectionTitle(doc, 10, y, 'trophy', `Posibles becarios (>=300) - ${becarios.length} estudiante(s)`);
     y += 4;
     if (!becarios.length) {
       doc.setFont('helvetica','normal'); doc.setFontSize(10);
@@ -1582,7 +1582,7 @@ async function downloadIntegralPdf() {
     // ── Una hoja por curso con sus estudiantes ──
     cursos.forEach(c => {
       doc.addPage('letter','p'); y = 20;
-      y = _drawSectionTitle(doc, 10, y, '🎓', `Estudiantes - Curso ${c}`);
+      y = _drawSectionTitle(doc, 10, y, 'cap', `Estudiantes - Curso ${c}`);
       y += 4;
       const arr = view.filter(r => (r.curso||'').trim() === c)
                        .sort((a,b)=>(+b.general||0)-(+a.general||0));
@@ -1612,7 +1612,7 @@ async function downloadIntegralPdf() {
       doc.addPage('letter','p'); let y2 = 20;
       const groupBy  = cursoF ? 'curso' : 'grado';
       const groupKey = cursoF ? cursoF : gradeF;
-      y2 = _drawSectionTitle(doc, 10, y2, '❓', `Analisis por pregunta - ${scopeLabel}`);
+      y2 = _drawSectionTitle(doc, 10, y2, 'question', `Analisis por pregunta - ${scopeLabel}`);
       y2 += 2;
       doc.setFont('helvetica','italic'); doc.setFontSize(8);
       doc.setTextColor(120,120,120);
@@ -2482,17 +2482,149 @@ function _drawReportFooter(doc, label) {
   }
 }
 
-// Título de sección con barra dorada lateral (el primer parámetro emoji se ignora en PDF)
-function _drawSectionTitle(doc, x, y, _emoji, text) {
+// Iconos vectoriales SIPAGRE (azul + dorado), dibujados con primitivas de jsPDF
+function _drawIcon(doc, x, y, size, type) {
+  const cx = x + size/2;
+  const cy = y + size/2;
+  const blue = SIPAGRE_BLUE;
+  const dark = SIPAGRE_BLUE_DARK;
+  const gold = SIPAGRE_GOLD;
+  switch (type) {
+    case 'bars': { // 📊 estadísticas
+      const barW = size * 0.16;
+      const xs = [x+size*0.20, x+size*0.42, x+size*0.64];
+      const hs = [0.45, 0.78, 0.6];
+      hs.forEach((h,i) => {
+        doc.setFillColor(...(i===1 ? gold : blue));
+        doc.rect(xs[i], y+size*0.85 - size*h, barW, size*h, 'F');
+      });
+      break;
+    }
+    case 'clipboard': { // 📋 tabla
+      doc.setDrawColor(...dark); doc.setLineWidth(0.4);
+      doc.roundedRect(x+size*0.18, y+size*0.18, size*0.64, size*0.72, 0.6, 0.6, 'S');
+      doc.setFillColor(...gold);
+      doc.roundedRect(x+size*0.34, y+size*0.06, size*0.32, size*0.18, 0.4, 0.4, 'F');
+      doc.setDrawColor(...blue); doc.setLineWidth(0.3);
+      [0.42, 0.58, 0.74].forEach(yp => {
+        doc.line(x+size*0.28, y+size*yp, x+size*0.72, y+size*yp);
+      });
+      break;
+    }
+    case 'trophy': { // 🏆 becarios
+      doc.setFillColor(...gold);
+      doc.roundedRect(x+size*0.30, y+size*0.15, size*0.40, size*0.42, 1, 1, 'F');
+      doc.setLineWidth(0.7); doc.setDrawColor(...gold);
+      doc.ellipse(x+size*0.22, y+size*0.32, size*0.07, size*0.12, 'S');
+      doc.ellipse(x+size*0.78, y+size*0.32, size*0.07, size*0.12, 'S');
+      doc.setFillColor(...gold);
+      doc.rect(x+size*0.45, y+size*0.57, size*0.10, size*0.16, 'F');
+      doc.rect(x+size*0.30, y+size*0.73, size*0.40, size*0.09, 'F');
+      break;
+    }
+    case 'cap': { // 🎓 estudiantes
+      // Birrete (rombo)
+      const r = size*0.32;
+      const top = [cx, cy - r*0.55];
+      const right = [cx + r, cy - r*0.05];
+      const bot = [cx, cy + r*0.45];
+      const left = [cx - r, cy - r*0.05];
+      doc.setFillColor(...blue);
+      doc.lines([
+        [right[0]-top[0], right[1]-top[1]],
+        [bot[0]-right[0], bot[1]-right[1]],
+        [left[0]-bot[0], left[1]-bot[1]],
+      ], top[0], top[1], [1,1], 'F', true);
+      // Banda
+      doc.setFillColor(...dark);
+      doc.rect(x+size*0.27, y+size*0.6, size*0.46, size*0.06, 'F');
+      // Borla
+      doc.setLineWidth(0.4); doc.setDrawColor(...gold);
+      doc.line(cx + r*0.4, cy - r*0.05, cx + r*0.4, cy + r*0.4);
+      doc.setFillColor(...gold);
+      doc.circle(cx + r*0.4, cy + r*0.45, 0.5, 'F');
+      break;
+    }
+    case 'question': { // ❓
+      doc.setFillColor(...blue);
+      doc.circle(cx, cy, size*0.42, 'F');
+      doc.setTextColor(...gold);
+      doc.setFont('helvetica','bold');
+      // Tamaño de fuente proporcional (size en mm → fontSize en pt: 1mm ≈ 2.83pt)
+      doc.setFontSize(size * 2.2);
+      doc.text('?', cx, cy + size*0.22, {align:'center'});
+      break;
+    }
+    case 'chart-up': { // 📈
+      doc.setDrawColor(...blue); doc.setLineWidth(0.5);
+      doc.line(x+size*0.2, y+size*0.18, x+size*0.2, y+size*0.82);
+      doc.line(x+size*0.2, y+size*0.82, x+size*0.86, y+size*0.82);
+      doc.setDrawColor(...gold); doc.setLineWidth(0.9);
+      doc.line(x+size*0.25, y+size*0.70, x+size*0.43, y+size*0.55);
+      doc.line(x+size*0.43, y+size*0.55, x+size*0.62, y+size*0.40);
+      doc.line(x+size*0.62, y+size*0.40, x+size*0.80, y+size*0.22);
+      doc.setFillColor(...gold);
+      doc.triangle(x+size*0.86, y+size*0.18,
+                    x+size*0.72, y+size*0.18,
+                    x+size*0.86, y+size*0.32, 'F');
+      break;
+    }
+    case 'histogram': { // 📉 histograma
+      doc.setDrawColor(...blue); doc.setLineWidth(0.5);
+      doc.line(x+size*0.18, y+size*0.18, x+size*0.18, y+size*0.85);
+      doc.line(x+size*0.18, y+size*0.85, x+size*0.92, y+size*0.85);
+      const baseY = y+size*0.83;
+      const startX = x+size*0.22;
+      const innerW = size*0.66;
+      const innerH = size*0.6;
+      const heights = [0.30, 0.55, 0.78, 0.62, 0.40, 0.22];
+      const barW = innerW / heights.length;
+      heights.forEach((h, i) => {
+        doc.setFillColor(...(h >= 0.6 ? gold : blue));
+        doc.rect(startX + barW*i + barW*0.1, baseY - innerH*h,
+                  barW*0.8, innerH*h, 'F');
+      });
+      break;
+    }
+    case 'star': { // ⭐
+      const r1 = size*0.45, r2 = size*0.18;
+      const pts = [];
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI/2 + (i * Math.PI / 5);
+        const r = i % 2 === 0 ? r1 : r2;
+        pts.push([cx + Math.cos(a)*r, cy + Math.sin(a)*r]);
+      }
+      const deltas = [];
+      for (let i = 1; i < pts.length; i++) {
+        deltas.push([pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]]);
+      }
+      doc.setFillColor(...gold);
+      doc.lines(deltas, pts[0][0], pts[0][1], [1,1], 'F', true);
+      break;
+    }
+    default:
+      // Cuadrado dorado por defecto
+      doc.setFillColor(...gold);
+      doc.rect(x+size*0.3, y+size*0.3, size*0.4, size*0.4, 'F');
+  }
+}
+
+// Título de sección con icono vectorial y barra dorada lateral
+function _drawSectionTitle(doc, x, y, iconType, text) {
   const pw = 215.9 - 20;
   doc.setFillColor(245, 247, 252);
-  doc.roundedRect(x, y - 4, pw, 10, 1.5, 1.5, 'F');
+  doc.roundedRect(x, y - 4, pw, 11, 1.5, 1.5, 'F');
   doc.setFillColor(...SIPAGRE_GOLD);
-  doc.rect(x, y - 4, 3, 10, 'F');
+  doc.rect(x, y - 4, 3, 11, 'F');
+  let textX = x + 7;
+  if (iconType) {
+    _drawIcon(doc, x + 5, y - 3, 9, iconType);
+    textX = x + 18;
+  }
   doc.setFont('helvetica','bold'); doc.setFontSize(11);
   doc.setTextColor(...SIPAGRE_BLUE_DARK);
-  doc.text(String(text), x + 7, y + 2.5);
-  return y + 11;
+  doc.text(String(text), textX, y + 3);
+  return y + 12;
 }
 
 // Bar chart: array de {label, value, max?, color?} → canvas
