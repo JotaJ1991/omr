@@ -854,6 +854,20 @@
       </div>
     </div>
 
+    <!-- ── Simulacros ── -->
+    <div class="card">
+      <h2>🎯 Simulacros</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Cataloga los simulacros del año (Marzo 2026, Junio 2026, etc.).
+        Al crear uno se generan automáticamente las hojas de respuestas necesarias.
+      </p>
+      <button class="btn-success" onclick="showNewSimulacroModal()" type="button"
+              style="padding:10px 18px;font-size:.88rem;margin-bottom:14px;">
+        ➕ Nuevo simulacro
+      </button>
+      <div id="simulacros-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
     <!-- ── Ayuda: flujo ── -->
     <div class="card">
       <h2>💾 Flujo de trabajo</h2>
@@ -923,6 +937,35 @@
   </div>
 </div>
 
+<!-- Modal nuevo simulacro -->
+<div class="modal-overlay" id="simulacro-modal">
+  <div class="modal" style="width:min(440px, calc(100vw - 32px));">
+    <h3>🎯 Nuevo simulacro</h3>
+    <label>Nombre</label>
+    <input type="text" id="new-simulacro-name" placeholder="Ej: Marzo 2026, Junio 2026"
+           onkeydown="if(event.key==='Enter') createNewSimulacro()">
+    <label>Fecha</label>
+    <input type="date" id="new-simulacro-fecha">
+    <label>Tipo</label>
+    <select id="new-simulacro-tipo" onchange="_onSimulacroTipoChange()">
+      <option value="completo">Completo (1S + 2S) — grados 10 y 11</option>
+      <option value="media">Media jornada (M) — grados 6 a 9</option>
+    </select>
+    <label style="margin-top:6px;">Grados objetivo</label>
+    <div id="simulacro-grados-checks"
+         style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="hideNewSimulacroModal()">Cancelar</button>
+      <button class="btn-success"   onclick="createNewSimulacro()">✅ Crear</button>
+    </div>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:10px;">
+      Se crearán automáticamente las hojas en tu Google Sheets.
+    </p>
+    <div id="simulacro-modal-error"
+         style="color:var(--danger);font-size:.85rem;margin-top:10px;display:none;"></div>
+  </div>
+</div>
+
 <!-- Modal nuevo curso -->
 <div class="modal-overlay" id="course-modal">
   <div class="modal">
@@ -974,6 +1017,7 @@ let state = {
   await loadSheets();
   await loadProfile();
   await loadCourses();
+  await loadSimulacros();
 })();
 
 // ══ CURSOS ════════════════════════════════════════════════════════════════
@@ -1062,6 +1106,129 @@ async function createNewCourse() {
   } finally {
     btn.disabled = false; btn.textContent = '✅ Agregar';
   }
+}
+
+// ══ SIMULACROS ════════════════════════════════════════════════════════════
+let _simulacrosCache = [];
+
+async function loadSimulacros() {
+  try {
+    const resp = await fetch('/simulacros');
+    const data = await resp.json();
+    _simulacrosCache = data.simulacros || [];
+    renderSimulacrosList();
+  } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
+}
+
+function renderSimulacrosList() {
+  const cont = document.getElementById('simulacros-list');
+  if (!cont) return;
+  if (!_simulacrosCache.length) {
+    cont.innerHTML = `<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:14px;">
+      No hay simulacros aún. Toca "Nuevo simulacro" para empezar.</p>`;
+    return;
+  }
+  cont.innerHTML = _simulacrosCache.map(s => `
+    <div style="border:1px solid var(--card-border);border-radius:10px;padding:12px 14px;
+                display:flex;align-items:center;justify-content:space-between;gap:10px;
+                background:rgba(255,255,255,.02);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:.95rem;">${s.nombre}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:2px;">
+          ${s.fecha || 'sin fecha'} · ${s.tipo === 'completo' ? 'Completo' : 'Media jornada'} ·
+          Grados: ${s.grados.length ? s.grados.map(g => g+'°').join(', ') : '—'}
+        </div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">
+          📄 ${s.sheets.join(' · ')}
+        </div>
+      </div>
+      <button onclick="confirmDeleteSimulacro('${s.nombre.replace(/'/g,"\\'")}')"
+              title="Eliminar del catálogo (no borra hojas)"
+              style="border:1px solid rgba(239,68,68,.3);background:transparent;
+                     color:var(--danger);padding:6px 10px;border-radius:8px;
+                     cursor:pointer;font-size:.78rem;">🗑️</button>
+    </div>
+  `).join('');
+}
+
+function _onSimulacroTipoChange() {
+  const tipo = document.getElementById('new-simulacro-tipo').value;
+  const def = tipo === 'completo' ? ['10','11'] : ['6','7','8','9'];
+  _renderGradosChecks(def);
+}
+
+function _renderGradosChecks(selected = []) {
+  const cont = document.getElementById('simulacro-grados-checks');
+  if (!cont) return;
+  cont.innerHTML = ['6','7','8','9','10','11'].map(g => {
+    const checked = selected.includes(g) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;
+                          font-size:.85rem;background:rgba(255,255,255,.04);
+                          padding:5px 10px;border-radius:8px;
+                          border:1px solid var(--card-border);">
+      <input type="checkbox" value="${g}" ${checked}> ${g}°
+    </label>`;
+  }).join('');
+}
+
+function showNewSimulacroModal() {
+  document.getElementById('new-simulacro-name').value = '';
+  document.getElementById('new-simulacro-fecha').value =
+    new Date().toISOString().slice(0, 10);
+  document.getElementById('new-simulacro-tipo').value = 'completo';
+  _renderGradosChecks(['10','11']);
+  document.getElementById('simulacro-modal-error').style.display = 'none';
+  document.getElementById('simulacro-modal').classList.add('show');
+  setTimeout(() => document.getElementById('new-simulacro-name').focus(), 100);
+}
+
+function hideNewSimulacroModal() {
+  document.getElementById('simulacro-modal').classList.remove('show');
+}
+
+async function createNewSimulacro() {
+  const nombre = document.getElementById('new-simulacro-name').value.trim();
+  const fecha  = document.getElementById('new-simulacro-fecha').value;
+  const tipo   = document.getElementById('new-simulacro-tipo').value;
+  const grados = Array.from(document.querySelectorAll('#simulacro-grados-checks input:checked'))
+                       .map(i => i.value);
+  const errEl  = document.getElementById('simulacro-modal-error');
+  if (!nombre) { errEl.textContent = 'Escribe un nombre.'; errEl.style.display='block'; return; }
+  if (!grados.length) { errEl.textContent = 'Selecciona al menos un grado.'; errEl.style.display='block'; return; }
+  const btn = document.querySelector('#simulacro-modal .btn-success');
+  btn.disabled = true; btn.textContent = 'Creando…'; errEl.style.display='none';
+  try {
+    const resp = await fetch('/simulacros', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({nombre, fecha, tipo, grados})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      hideNewSimulacroModal();
+      await loadSimulacros();
+      await loadSheets();  // refrescar selector de hojas
+    } else {
+      errEl.textContent = data.error || 'Error al crear el simulacro.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Error de conexión.'; errEl.style.display='block';
+  } finally {
+    btn.disabled = false; btn.textContent = '✅ Crear';
+  }
+}
+
+async function confirmDeleteSimulacro(nombre) {
+  if (!confirm(`¿Eliminar el simulacro "${nombre}" del catálogo? (Las hojas con datos NO se borran)`)) return;
+  try {
+    const resp = await fetch('/simulacros', {
+      method:'DELETE', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({nombre})
+    });
+    const data = await resp.json();
+    if (data.success) await loadSimulacros();
+    else alert(data.error || 'Error al eliminar.');
+  } catch(e) { alert('Error de conexión.'); }
 }
 
 // Devuelve el grado de un curso (string '6'..'11') o '' si no se encuentra

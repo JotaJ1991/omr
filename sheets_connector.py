@@ -30,6 +30,11 @@ CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS_JSON', None)
 COL_OFFSET = 4
 KEY_ROW_NAME = '*** CLAVE ***'
 COURSES_SHEET = 'Cursos'
+SIMULACROS_SHEET = 'Simulacros'
+
+# Tipos de simulacro
+SIM_COMPLETO = 'completo'   # 2 sesiones (1S + 2S)
+SIM_MEDIA    = 'media'      # 1 sesión (M)
 
 
 def _get_sheets_client():
@@ -211,6 +216,150 @@ def delete_course(name: str) -> dict:
                 ws.delete_rows(i + 1)
                 return {'success': True, 'courses': list_courses()}
         return {'success': False, 'error': 'Curso no encontrado.'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+# ── Simulacros ────────────────────────────────────────────────────────────
+def _ensure_simulacros_sheet():
+    """Crea/verifica la hoja 'Simulacros'. Columnas: Nombre, Fecha, Tipo, Grados."""
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(SIMULACROS_SHEET)
+        header = ws.row_values(1) or []
+        if len(header) < 4 or header[0].strip().lower() != 'nombre':
+            ws.update('A1:D1', [['Nombre', 'Fecha', 'Tipo', 'Grados']],
+                      value_input_option='RAW')
+    except Exception:
+        ws = ss.add_worksheet(title=SIMULACROS_SHEET, rows=200, cols=5)
+        ws.update('A1:D1', [['Nombre', 'Fecha', 'Tipo', 'Grados']],
+                  value_input_option='RAW')
+        try:
+            ws.format('A1:D1', {
+                'backgroundColor': {'red': 0.39, 'green': 0.40, 'blue': 0.95},
+                'textFormat': {'bold': True,
+                               'foregroundColor': {'red':1,'green':1,'blue':1}},
+                'horizontalAlignment': 'CENTER'
+            })
+        except Exception:
+            pass
+    return ws
+
+
+def simulacro_sheet_names(nombre: str, tipo: str) -> dict:
+    """Devuelve los nombres de las hojas asociadas a un simulacro.
+       Convención:
+         Completo -> '{nombre} - 1S' y '{nombre} - 2S'
+         Media    -> '{nombre} M'
+       Hoja de resultados:
+         Completo -> 'Resultados {nombre}'
+         Media    -> 'Resultados {nombre} M'
+    """
+    nombre = (nombre or '').strip()
+    if tipo == SIM_COMPLETO:
+        return {
+            'sheets':  [f'{nombre} - 1S', f'{nombre} - 2S'],
+            'results': f'Resultados {nombre}',
+        }
+    else:
+        return {
+            'sheets':  [f'{nombre} M'],
+            'results': f'Resultados {nombre} M',
+        }
+
+
+def list_simulacros() -> list:
+    """Lista los simulacros como [{nombre, fecha, tipo, grados, sheets, results}, ...]."""
+    try:
+        ws = _ensure_simulacros_sheet()
+        rows = ws.get_all_values()[1:]
+        out = []
+        seen = set()
+        for r in rows:
+            nombre = (r[0] if len(r) > 0 else '').strip()
+            fecha  = (r[1] if len(r) > 1 else '').strip()
+            tipo   = (r[2] if len(r) > 2 else '').strip().lower()
+            grados = (r[3] if len(r) > 3 else '').strip()
+            if not nombre or nombre in seen:
+                continue
+            seen.add(nombre)
+            if tipo not in (SIM_COMPLETO, SIM_MEDIA):
+                tipo = SIM_COMPLETO
+            grados_list = [g.strip() for g in grados.split(',') if g.strip()]
+            sn = simulacro_sheet_names(nombre, tipo)
+            out.append({
+                'nombre':  nombre,
+                'fecha':   fecha,
+                'tipo':    tipo,
+                'grados':  grados_list,
+                'sheets':  sn['sheets'],
+                'results': sn['results'],
+            })
+        # Ordenar por fecha desc (mas recientes primero)
+        out.sort(key=lambda s: s['fecha'], reverse=True)
+        return out
+    except Exception:
+        return []
+
+
+def add_simulacro(nombre: str, fecha: str, tipo: str, grados: list) -> dict:
+    """Crea un nuevo simulacro y sus hojas asociadas vacías (con estructura)."""
+    nombre = (nombre or '').strip()
+    fecha  = (fecha or '').strip()
+    tipo   = (tipo or '').strip().lower()
+    if not nombre:
+        return {'success': False, 'error': 'El nombre es obligatorio.'}
+    if tipo not in (SIM_COMPLETO, SIM_MEDIA):
+        return {'success': False, 'error': 'Tipo inválido (completo o media).'}
+    if not isinstance(grados, list):
+        grados = []
+    grados = [str(g).strip() for g in grados if str(g).strip()]
+    try:
+        existing = list_simulacros()
+        if any(s['nombre'] == nombre for s in existing):
+            return {'success': False, 'error': f'El simulacro "{nombre}" ya existe.'}
+
+        ws = _ensure_simulacros_sheet()
+        ws.append_row([nombre, fecha, tipo, ','.join(grados)],
+                      value_input_option='RAW')
+
+        # Crear las hojas asociadas (vacías con estructura)
+        sn = simulacro_sheet_names(nombre, tipo)
+        spreadsheet = _open_spreadsheet()
+        n_q = 125  # default
+        for sname in sn['sheets']:
+            try:
+                spreadsheet.worksheet(sname)
+            except Exception:
+                w = spreadsheet.add_worksheet(title=sname, rows=1000, cols=140)
+                _ensure_structure(w, n_q)
+                _ensure_curso_column(w, n_q)
+
+        return {'success': True, 'simulacro': {
+            'nombre':  nombre, 'fecha': fecha, 'tipo': tipo,
+            'grados':  grados,
+            'sheets':  sn['sheets'],
+            'results': sn['results'],
+        }, 'simulacros': list_simulacros()}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def delete_simulacro(nombre: str) -> dict:
+    """Elimina del catálogo (NO borra las hojas con datos)."""
+    nombre = (nombre or '').strip()
+    if not nombre:
+        return {'success': False, 'error': 'Nombre vacío.'}
+    try:
+        ws = _ensure_simulacros_sheet()
+        col = ws.col_values(1)
+        for i, c in enumerate(col):
+            if i == 0:
+                continue
+            if (c or '').strip() == nombre:
+                ws.delete_rows(i + 1)
+                return {'success': True, 'simulacros': list_simulacros()}
+        return {'success': False, 'error': 'Simulacro no encontrado.'}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 

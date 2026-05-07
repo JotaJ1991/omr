@@ -13,7 +13,8 @@ from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet, generate_sipagre_results,
     generate_msipagre_results,
-    list_courses, add_course, delete_course
+    list_courses, add_course, delete_course,
+    list_simulacros, add_simulacro, delete_simulacro,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -286,6 +287,43 @@ def courses_delete():
     name = (data.get('name') or '').strip()
     try:
         result = delete_course(name)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ─── Simulacros ────────────────────────────────────────────────────────
+@app.route('/simulacros', methods=['GET'])
+def simulacros_list():
+    try:
+        return jsonify({'success': True, 'simulacros': list_simulacros()})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e), 'simulacros': []}), 500
+
+
+@app.route('/simulacros', methods=['POST'])
+def simulacros_add():
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombre') or '').strip()
+    fecha  = (data.get('fecha') or '').strip()
+    tipo   = (data.get('tipo') or '').strip()
+    grados = data.get('grados') or []
+    try:
+        result = add_simulacro(nombre, fecha, tipo, grados)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/simulacros', methods=['DELETE'])
+def simulacros_delete():
+    data = request.get_json(silent=True) or {}
+    nombre = (data.get('nombre') or '').strip()
+    try:
+        result = delete_simulacro(nombre)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
