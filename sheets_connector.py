@@ -1360,15 +1360,32 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     except Exception:
         return {'success': False, 'error': f'Hoja "{sheet_2s}" no encontrada.'}
 
-    # Leer claves
+    # Leer claves globales (legacy). Si están vacías, validar que haya
+    # claves por grado configuradas para el simulacro.
     key_1s = _get_answer_key(ws_1s)
     key_2s = _get_answer_key(ws_2s)
-    if not key_1s:
+
+    def _has_grade_keys(session):
+        sim_name = _find_simulacro_for_sheets([sheet_1s, sheet_2s])
+        if not sim_name: return False
+        try:
+            for kg in list_keys_grade():
+                if (kg['simulacro'] == sim_name
+                        and kg['sesion'] == session
+                        and kg.get('count', 0) > 0):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    if not key_1s and not _has_grade_keys('1S'):
         return {'success': False,
-                'error': f'La hoja "{sheet_1s}" no tiene clave de respuestas.'}
-    if not key_2s:
+                'error': (f'No hay clave de respuestas para "{sheet_1s}". '
+                          'Configura la clave por grado en la pestaña Clave o la global de la hoja.')}
+    if not key_2s and not _has_grade_keys('2S'):
         return {'success': False,
-                'error': f'La hoja "{sheet_2s}" no tiene clave de respuestas.'}
+                'error': (f'No hay clave de respuestas para "{sheet_2s}". '
+                          'Configura la clave por grado en la pestaña Clave o la global de la hoja.')}
 
     # Extraer estudiantes
     students_1s = _extract_students(ws_1s)
@@ -1529,9 +1546,23 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         return {'success': False, 'error': f'Hoja "{sheet_m}" no encontrada.'}
 
     key_m = _get_answer_key(ws_m)
+    # Si no hay clave global, verificar si hay alguna clave por grado registrada
     if not key_m:
-        return {'success': False,
-                'error': f'La hoja "{sheet_m}" no tiene clave de respuestas.'}
+        sim_name = _find_simulacro_for_sheet(sheet_m)
+        has_any = False
+        if sim_name:
+            try:
+                for kg in list_keys_grade():
+                    if (kg['simulacro'] == sim_name and kg['sesion'] == 'M'
+                            and kg.get('count', 0) > 0):
+                        has_any = True; break
+            except Exception:
+                pass
+        if not has_any:
+            return {'success': False,
+                    'error': (f'No hay clave de respuestas para "{sheet_m}". '
+                              'Configura la clave por grado en la pestaña Clave o '
+                              'la clave global de la hoja.')}
 
     students = _extract_students(ws_m)
     if not students:
