@@ -96,14 +96,36 @@ def _get_sheets_client():
     return gspread.authorize(creds)
 
 
-def _open_spreadsheet():
+_SPREADSHEET_CACHE = {'ss': None, 'ts': 0}
+
+def _open_spreadsheet(force_fresh: bool = False):
+    """
+    Abre el Sheets. Cachea el objeto durante 30 s para reducir llamadas a
+    la Sheets API y evitar 429 (quota exceeded) cuando una sola operacion
+    invoca varios helpers que abren la hoja.
+    """
+    import time
+    now = time.time()
+    cached = _SPREADSHEET_CACHE.get('ss')
+    cached_ts = _SPREADSHEET_CACHE.get('ts', 0)
+    if not force_fresh and cached is not None and (now - cached_ts) < 30:
+        return cached
     client = _get_sheets_client()
     try:
-        return client.open_by_key(SPREADSHEET_ID)
-    except Exception:
+        ss = client.open_by_key(SPREADSHEET_ID)
+        _SPREADSHEET_CACHE['ss'] = ss
+        _SPREADSHEET_CACHE['ts'] = now
+        return ss
+    except Exception as e:
+        msg = str(e)
+        # Detectar quota / rate limit
+        if any(k in msg for k in ('429', 'Quota', 'quota', 'Rate', 'rate')):
+            raise ValueError(
+                "Google Sheets reporta limite de lecturas excedido (429). "
+                "Espera unos 30-60 segundos y vuelve a intentar.")
         raise ValueError(
             f"No se pudo abrir el Sheets '{SPREADSHEET_ID}'. "
-            "Verifica el ID y los permisos.")
+            f"Detalle: {msg[:200]}")
 
 
 def _build_header(n=125):
@@ -458,14 +480,34 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         keys_global = {'M': _get_answer_key(ws_m)}
         students_by_session = {'M': _extract_students(ws_m)}
 
+    # Pre-cargar TODAS las claves por grado y anuladas del simulacro en UNA
+    # lectura para evitar múltiples llamadas a Sheets API que disparan 429.
+    keys_idx = {}
+    anu_idx  = {}
+    try:
+        ws_kg = spreadsheet.worksheet(KEYS_GRADE_SHEET)
+        for r in ws_kg.get_all_values()[1:]:
+            if len(r) >= 3 and (r[0] or '').strip() == simulacro_nombre:
+                ses = (r[1] or '').strip().upper()
+                gr  = str(r[2] or '').strip()
+                ans = list(r[3:])
+                while ans and not (ans[-1] or '').strip(): ans.pop()
+                keys_idx[(ses, gr)] = [(a or '').strip() for a in ans]
+    except Exception:
+        keys_idx = {}
+    try:
+        for a in list_anuladas():
+            if a['simulacro'] == simulacro_nombre:
+                anu_idx[(a['sesion'], a['grado'])] = set(a['preguntas'])
+    except Exception:
+        anu_idx = {}
+
     # Cache de claves por (session, grado)
     keys_cache = {}
     def key_for(session, grado):
         ck = (session, grado)
         if ck in keys_cache: return keys_cache[ck]
-        specific = []
-        try: specific = get_key_for_grade(simulacro_nombre, session, grado)
-        except Exception: pass
+        specific = keys_idx.get(ck, [])
         keys_cache[ck] = specific or keys_global.get(session, [])
         return keys_cache[ck]
 
@@ -474,10 +516,7 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
     def anu_for(session, grado):
         ck = (session, grado)
         if ck in anu_cache: return anu_cache[ck]
-        try:
-            anu_cache[ck] = set(get_anuladas_for_grade(simulacro_nombre, session, grado))
-        except Exception:
-            anu_cache[ck] = set()
+        anu_cache[ck] = anu_idx.get(ck, set())
         return anu_cache[ck]
 
     grades_data = {}
@@ -1640,6 +1679,30 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     courses_list = list_courses()
     distribuciones = list_distribuciones()
     sim_name = _find_simulacro_for_sheets([sheet_1s, sheet_2s])
+
+    # Pre-cargar TODAS las claves por grado y anuladas en una sola lectura
+    # de cada hoja (evita N llamadas a Sheets API que disparan 429 quota).
+    keys_idx = {}   # (ses, grado) -> answers list (1-based completas)
+    anu_idx  = {}   # (ses, grado) -> [pregunta1, ...]
+    if sim_name:
+        try:
+            ws_kg = _open_spreadsheet().worksheet(KEYS_GRADE_SHEET)
+            for r in ws_kg.get_all_values()[1:]:
+                if len(r) >= 3 and (r[0] or '').strip() == sim_name:
+                    ses = (r[1] or '').strip().upper()
+                    gr  = str(r[2] or '').strip()
+                    ans = list(r[3:])
+                    while ans and not (ans[-1] or '').strip(): ans.pop()
+                    keys_idx[(ses, gr)] = [(a or '').strip() for a in ans]
+        except Exception:
+            keys_idx = {}
+        try:
+            for a in list_anuladas():
+                if a['simulacro'] == sim_name:
+                    anu_idx[(a['sesion'], a['grado'])] = a['preguntas']
+        except Exception:
+            anu_idx = {}
+
     keys_by_grade = {}  # {grado: {'1S': k1s, '2S': k2s}}
     anuladas_by_grade = {}  # {grado: {'1S': [...], '2S': [...]}}
 
@@ -1664,25 +1727,22 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         if not dist:
             dist = DEFAULT_DISTRIBUCIONES.get(('completo', '11'))
 
-        # Claves por grado (si están registradas)
+        # Claves por grado (lookup en memoria, sin tocar Sheets)
         if grado not in keys_by_grade:
-            specific_1s = get_key_for_grade(sim_name, '1S', grado) if sim_name else []
-            specific_2s = get_key_for_grade(sim_name, '2S', grado) if sim_name else []
+            specific_1s = keys_idx.get(('1S', grado), [])
+            specific_2s = keys_idx.get(('2S', grado), [])
             keys_by_grade[grado] = {
                 '1S': specific_1s or key_1s,
                 '2S': specific_2s or key_2s,
             }
         kfor = keys_by_grade[grado]
 
-        # Preguntas anuladas para este grado
+        # Preguntas anuladas para este grado (lookup en memoria)
         if grado not in anuladas_by_grade:
-            try:
-                anuladas_by_grade[grado] = {
-                    '1S': get_anuladas_for_grade(sim_name, '1S', grado) if sim_name else [],
-                    '2S': get_anuladas_for_grade(sim_name, '2S', grado) if sim_name else [],
-                }
-            except Exception:
-                anuladas_by_grade[grado] = {'1S': [], '2S': []}
+            anuladas_by_grade[grado] = {
+                '1S': anu_idx.get(('1S', grado), []),
+                '2S': anu_idx.get(('2S', grado), []),
+            }
         anu_for = anuladas_by_grade[grado]
 
         scores = _score_student_with_distribution(
@@ -1831,6 +1891,28 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
     anuladas_by_grade = {}
     sim_name = _find_simulacro_for_sheet(sheet_m)
 
+    # Pre-cargar TODAS las claves y anuladas del simulacro en UNA lectura
+    keys_idx = {}   # (ses, grado) -> answers list
+    anu_idx  = {}   # (ses, grado) -> [pregunta1, ...]
+    if sim_name:
+        try:
+            ws_kg = _open_spreadsheet().worksheet(KEYS_GRADE_SHEET)
+            for r in ws_kg.get_all_values()[1:]:
+                if len(r) >= 3 and (r[0] or '').strip() == sim_name:
+                    ses = (r[1] or '').strip().upper()
+                    gr  = str(r[2] or '').strip()
+                    ans = list(r[3:])
+                    while ans and not (ans[-1] or '').strip(): ans.pop()
+                    keys_idx[(ses, gr)] = [(a or '').strip() for a in ans]
+        except Exception:
+            keys_idx = {}
+        try:
+            for a in list_anuladas():
+                if a['simulacro'] == sim_name:
+                    anu_idx[(a['sesion'], a['grado'])] = a['preguntas']
+        except Exception:
+            anu_idx = {}
+
     results = []
     for key in sorted(students.keys()):
         s     = students[key]
@@ -1848,19 +1930,15 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
             dist = DEFAULT_DISTRIBUCIONES.get(('media', '10'))
 
         # Clave: si hay una específica para (simulacro, M, grado), úsala;
-        # sino usa la global del sheet (key_m)
+        # sino usa la global del sheet (key_m). Lookup en memoria.
         if grado not in keys_by_grade:
-            specific = get_key_for_grade(sim_name, 'M', grado) if sim_name else []
+            specific = keys_idx.get(('M', grado), [])
             keys_by_grade[grado] = specific or key_m
         key_for_student = keys_by_grade[grado]
 
-        # Preguntas anuladas para este grado (sesión M)
+        # Preguntas anuladas para este grado (sesión M) — lookup en memoria
         if grado not in anuladas_by_grade:
-            try:
-                anuladas_by_grade[grado] = (
-                    get_anuladas_for_grade(sim_name, 'M', grado) if sim_name else [])
-            except Exception:
-                anuladas_by_grade[grado] = []
+            anuladas_by_grade[grado] = anu_idx.get(('M', grado), [])
         anu_m = anuladas_by_grade[grado]
 
         scores = _score_student_with_distribution(
