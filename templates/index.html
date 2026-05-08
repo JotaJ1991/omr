@@ -1719,8 +1719,18 @@ function _populateAnuSimSelect() {
 function _anuGetDist(tipo, grado) {
   const found = _distribCache.find(d => d.tipo === tipo && String(d.grado) === String(grado));
   if (found && found.materias) return found.materias;
-  // Defaults media (todos los grados 6-10 usan _MEDIA_DEFAULT)
+  // Defaults media: grado 10 tiene 20 por asignatura (total 100);
+  // los demás grados (6-9) usan 25 por asignatura (total 125).
   if (tipo === 'media') {
+    if (String(grado) === '10') {
+      return [
+        {materia:'Matematica',      sesion:'M', inicio:1,   fin:20},
+        {materia:'Lectura Critica', sesion:'M', inicio:21,  fin:40},
+        {materia:'Sociales',        sesion:'M', inicio:41,  fin:60},
+        {materia:'Naturales',       sesion:'M', inicio:61,  fin:80},
+        {materia:'Ingles',          sesion:'M', inicio:81,  fin:100},
+      ];
+    }
     return [
       {materia:'Matematica',      sesion:'M', inicio:1,   fin:25},
       {materia:'Lectura Critica', sesion:'M', inicio:26,  fin:50},

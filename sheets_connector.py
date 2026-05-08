@@ -51,6 +51,16 @@ _MEDIA_DEFAULT = [
     {'materia':'Ingles',          'sesion':'M', 'inicio':101, 'fin':125},
 ]
 
+# Grado 10° — Media con 20 preguntas por asignatura (total 100).
+# Mat 1-20 | Lect 21-40 | Soc 41-60 | Nat 61-80 | Ing 81-100
+_MEDIA_GRADO_10 = [
+    {'materia':'Matematica',      'sesion':'M', 'inicio':1,   'fin':20},
+    {'materia':'Lectura Critica', 'sesion':'M', 'inicio':21,  'fin':40},
+    {'materia':'Sociales',        'sesion':'M', 'inicio':41,  'fin':60},
+    {'materia':'Naturales',       'sesion':'M', 'inicio':61,  'fin':80},
+    {'materia':'Ingles',          'sesion':'M', 'inicio':81,  'fin':100},
+]
+
 DEFAULT_DISTRIBUCIONES = {
     ('completo', '11'): [
         {'materia':'Matematica',      'sesion':'1S', 'inicio':1,  'fin':25},
@@ -62,12 +72,13 @@ DEFAULT_DISTRIBUCIONES = {
         {'materia':'Naturales',       'sesion':'2S', 'inicio':51, 'fin':79},
         {'materia':'Ingles',          'sesion':'2S', 'inicio':80, 'fin':134},
     ],
-    # Media: 5 bloques de 25 preguntas para todos los grados 6° a 10°
+    # Media: 5 bloques de 25 preguntas para los grados 6° a 9°
     ('media', '6'):  _MEDIA_DEFAULT,
     ('media', '7'):  _MEDIA_DEFAULT,
     ('media', '8'):  _MEDIA_DEFAULT,
     ('media', '9'):  _MEDIA_DEFAULT,
-    ('media', '10'): _MEDIA_DEFAULT,
+    # Grado 10°: 20 por asignatura (total 100)
+    ('media', '10'): _MEDIA_GRADO_10,
 }
 
 
