@@ -408,7 +408,8 @@ def add_simulacro(nombre: str, fecha: str, tipo: str, grados: list) -> dict:
 def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
     """
     Para cada pregunta del simulacro: % de aciertos global, por grado y por curso.
-    Numeración relativa por asignatura (Mat-1, Mat-2, ..., Lect-1, ...).
+    Cada estudiante se evalúa contra la clave registrada para SU grado
+    (si existe). Si no hay clave por grado, usa la clave global de la hoja.
     """
     sims = list_simulacros()
     sim = next((s for s in sims if s['nombre'] == simulacro_nombre), None)
@@ -426,35 +427,57 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         if g: return g
         return _grade_from_course_name(c)
 
-    def collect(idx, key_arr, students_dict, q_subject, q_subj_idx):
-        if idx >= len(key_arr):
+    # Cache de claves por (sesion, grado)
+    keys_cache = {}
+    def key_for(session, grado, fallback_key):
+        if not grado: return fallback_key
+        cache_k = (session, grado)
+        if cache_k in keys_cache:
+            return keys_cache[cache_k]
+        try:
+            specific = get_key_for_grade(simulacro_nombre, session, grado)
+        except Exception:
+            specific = []
+        keys_cache[cache_k] = specific or fallback_key
+        return keys_cache[cache_k]
+
+    def collect(idx, session, students_dict, fallback_key, q_subject, q_subj_idx):
+        # Para identificar el "key" canónico de la pregunta usamos el fallback
+        # (clave de la hoja), pero al comparar usamos la clave del grado.
+        if idx >= len(fallback_key):
             return None
-        correct_ans = (key_arr[idx] or '').strip()
-        if correct_ans in ('', '?', '—'):
-            return None
+        canonical = (fallback_key[idx] or '').strip()
         total = 0; correct = 0
         by_grade = {}; by_curso = {}
         for sid, stu in students_dict.items():
             ans_list = stu.get('answers', [])
             ans = (ans_list[idx] if idx < len(ans_list) else '').strip()
             if not ans: continue
+            curso_st = stu.get('curso', '').strip()
+            g_st = grade_of(curso_st)
+            # Buscar la clave que aplica a este estudiante
+            kgs = key_for(session, g_st, fallback_key)
+            correct_ans = (kgs[idx] if idx < len(kgs) else '').strip()
+            if correct_ans in ('', '?', '—'):
+                # No hay clave para este grado en esta pregunta → omitir
+                continue
             total += 1
             ok = ans == correct_ans
             if ok: correct += 1
-            c = stu.get('curso', '').strip()
-            g = grade_of(c)
-            if g:
-                by_grade.setdefault(g, [0, 0])
-                by_grade[g][0] += 1
-                if ok: by_grade[g][1] += 1
-            if c:
-                by_curso.setdefault(c, [0, 0])
-                by_curso[c][0] += 1
-                if ok: by_curso[c][1] += 1
+            if g_st:
+                by_grade.setdefault(g_st, [0, 0])
+                by_grade[g_st][0] += 1
+                if ok: by_grade[g_st][1] += 1
+            if curso_st:
+                by_curso.setdefault(curso_st, [0, 0])
+                by_curso[curso_st][0] += 1
+                if ok: by_curso[curso_st][1] += 1
+        if total == 0:
+            return None
         return {
             'subject': q_subject,
             'q':       q_subj_idx,
-            'key':     correct_ans,
+            'key':     canonical,        # solo informativo; cada grado puede tener distinta
             'total':   total,
             'correct': correct,
             'pct':     round(correct / total * 100) if total else 0,
@@ -478,11 +501,11 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         for subj_name, ranges, _pts in SIPAGRE_SUBJECTS:
             q_subj_idx = 0
             for session, start, end in ranges:
-                key_arr = key_1s if session == '1S' else key_2s
+                fb = key_1s if session == '1S' else key_2s
                 students_dict = students_1s if session == '1S' else students_2s
                 for idx in range(start, end + 1):
                     q_subj_idx += 1
-                    item = collect(idx, key_arr, students_dict, subj_name, q_subj_idx)
+                    item = collect(idx, session, students_dict, fb, subj_name, q_subj_idx)
                     if item: questions.append(item)
     else:
         try:
@@ -495,7 +518,7 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
             q_subj_idx = 0
             for idx in range(start, end + 1):
                 q_subj_idx += 1
-                item = collect(idx, key_m, students_m, subj_name, q_subj_idx)
+                item = collect(idx, 'M', students_m, key_m, subj_name, q_subj_idx)
                 if item: questions.append(item)
 
     return {'success': True, 'questions': questions, 'simulacro': simulacro_nombre, 'tipo': sim['tipo']}
