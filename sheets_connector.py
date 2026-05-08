@@ -608,12 +608,19 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         first_grade = sorted(grades_data.keys(), key=lambda g: int(g) if g.isdigit() else 99)[0]
         default_questions = grades_data[first_grade]
 
+    # Diagnóstico: anuladas aplicadas por (sesion, grado)
+    anuladas_applied = {}
+    for (ses_a, grado_a), nums in anu_cache.items():
+        if not nums: continue
+        anuladas_applied.setdefault(grado_a, {})[ses_a] = sorted(nums)
+
     return {
-        'success':     True,
-        'simulacro':   simulacro_nombre,
-        'tipo':        sim['tipo'],
-        'questions':   default_questions,
-        'grades_data': grades_data,
+        'success':         True,
+        'simulacro':       simulacro_nombre,
+        'tipo':            sim['tipo'],
+        'questions':       default_questions,
+        'grades_data':     grades_data,
+        'anuladas_applied': anuladas_applied,
     }
 
 

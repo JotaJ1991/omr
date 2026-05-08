@@ -2351,7 +2351,29 @@ function renderQuestionAnalysis(data) {
     <p style="font-size:.8rem;color:var(--muted);margin-bottom:12px;">
       Cada asignatura ordenada de menor a mayor % de aciertos
       (las preguntas más difíciles aparecen primero).
+      Denominador = total de estudiantes del grado/curso (no respondidas
+      cuentan como incorrectas).
     </p>`;
+
+  // Banner de diagnóstico: anuladas aplicadas para este filtro
+  const anuApplied = data.anuladas_applied || {};
+  if (scopeGrade && anuApplied[scopeGrade]) {
+    const sesMap = anuApplied[scopeGrade];
+    const parts = [];
+    Object.keys(sesMap).forEach(ses => {
+      const list = sesMap[ses];
+      const sesLbl = ses === 'M' ? '' : ` (${ses})`;
+      parts.push(`<strong>${list.join(', ')}</strong>${sesLbl}`);
+    });
+    if (parts.length) {
+      html += `<div style="background:rgba(250,204,21,.12);
+        border:1px solid rgba(250,204,21,.45);border-radius:8px;
+        padding:8px 12px;margin-bottom:12px;font-size:.82rem;color:#fde68a;">
+        🚫 <strong>Preguntas anuladas en grado ${scopeGrade}°:</strong>
+        ${parts.join(' · ')} — todas se cuentan como correctas (100%) para todos los estudiantes.
+      </div>`;
+    }
+  }
 
   Object.keys(bySubject).forEach(subj => {
     const arr = bySubject[subj];
