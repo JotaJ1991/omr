@@ -2051,7 +2051,7 @@ async function downloadIntegralPdf() {
       doc.setTextColor(120,120,120);
       doc.text('Preguntas ordenadas de menor a mayor % de aciertos (mas dificiles primero).', 10, y2);
       y2 += 4;
-      _drawQuestionTablesInPdf(doc, y2, qa.questions, groupBy, groupKey, '');
+      _drawQuestionTablesInPdf(doc, y2, qa, groupBy, groupKey, '');
     } catch(e) {
       console.warn('No se pudo incluir análisis por pregunta:', e);
     }
@@ -2109,8 +2109,16 @@ function renderQuestionAnalysis(data) {
   const groupBy = cursoF ? 'curso' : (gradeF ? 'grado' : 'all');
   const groupKey = cursoF ? cursoF : gradeF;
 
-  // Función para tomar las stats relevantes según filtro
-  // Retorna {pct, n, c} o null si no hay datos para ese grupo.
+  // Determinar qué grado usar para la clasificación de preguntas
+  let scopeGrade = '';
+  if (gradeF) scopeGrade = gradeF;
+  else if (cursoF) scopeGrade = gradoDeCurso(cursoF);
+  // Lista de preguntas correcta según el grado seleccionado
+  const grades_data = data.grades_data || {};
+  const sourceQuestions = scopeGrade && grades_data[scopeGrade]
+    ? grades_data[scopeGrade]
+    : (data.questions || []);
+
   const statsOf = (q) => {
     if (groupBy === 'curso') {
       const e = (q.by_curso || {})[groupKey];
@@ -2123,9 +2131,8 @@ function renderQuestionAnalysis(data) {
     return {pct: q.pct, n: q.total, c: q.correct};
   };
 
-  // Agrupar por asignatura
   const bySubject = {};
-  data.questions.forEach(q => {
+  sourceQuestions.forEach(q => {
     if (!bySubject[q.subject]) bySubject[q.subject] = [];
     const st = statsOf(q);
     if (st !== null) bySubject[q.subject].push({...q, _pct: st.pct, _n: st.n, _c: st.c});
@@ -2277,19 +2284,34 @@ function _pctColor(pct) {
   return [34, 197, 94];                  // verde
 }
 
-// Dibuja todas las tablas (una por asignatura) en el PDF con barras de %
-function _drawQuestionTablesInPdf(doc, startY, questions, groupBy, groupKey, headerText) {
+// Dibuja todas las tablas (una por asignatura) en el PDF con barras de %.
+// 'data' puede ser el objeto completo del análisis o una lista de preguntas.
+function _drawQuestionTablesInPdf(doc, startY, data, groupBy, groupKey, headerText) {
   const subjects = ['Matematica','Lectura Critica','Sociales','Naturales','Ingles'];
   let y = startY;
   if (headerText) {
     y = _drawSectionTitle(doc, 10, y, '', headerText);
     y += 2;
   }
+  // Determinar qué lista de preguntas usar según el filtro
+  let questions = [];
+  if (Array.isArray(data)) {
+    questions = data;
+  } else if (data && data.grades_data) {
+    let scopeGrade = '';
+    if (groupBy === 'grado') scopeGrade = groupKey;
+    else if (groupBy === 'curso') scopeGrade = gradoDeCurso(groupKey);
+    questions = (scopeGrade && data.grades_data[scopeGrade])
+      ? data.grades_data[scopeGrade]
+      : (data.questions || []);
+  } else if (data && data.questions) {
+    questions = data.questions;
+  }
+
   subjects.forEach(subj => {
-    const data = _questionRowsForSubjectFull(questions, subj, groupBy, groupKey);
-    if (!data.items.length) return;
+    const sd = _questionRowsForSubjectFull(questions, subj, groupBy, groupKey);
+    if (!sd.items.length) return;
     if (y > 240) { doc.addPage('letter','p'); y = 20; }
-    // Subtítulo asignatura con fondo + acento dorado
     const pw = 215.9 - 20;
     doc.setFillColor(254, 243, 199);
     doc.roundedRect(10, y - 3, pw, 7, 1, 1, 'F');
@@ -2297,9 +2319,9 @@ function _drawQuestionTablesInPdf(doc, startY, questions, groupBy, groupKey, hea
     doc.rect(10, y - 3, 2, 7, 'F');
     doc.setFont('helvetica','bold'); doc.setFontSize(10);
     doc.setTextColor(...SIPAGRE_BLUE_DARK);
-    doc.text(`${data.label}  (${data.items.length} preguntas)`, 14, y + 1.5);
+    doc.text(`${sd.label}  (${sd.items.length} preguntas)`, 14, y + 1.5);
     y += 6;
-    y = _drawQuestionTableWithBars(doc, 10, y, data.items);
+    y = _drawQuestionTableWithBars(doc, 10, y, sd.items);
     y += 4;
   });
   return y;
@@ -2422,7 +2444,7 @@ async function downloadQuestionAnalysisPdf() {
     doc.setTextColor(120,120,120);
     doc.text('Preguntas ordenadas de menor a mayor % de aciertos.', 10, y);
     y += 6;
-    y = _drawQuestionTablesInPdf(doc, y, data.questions, groupBy, groupKey, '');
+    y = _drawQuestionTablesInPdf(doc, y, data, groupBy, groupKey, '');
     _drawReportFooter(doc, `Análisis por pregunta · ${unifiedSimulacro.nombre}`);
     const safeSim = unifiedSimulacro.nombre.replace(/[^a-z0-9]+/gi,'_');
     const safeF   = filterLabel.replace(/[^a-z0-9]+/gi,'_');

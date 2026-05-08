@@ -407,9 +407,17 @@ def add_simulacro(nombre: str, fecha: str, tipo: str, grados: list) -> dict:
 
 def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
     """
-    Para cada pregunta del simulacro: % de aciertos global, por grado y por curso.
-    Cada estudiante se evalúa contra la clave registrada para SU grado
-    (si existe). Si no hay clave por grado, usa la clave global de la hoja.
+    Para cada grado del simulacro genera su propia lista de preguntas
+    clasificadas según la distribución configurada para ese grado.
+
+    Retorna:
+      {
+        success: True,
+        simulacro, tipo,
+        grades_data: {grado: [{subject, q, key, total, correct, pct,
+                                by_grade, by_curso}, ...]},
+        questions: [...]   # vista canónica (primer grado disponible)
+      }
     """
     sims = list_simulacros()
     sim = next((s for s in sims if s['nombre'] == simulacro_nombre), None)
@@ -427,101 +435,118 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         if g: return g
         return _grade_from_course_name(c)
 
-    # Cache de claves por (sesion, grado)
-    keys_cache = {}
-    def key_for(session, grado, fallback_key):
-        if not grado: return fallback_key
-        cache_k = (session, grado)
-        if cache_k in keys_cache:
-            return keys_cache[cache_k]
-        try:
-            specific = get_key_for_grade(simulacro_nombre, session, grado)
-        except Exception:
-            specific = []
-        keys_cache[cache_k] = specific or fallback_key
-        return keys_cache[cache_k]
+    distribuciones = list_distribuciones()
 
-    def collect(idx, session, students_dict, fallback_key, q_subject, q_subj_idx):
-        # Para identificar el "key" canónico de la pregunta usamos el fallback
-        # (clave de la hoja), pero al comparar usamos la clave del grado.
-        if idx >= len(fallback_key):
-            return None
-        canonical = (fallback_key[idx] or '').strip()
-        total = 0; correct = 0
-        by_grade = {}; by_curso = {}
-        for sid, stu in students_dict.items():
-            ans_list = stu.get('answers', [])
-            ans = (ans_list[idx] if idx < len(ans_list) else '').strip()
-            if not ans: continue
-            curso_st = stu.get('curso', '').strip()
-            g_st = grade_of(curso_st)
-            # Buscar la clave que aplica a este estudiante
-            kgs = key_for(session, g_st, fallback_key)
-            correct_ans = (kgs[idx] if idx < len(kgs) else '').strip()
-            if correct_ans in ('', '?', '—'):
-                # No hay clave para este grado en esta pregunta → omitir
-                continue
-            total += 1
-            ok = ans == correct_ans
-            if ok: correct += 1
-            if g_st:
-                by_grade.setdefault(g_st, [0, 0])
-                by_grade[g_st][0] += 1
-                if ok: by_grade[g_st][1] += 1
-            if curso_st:
-                by_curso.setdefault(curso_st, [0, 0])
-                by_curso[curso_st][0] += 1
-                if ok: by_curso[curso_st][1] += 1
-        if total == 0:
-            return None
-        return {
-            'subject': q_subject,
-            'q':       q_subj_idx,
-            'key':     canonical,        # solo informativo; cada grado puede tener distinta
-            'total':   total,
-            'correct': correct,
-            'pct':     round(correct / total * 100) if total else 0,
-            'by_grade': {g: {'n': t, 'c': c, 'pct': round(c/t*100)}
-                         for g, (t,c) in by_grade.items() if t},
-            'by_curso': {cc: {'n': t, 'c': c, 'pct': round(c/t*100)}
-                         for cc, (t,c) in by_curso.items() if t},
-        }
-
-    questions = []
+    # Cargar hojas y datos
     if sim['tipo'] == SIM_COMPLETO:
         try:
             ws_1s = spreadsheet.worksheet(sim['sheets'][0])
             ws_2s = spreadsheet.worksheet(sim['sheets'][1])
         except Exception:
             return {'success': False, 'error': 'No se encontraron las hojas 1S/2S del simulacro.'}
-        key_1s = _get_answer_key(ws_1s)
-        key_2s = _get_answer_key(ws_2s)
-        students_1s = _extract_students(ws_1s)
-        students_2s = _extract_students(ws_2s)
-        for subj_name, ranges, _pts in SIPAGRE_SUBJECTS:
-            q_subj_idx = 0
-            for session, start, end in ranges:
-                fb = key_1s if session == '1S' else key_2s
-                students_dict = students_1s if session == '1S' else students_2s
-                for idx in range(start, end + 1):
-                    q_subj_idx += 1
-                    item = collect(idx, session, students_dict, fb, subj_name, q_subj_idx)
-                    if item: questions.append(item)
+        keys_global = {'1S': _get_answer_key(ws_1s), '2S': _get_answer_key(ws_2s)}
+        students_by_session = {
+            '1S': _extract_students(ws_1s),
+            '2S': _extract_students(ws_2s),
+        }
     else:
         try:
             ws_m = spreadsheet.worksheet(sim['sheets'][0])
         except Exception:
             return {'success': False, 'error': 'No se encontró la hoja M del simulacro.'}
-        key_m = _get_answer_key(ws_m)
-        students_m = _extract_students(ws_m)
-        for subj_name, (start, end), _pts in M_SIPAGRE_SUBJECTS:
-            q_subj_idx = 0
-            for idx in range(start, end + 1):
-                q_subj_idx += 1
-                item = collect(idx, 'M', students_m, key_m, subj_name, q_subj_idx)
-                if item: questions.append(item)
+        keys_global = {'M': _get_answer_key(ws_m)}
+        students_by_session = {'M': _extract_students(ws_m)}
 
-    return {'success': True, 'questions': questions, 'simulacro': simulacro_nombre, 'tipo': sim['tipo']}
+    # Cache de claves por (session, grado)
+    keys_cache = {}
+    def key_for(session, grado):
+        ck = (session, grado)
+        if ck in keys_cache: return keys_cache[ck]
+        specific = []
+        try: specific = get_key_for_grade(simulacro_nombre, session, grado)
+        except Exception: pass
+        keys_cache[ck] = specific or keys_global.get(session, [])
+        return keys_cache[ck]
+
+    grades_data = {}
+    target_grados = sim.get('grados') or []
+
+    for grado in target_grados:
+        # Distribución del grado (configurada o default)
+        dist = distribuciones.get((sim['tipo'], grado))
+        if not dist:
+            dist = DEFAULT_DISTRIBUCIONES.get((sim['tipo'], grado))
+        if not dist:
+            continue
+
+        questions = []
+        # Por cada bloque (materia, sesion, inicio, fin) generar preguntas
+        # Numeración relativa por materia
+        materia_counters = {}
+        for entry in dist:
+            mat = entry['materia']
+            ses = (entry['sesion'] or '').upper()
+            ini = int(entry['inicio'])
+            fin = int(entry['fin'])
+            students_dict = students_by_session.get(ses, {})
+            for idx in range(ini - 1, fin):
+                materia_counters.setdefault(mat, 0)
+                materia_counters[mat] += 1
+                q_subj_idx = materia_counters[mat]
+                # Clave que aplica a este grado
+                k_arr = key_for(ses, grado)
+                if idx >= len(k_arr): continue
+                correct_ans = (k_arr[idx] or '').strip()
+                if correct_ans in ('', '?', '—'): continue
+
+                total = 0; correct = 0
+                by_curso = {}
+                for sid, stu in students_dict.items():
+                    # Solo estudiantes del grado actual
+                    if grade_of((stu.get('curso','') or '').strip()) != grado:
+                        continue
+                    ans_list = stu.get('answers', [])
+                    ans = (ans_list[idx] if idx < len(ans_list) else '').strip()
+                    if not ans: continue
+                    total += 1
+                    ok = ans == correct_ans
+                    if ok: correct += 1
+                    cc = (stu.get('curso','') or '').strip()
+                    if cc:
+                        by_curso.setdefault(cc, [0, 0])
+                        by_curso[cc][0] += 1
+                        if ok: by_curso[cc][1] += 1
+                if total == 0: continue
+                questions.append({
+                    'subject':  mat,
+                    'q':        q_subj_idx,
+                    'sesion':   ses,
+                    'idx_orig': idx + 1,
+                    'key':      correct_ans,
+                    'total':    total,
+                    'correct':  correct,
+                    'pct':      round(correct / total * 100),
+                    'by_grade': {grado: {'n': total, 'c': correct,
+                                          'pct': round(correct/total*100)}},
+                    'by_curso': {cc: {'n': t, 'c': c, 'pct': round(c/t*100)}
+                                  for cc, (t,c) in by_curso.items() if t},
+                })
+        if questions:
+            grades_data[grado] = questions
+
+    # Vista por defecto (cuando no hay filtro): usar la del primer grado disponible
+    default_questions = []
+    if grades_data:
+        first_grade = sorted(grades_data.keys(), key=lambda g: int(g) if g.isdigit() else 99)[0]
+        default_questions = grades_data[first_grade]
+
+    return {
+        'success':     True,
+        'simulacro':   simulacro_nombre,
+        'tipo':        sim['tipo'],
+        'questions':   default_questions,
+        'grades_data': grades_data,
+    }
 
 
 # ── Distribución de preguntas por (tipo, grado) ──────────────────────
