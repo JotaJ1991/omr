@@ -40,8 +40,15 @@ SIM_MEDIA    = 'media'      # 1 sesión (M)
 # Materias canónicas
 MATERIAS = ['Matematica', 'Lectura Critica', 'Sociales', 'Naturales', 'Ingles']
 
-# Distribuciones por defecto (1-based; al guardar se convierten al sheet)
-# Estructura: {(tipo, grado): [{materia, sesion, inicio, fin}, ...]}
+# Distribución estándar Media (5 bloques de 25 preguntas)
+_MEDIA_DEFAULT = [
+    {'materia':'Matematica',      'sesion':'M', 'inicio':1,   'fin':25},
+    {'materia':'Lectura Critica', 'sesion':'M', 'inicio':26,  'fin':50},
+    {'materia':'Sociales',        'sesion':'M', 'inicio':51,  'fin':75},
+    {'materia':'Naturales',       'sesion':'M', 'inicio':76,  'fin':100},
+    {'materia':'Ingles',          'sesion':'M', 'inicio':101, 'fin':125},
+]
+
 DEFAULT_DISTRIBUCIONES = {
     ('completo', '11'): [
         {'materia':'Matematica',      'sesion':'1S', 'inicio':1,  'fin':25},
@@ -53,14 +60,12 @@ DEFAULT_DISTRIBUCIONES = {
         {'materia':'Naturales',       'sesion':'2S', 'inicio':51, 'fin':79},
         {'materia':'Ingles',          'sesion':'2S', 'inicio':80, 'fin':134},
     ],
-    # Para Media jornada por defecto: 5 bloques de 25 preguntas
-    ('media', '10'): [
-        {'materia':'Matematica',      'sesion':'M', 'inicio':1,   'fin':25},
-        {'materia':'Lectura Critica', 'sesion':'M', 'inicio':26,  'fin':50},
-        {'materia':'Sociales',        'sesion':'M', 'inicio':51,  'fin':75},
-        {'materia':'Naturales',       'sesion':'M', 'inicio':76,  'fin':100},
-        {'materia':'Ingles',          'sesion':'M', 'inicio':101, 'fin':125},
-    ],
+    # Media: 5 bloques de 25 preguntas para todos los grados 6° a 10°
+    ('media', '6'):  _MEDIA_DEFAULT,
+    ('media', '7'):  _MEDIA_DEFAULT,
+    ('media', '8'):  _MEDIA_DEFAULT,
+    ('media', '9'):  _MEDIA_DEFAULT,
+    ('media', '10'): _MEDIA_DEFAULT,
 }
 
 
@@ -521,14 +526,22 @@ def _ensure_distribucion_sheet():
             pass
         fresh = True
 
-    # Si está vacía (solo header), poblar con defaults
-    if fresh or len(ws.col_values(1)) <= 1:
-        rows = []
+    # Sembrar defaults faltantes (si la hoja está vacía o no tiene cierta combinación)
+    try:
+        existing_rows = ws.get_all_values()[1:]
+        existing_keys = set()
+        for r in existing_rows:
+            if len(r) >= 2:
+                existing_keys.add(((r[0] or '').strip().lower(), str(r[1] or '').strip()))
+        rows_to_add = []
         for (tipo, grado), entries in DEFAULT_DISTRIBUCIONES.items():
-            for e in entries:
-                rows.append([tipo, grado, e['materia'], e['sesion'], e['inicio'], e['fin']])
-        if rows:
-            ws.append_rows(rows, value_input_option='RAW')
+            if (tipo, grado) not in existing_keys:
+                for e in entries:
+                    rows_to_add.append([tipo, grado, e['materia'], e['sesion'], e['inicio'], e['fin']])
+        if rows_to_add:
+            ws.append_rows(rows_to_add, value_input_option='RAW')
+    except Exception:
+        pass
     return ws
 
 
