@@ -19,6 +19,7 @@ from sheets_connector import (
     analyze_simulacro_questions,
     list_distribuciones_json, save_distribucion,
     get_key_for_grade, save_key_for_grade, list_keys_grade,
+    get_anuladas_for_grade, save_anuladas_for_grade, list_anuladas,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -346,6 +347,37 @@ def keys_grade_save():
     answers = data.get('answers') or []
     try:
         return jsonify(save_key_for_grade(sim, ses, grado, answers))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/anuladas', methods=['GET'])
+def anuladas_list():
+    sim   = (request.args.get('simulacro') or '').strip()
+    ses   = (request.args.get('sesion') or '').strip()
+    grado = (request.args.get('grado') or '').strip()
+    try:
+        if sim and ses and grado:
+            nums = get_anuladas_for_grade(sim, ses, grado)
+            return jsonify({'success': True, 'preguntas': nums})
+        return jsonify({'success': True, 'anuladas': list_anuladas()})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/anuladas', methods=['POST'])
+def anuladas_save():
+    data = request.get_json(silent=True) or {}
+    sim   = (data.get('simulacro') or '').strip()
+    ses   = (data.get('sesion') or '').strip()
+    grado = str(data.get('grado') or '').strip()
+    preguntas = data.get('preguntas')
+    if preguntas is None:
+        preguntas = data.get('csv') or ''
+    try:
+        return jsonify(save_anuladas_for_grade(sim, ses, grado, preguntas))
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500

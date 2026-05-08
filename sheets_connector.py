@@ -33,6 +33,7 @@ COURSES_SHEET = 'Cursos'
 SIMULACROS_SHEET = 'Simulacros'
 DISTRIBUCION_SHEET = 'Distribucion'
 KEYS_GRADE_SHEET   = 'ClavesGrado'
+ANULADAS_SHEET     = 'PreguntasAnuladas'
 
 # Tipos de simulacro
 SIM_COMPLETO = 'completo'   # 2 sesiones (1S + 2S)
@@ -468,6 +469,17 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         keys_cache[ck] = specific or keys_global.get(session, [])
         return keys_cache[ck]
 
+    # Cache de anuladas por (session, grado) — sets de int (1-based)
+    anu_cache = {}
+    def anu_for(session, grado):
+        ck = (session, grado)
+        if ck in anu_cache: return anu_cache[ck]
+        try:
+            anu_cache[ck] = set(get_anuladas_for_grade(simulacro_nombre, session, grado))
+        except Exception:
+            anu_cache[ck] = set()
+        return anu_cache[ck]
+
     grades_data = {}
     target_grados = sim.get('grados') or []
 
@@ -489,15 +501,48 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
             ini = int(entry['inicio'])
             fin = int(entry['fin'])
             students_dict = students_by_session.get(ses, {})
+            ses_anu = anu_for(ses, grado)
             for idx in range(ini - 1, fin):
                 materia_counters.setdefault(mat, 0)
                 materia_counters[mat] += 1
                 q_subj_idx = materia_counters[mat]
+                q_num_orig = idx + 1
+                is_anulada = q_num_orig in ses_anu
                 # Clave que aplica a este grado
                 k_arr = key_for(ses, grado)
-                if idx >= len(k_arr): continue
-                correct_ans = (k_arr[idx] or '').strip()
-                if correct_ans in ('', '?', '—'): continue
+                correct_ans = (k_arr[idx] or '').strip() if idx < len(k_arr) else ''
+                # Pregunta anulada: cuenta a TODOS como correctos
+                if is_anulada:
+                    total = 0; correct = 0
+                    by_curso = {}
+                    for sid, stu in students_dict.items():
+                        if grade_of((stu.get('curso','') or '').strip()) != grado:
+                            continue
+                        # Todos los estudiantes del grado cuentan como correctos
+                        total   += 1
+                        correct += 1
+                        cc = (stu.get('curso','') or '').strip()
+                        if cc:
+                            by_curso.setdefault(cc, [0, 0])
+                            by_curso[cc][0] += 1
+                            by_curso[cc][1] += 1
+                    if total == 0: continue
+                    questions.append({
+                        'subject':  mat,
+                        'q':        q_subj_idx,
+                        'sesion':   ses,
+                        'idx_orig': q_num_orig,
+                        'key':      correct_ans or '*',
+                        'total':    total,
+                        'correct':  correct,
+                        'pct':      100,
+                        'anulada':  True,
+                        'by_grade': {grado: {'n': total, 'c': correct, 'pct': 100}},
+                        'by_curso': {cc: {'n': t, 'c': c, 'pct': 100}
+                                      for cc, (t,c) in by_curso.items() if t},
+                    })
+                    continue
+                if not correct_ans or correct_ans in ('?', '—'): continue
 
                 total = 0; correct = 0
                 by_curso = {}
@@ -521,11 +566,12 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
                     'subject':  mat,
                     'q':        q_subj_idx,
                     'sesion':   ses,
-                    'idx_orig': idx + 1,
+                    'idx_orig': q_num_orig,
                     'key':      correct_ans,
                     'total':    total,
                     'correct':  correct,
                     'pct':      round(correct / total * 100),
+                    'anulada':  False,
                     'by_grade': {grado: {'n': total, 'c': correct,
                                           'pct': round(correct/total*100)}},
                     'by_curso': {cc: {'n': t, 'c': c, 'pct': round(c/t*100)}
@@ -794,6 +840,146 @@ def list_keys_grade() -> list:
             out.append({
                 'simulacro': sim, 'sesion': ses, 'grado': grado,
                 'count': count, 'total': len(answers),
+            })
+        out.sort(key=lambda x: (x['simulacro'], x['sesion'],
+                                int(x['grado']) if x['grado'].isdigit() else 99))
+        return out
+    except Exception:
+        return []
+
+
+# ── Preguntas anuladas por (simulacro, sesion, grado) ──────────────────
+# Las preguntas anuladas se cuentan como "correctas para todos" sin importar
+# qué marcó el estudiante (o si no marcó nada).
+def _ensure_anuladas_sheet():
+    """
+    Hoja 'PreguntasAnuladas' con columnas:
+      A: Simulacro  B: Sesion  C: Grado  D: Preguntas (CSV "22,45")
+    Cada fila almacena las preguntas anuladas para una combinación.
+    """
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(ANULADAS_SHEET)
+        header = ws.row_values(1) or []
+        if len(header) < 4 or header[0].strip().lower() != 'simulacro':
+            ws.update('A1:D1',
+                      [['Simulacro', 'Sesion', 'Grado', 'Preguntas']],
+                      value_input_option='RAW')
+    except Exception:
+        ws = ss.add_worksheet(title=ANULADAS_SHEET, rows=200, cols=8)
+        ws.update('A1:D1',
+                  [['Simulacro', 'Sesion', 'Grado', 'Preguntas']],
+                  value_input_option='RAW')
+        try:
+            ws.format('A1:D1', {
+                'backgroundColor': {'red':0.39, 'green':0.40, 'blue':0.95},
+                'textFormat': {'bold':True,
+                               'foregroundColor':{'red':1,'green':1,'blue':1}},
+                'horizontalAlignment':'CENTER',
+            })
+        except Exception:
+            pass
+    return ws
+
+
+def _parse_anuladas_csv(s: str) -> list:
+    """'22, 45 ,  67' → [22, 45, 67] (1-based, ordenadas, sin duplicados)"""
+    if not s: return []
+    out = set()
+    for tok in str(s).replace(';', ',').split(','):
+        tok = tok.strip()
+        if not tok: continue
+        try:
+            n = int(tok)
+            if 1 <= n <= 200: out.add(n)
+        except Exception:
+            continue
+    return sorted(out)
+
+
+def get_anuladas_for_grade(simulacro: str, sesion: str, grado: str) -> list:
+    """Retorna lista de números (1-based) anulados para (simulacro, sesion, grado)."""
+    simulacro = (simulacro or '').strip()
+    sesion    = (sesion or '').strip().upper()
+    grado     = str(grado or '').strip()
+    if not simulacro or not sesion or not grado:
+        return []
+    try:
+        ws = _ensure_anuladas_sheet()
+        rows = ws.get_all_values()
+        for r in rows[1:]:
+            if (len(r) >= 4
+                and (r[0] or '').strip() == simulacro
+                and (r[1] or '').strip().upper() == sesion
+                and str(r[2] or '').strip() == grado):
+                return _parse_anuladas_csv(r[3])
+        return []
+    except Exception:
+        return []
+
+
+def save_anuladas_for_grade(simulacro: str, sesion: str, grado: str,
+                            preguntas) -> dict:
+    """Guarda/actualiza las preguntas anuladas para (simulacro, sesion, grado)."""
+    simulacro = (simulacro or '').strip()
+    sesion    = (sesion or '').strip().upper()
+    grado     = str(grado or '').strip()
+    if not simulacro or not sesion or not grado:
+        return {'success': False,
+                'error': 'simulacro, sesion y grado son requeridos.'}
+    if isinstance(preguntas, str):
+        nums = _parse_anuladas_csv(preguntas)
+    elif isinstance(preguntas, (list, tuple)):
+        nums = _parse_anuladas_csv(','.join(str(p) for p in preguntas))
+    else:
+        return {'success': False,
+                'error': 'preguntas debe ser lista o cadena.'}
+    csv = ','.join(str(n) for n in nums)
+    try:
+        ws = _ensure_anuladas_sheet()
+        rows = ws.get_all_values()
+        target_row = None
+        for i, r in enumerate(rows):
+            if i == 0: continue
+            if (len(r) >= 3
+                and (r[0] or '').strip() == simulacro
+                and (r[1] or '').strip().upper() == sesion
+                and str(r[2] or '').strip() == grado):
+                target_row = i + 1
+                break
+        # Si la lista queda vacía y existe la fila, la limpiamos
+        if not nums and target_row:
+            ws.update(f'A{target_row}:D{target_row}',
+                      [['', '', '', '']], value_input_option='RAW')
+            return {'success': True, 'count': 0, 'preguntas': []}
+        row_data = [simulacro, sesion, grado, csv]
+        if target_row:
+            ws.update(f'A{target_row}:D{target_row}',
+                      [row_data], value_input_option='RAW')
+        else:
+            if nums:
+                ws.append_row(row_data, value_input_option='RAW')
+        return {'success': True, 'count': len(nums), 'preguntas': nums}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def list_anuladas() -> list:
+    """Lista todas las combinaciones (simulacro, sesion, grado) con anuladas."""
+    try:
+        ws = _ensure_anuladas_sheet()
+        rows = ws.get_all_values()[1:]
+        out = []
+        for r in rows:
+            if len(r) < 4: continue
+            sim   = (r[0] or '').strip()
+            ses   = (r[1] or '').strip().upper()
+            grado = str(r[2] or '').strip()
+            nums  = _parse_anuladas_csv(r[3])
+            if not sim or not ses or not grado or not nums: continue
+            out.append({
+                'simulacro': sim, 'sesion': ses, 'grado': grado,
+                'preguntas': nums, 'count': len(nums),
             })
         out.sort(key=lambda x: (x['simulacro'], x['sesion'],
                                 int(x['grado']) if x['grado'].isdigit() else 99))
@@ -1211,16 +1397,31 @@ M_SIPAGRE_SUBJECTS = [
 ]
 
 
-def _score_student_with_distribution(answers_by_session, keys_by_session, distribucion):
+def _score_student_with_distribution(answers_by_session, keys_by_session,
+                                     distribucion, anuladas_by_session=None):
     """
     Calcula los puntajes 0-100 por materia usando una distribución (tipo, grado).
 
-    answers_by_session: {'1S': [...], '2S': [...], 'M': [...]}
-    keys_by_session:    {'1S': [...], '2S': [...], 'M': [...]}
-    distribucion: lista de {materia, sesion, inicio (1-based), fin (1-based)}
+    answers_by_session:  {'1S': [...], '2S': [...], 'M': [...]}
+    keys_by_session:     {'1S': [...], '2S': [...], 'M': [...]}
+    distribucion:        lista de {materia, sesion, inicio (1-based), fin (1-based)}
+    anuladas_by_session: {'1S': set/list de números 1-based, '2S': ..., 'M': ...}
+       Las preguntas anuladas cuentan como correctas para todos sin importar
+       qué marcó el estudiante (o si no marcó nada). Si la clave para esa
+       pregunta no existe, se usa un valor "fantasma" para que igualmente
+       cuente: total += 1 y correct += 1.
 
     Retorna: {materia: float 0-100}.
     """
+    anuladas_by_session = anuladas_by_session or {}
+    # Normalizar a sets de int (1-based)
+    anu = {}
+    for ses, lst in (anuladas_by_session or {}).items():
+        try:
+            anu[(ses or '').upper()] = set(int(n) for n in (lst or []))
+        except Exception:
+            anu[(ses or '').upper()] = set()
+
     raw = {m: {'correct': 0, 'total': 0} for m in MATERIAS}
     for entry in (distribucion or []):
         mat = entry['materia']
@@ -1231,10 +1432,21 @@ def _score_student_with_distribution(answers_by_session, keys_by_session, distri
             continue
         ans = answers_by_session.get(ses, [])
         key = keys_by_session.get(ses, [])
+        ses_anu = anu.get(ses, set())
         for i in range(ini - 1, fin):
-            if i < 0 or i >= len(key): continue
-            k = (key[i] or '').strip()
+            q_num = i + 1   # 1-based
+            is_anulada = q_num in ses_anu
+            if i < 0 or (i >= len(key) and not is_anulada):
+                continue
+            k = (key[i] or '').strip() if i < len(key) else ''
             a = (ans[i] if i < len(ans) else '').strip()
+            # Si la pregunta está anulada → cuenta como correcta para todos
+            if is_anulada:
+                if mat not in raw:
+                    raw[mat] = {'correct': 0, 'total': 0}
+                raw[mat]['total']   += 1
+                raw[mat]['correct'] += 1
+                continue
             if k in ('', '?', '—'):
                 continue
             if mat not in raw:
@@ -1400,6 +1612,7 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     distribuciones = list_distribuciones()
     sim_name = _find_simulacro_for_sheets([sheet_1s, sheet_2s])
     keys_by_grade = {}  # {grado: {'1S': k1s, '2S': k2s}}
+    anuladas_by_grade = {}  # {grado: {'1S': [...], '2S': [...]}}
 
     # Calcular resultados
     results = []
@@ -1432,9 +1645,21 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
             }
         kfor = keys_by_grade[grado]
 
+        # Preguntas anuladas para este grado
+        if grado not in anuladas_by_grade:
+            try:
+                anuladas_by_grade[grado] = {
+                    '1S': get_anuladas_for_grade(sim_name, '1S', grado) if sim_name else [],
+                    '2S': get_anuladas_for_grade(sim_name, '2S', grado) if sim_name else [],
+                }
+            except Exception:
+                anuladas_by_grade[grado] = {'1S': [], '2S': []}
+        anu_for = anuladas_by_grade[grado]
+
         scores = _score_student_with_distribution(
             {'1S': ans_1s, '2S': ans_2s},
-            {'1S': kfor['1S'], '2S': kfor['2S']}, dist)
+            {'1S': kfor['1S'], '2S': kfor['2S']}, dist,
+            anuladas_by_session=anu_for)
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))
@@ -1572,8 +1797,10 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
     courses_list = list_courses()
     distribuciones = list_distribuciones()
 
-    # Cache de claves por grado: {grado: clave_M}
+    # Cache de claves y anuladas por grado: {grado: ...}
     keys_by_grade = {}
+    anuladas_by_grade = {}
+    sim_name = _find_simulacro_for_sheet(sheet_m)
 
     results = []
     for key in sorted(students.keys()):
@@ -1594,13 +1821,22 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         # Clave: si hay una específica para (simulacro, M, grado), úsala;
         # sino usa la global del sheet (key_m)
         if grado not in keys_by_grade:
-            sim_name = _find_simulacro_for_sheet(sheet_m)
             specific = get_key_for_grade(sim_name, 'M', grado) if sim_name else []
             keys_by_grade[grado] = specific or key_m
         key_for_student = keys_by_grade[grado]
 
+        # Preguntas anuladas para este grado (sesión M)
+        if grado not in anuladas_by_grade:
+            try:
+                anuladas_by_grade[grado] = (
+                    get_anuladas_for_grade(sim_name, 'M', grado) if sim_name else [])
+            except Exception:
+                anuladas_by_grade[grado] = []
+        anu_m = anuladas_by_grade[grado]
+
         scores = _score_student_with_distribution(
-            {'M': ans}, {'M': key_for_student}, dist)
+            {'M': ans}, {'M': key_for_student}, dist,
+            anuladas_by_session={'M': anu_m})
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))

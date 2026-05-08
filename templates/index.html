@@ -838,6 +838,67 @@
       </div>
     </div>
 
+    <!-- Card NUEVO: Preguntas anuladas (todos correctos) -->
+    <div class="card">
+      <h2>🚫 Preguntas anuladas</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+        Marca preguntas que se consideran <strong>buenas para todos</strong>
+        (sin importar lo que marcó el estudiante o si dejó en blanco).
+        Útil cuando una pregunta tuvo un error de impresión o ambigüedad.
+        La numeración es la <strong>posición original</strong> en la hoja
+        (P1…Pn de la sesión seleccionada).
+      </p>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="flex:2;min-width:160px;">
+          <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
+          <select id="anu-sim" onchange="_onAnuChange()">
+            <option value="">— selecciona —</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Sesión</label>
+          <select id="anu-ses" onchange="_onAnuChange()">
+            <option value="M">M (Media)</option>
+            <option value="1S">1S</option>
+            <option value="2S">2S</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
+          <select id="anu-grado" onchange="_onAnuChange()">
+            <option value="">—</option>
+            <option value="6">6°</option>
+            <option value="7">7°</option>
+            <option value="8">8°</option>
+            <option value="9">9°</option>
+            <option value="10">10°</option>
+            <option value="11">11°</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+        <label style="font-size:.85rem;font-weight:500;color:var(--muted);min-width:140px;">
+          Preguntas a anular:
+        </label>
+        <input type="text" id="anu-csv" placeholder="Ej: 22, 45, 67"
+          style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);
+                 border-radius:7px;font-size:.95rem;font-weight:600;letter-spacing:.5px;">
+        <span id="anu-status" style="font-size:.82rem;color:var(--muted);">— sin selección —</span>
+      </div>
+
+      <div class="btn-group" style="margin-top:6px;">
+        <button class="btn-key-clear" onclick="clearAnuField()" type="button">🗑️ Limpiar</button>
+        <button class="btn-key-save"  onclick="saveAnuladas()" type="button">💾 Guardar anuladas</button>
+      </div>
+      <div class="score-note" id="anu-saved-note">
+        ✅ Anuladas guardadas. Vuelve a generar resultados para aplicar.
+      </div>
+
+      <div id="anu-list" style="margin-top:14px;font-size:.82rem;color:var(--muted);"></div>
+    </div>
+
     <!-- Card LEGACY: Clave por hoja activa (modo avanzado, fallback) -->
     <details>
       <summary style="cursor:pointer;font-size:.85rem;color:var(--muted);
@@ -1452,6 +1513,8 @@ async function loadSimulacros() {
     _refreshSimulacroSelect();
     _refreshUnifiedSimSelect();
     _populateKgSimSelect();
+    _populateAnuSimSelect();
+    _refreshAnuList();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
 }
 
@@ -1590,6 +1653,125 @@ async function saveKgKey() {
     }
   } catch(e) {
     alert('Error de conexión al guardar.');
+  }
+}
+
+// ══ PREGUNTAS ANULADAS por (simulacro, sesion, grado) ════════════════════
+function _populateAnuSimSelect() {
+  const sel = document.getElementById('anu-sim');
+  if (!sel) return;
+  const prev = sel.value;
+  let html = '<option value="">— selecciona —</option>';
+  _simulacrosCache.forEach(s => {
+    const tipoLbl = s.tipo === 'completo' ? 'Completo' : 'Media';
+    html += `<option value="${s.nombre}" data-tipo="${s.tipo}">${s.nombre} · ${tipoLbl}</option>`;
+  });
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+function _onAnuChange() {
+  const sim   = document.getElementById('anu-sim').value;
+  const ses   = document.getElementById('anu-ses').value;
+  const grado = document.getElementById('anu-grado').value;
+  const status = document.getElementById('anu-status');
+  // Ajustar opciones de sesión según tipo
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const sesSel = document.getElementById('anu-ses');
+  if (simObj) {
+    if (simObj.tipo === 'media') {
+      sesSel.innerHTML = '<option value="M">M (Media)</option>';
+    } else {
+      const cur = sesSel.value;
+      sesSel.innerHTML = '<option value="1S">1S</option><option value="2S">2S</option>';
+      if (['1S','2S'].includes(cur)) sesSel.value = cur;
+    }
+  }
+  const sesNow = sesSel.value;
+  if (!sim || !sesNow || !grado) {
+    status.textContent = '— selecciona simulacro, sesión y grado —';
+    document.getElementById('anu-csv').value = '';
+    _refreshAnuList();
+    return;
+  }
+  loadAnuladas(sim, sesNow, grado);
+  _refreshAnuList();
+}
+
+async function loadAnuladas(sim, ses, grado) {
+  const status = document.getElementById('anu-status');
+  status.textContent = `Cargando anuladas de ${sim} · ${ses} · ${grado}°…`;
+  try {
+    const url = `/anuladas?simulacro=${encodeURIComponent(sim)}&sesion=${encodeURIComponent(ses)}&grado=${encodeURIComponent(grado)}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const nums = (data && data.preguntas) || [];
+    document.getElementById('anu-csv').value = nums.join(', ');
+    if (nums.length > 0) {
+      status.innerHTML = `<strong>${nums.length}</strong> pregunta(s) anulada(s) en ${sim} · ${ses} · ${grado}°`;
+    } else {
+      status.textContent = `Sin anuladas para ${sim} · ${ses} · ${grado}°.`;
+    }
+  } catch(e) {
+    status.textContent = 'Error cargando anuladas.';
+  }
+}
+
+function clearAnuField() {
+  document.getElementById('anu-csv').value = '';
+}
+
+async function saveAnuladas() {
+  const sim   = document.getElementById('anu-sim').value;
+  const ses   = document.getElementById('anu-ses').value;
+  const grado = document.getElementById('anu-grado').value;
+  const csv   = document.getElementById('anu-csv').value || '';
+  if (!sim || !ses || !grado) {
+    alert('Selecciona simulacro, sesión y grado.');
+    return;
+  }
+  try {
+    const resp = await fetch('/anuladas', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({simulacro: sim, sesion: ses, grado, csv})
+    });
+    const r = await resp.json();
+    if (r.success) {
+      const note = document.getElementById('anu-saved-note');
+      const list = (r.preguntas || []).join(', ') || '(ninguna)';
+      note.textContent = `✅ Anuladas guardadas para ${sim} · ${ses} · ${grado}°: ${list}. Vuelve a generar resultados para aplicar.`;
+      note.classList.add('show');
+      setTimeout(() => note.classList.remove('show'), 5000);
+      // Invalidar cachés de resultados
+      try {
+        if (typeof _resultsCache === 'object') _resultsCache = {};
+        if (typeof _questionsCache === 'object') _questionsCache = {};
+      } catch(e) {}
+      _refreshAnuList();
+    } else {
+      alert('Error: ' + (r.error || 'desconocido'));
+    }
+  } catch(e) {
+    alert('Error de conexión al guardar.');
+  }
+}
+
+async function _refreshAnuList() {
+  const div = document.getElementById('anu-list');
+  if (!div) return;
+  try {
+    const resp = await fetch('/anuladas');
+    const data = await resp.json();
+    const all = (data && data.anuladas) || [];
+    if (!all.length) { div.innerHTML = '<em>No hay preguntas anuladas registradas.</em>'; return; }
+    let html = '<strong>Anulaciones registradas:</strong><ul style="margin:6px 0 0 16px;padding:0;">';
+    all.forEach(a => {
+      html += `<li>${a.simulacro} · ${a.sesion} · ${a.grado}°: <strong>${a.preguntas.join(', ')}</strong></li>`;
+    });
+    html += '</ul>';
+    div.innerHTML = html;
+  } catch(e) {
+    div.innerHTML = '';
   }
 }
 
