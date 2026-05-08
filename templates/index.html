@@ -1742,10 +1742,10 @@ async function saveAnuladas() {
       note.textContent = `✅ Anuladas guardadas para ${sim} · ${ses} · ${grado}°: ${list}. Vuelve a generar resultados para aplicar.`;
       note.classList.add('show');
       setTimeout(() => note.classList.remove('show'), 5000);
-      // Invalidar cachés de resultados
+      // Invalidar cachés de resultados y de análisis por pregunta
       try {
         if (typeof _resultsCache === 'object') _resultsCache = {};
-        if (typeof _questionsCache === 'object') _questionsCache = {};
+        if (typeof _questionAnalysisCache === 'object') _questionAnalysisCache = {};
       } catch(e) {}
       _refreshAnuList();
     } else {
@@ -2382,8 +2382,19 @@ function renderQuestionAnalysis(data) {
   });
 
   if (!Object.keys(bySubject).length) {
+    let hint = '';
+    if (gradeF) {
+      hint = `<br><span style="font-size:.78rem;">
+        Verifica que exista clave configurada para grado ${gradeF}° en
+        <strong>Clave → Clave por simulacro y grado</strong>, y que existan
+        estudiantes de ese grado en la hoja del simulacro.</span>`;
+    } else if (cursoF) {
+      hint = `<br><span style="font-size:.78rem;">
+        Verifica que el curso ${cursoF} tenga estudiantes con respuestas
+        y que el grado correspondiente tenga clave configurada.</span>`;
+    }
     html += `<p style="color:var(--muted);text-align:center;padding:14px;">
-      Sin datos para el filtro actual.</p>`;
+      Sin datos para el filtro actual.${hint}</p>`;
   }
 
   // Botón descargar PDF + actualizar

@@ -481,7 +481,26 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         return anu_cache[ck]
 
     grades_data = {}
-    target_grados = sim.get('grados') or []
+    target_grados = list(sim.get('grados') or [])
+
+    # Además incluir grados detectados a partir de los estudiantes presentes,
+    # por si el simulacro fue creado sin contemplar algún grado (ej. 10°
+    # añadido después). De este modo el análisis siempre incluye a los
+    # grados que efectivamente contestaron.
+    try:
+        detected_grados = set()
+        for _ses, _students in students_by_session.items():
+            for _stu in _students.values():
+                g = grade_of((_stu.get('curso','') or '').strip())
+                if g:
+                    detected_grados.add(g)
+        merged = set(target_grados) | detected_grados
+        target_grados = sorted(
+            merged,
+            key=lambda g: int(g) if g.isdigit() else 99
+        )
+    except Exception:
+        pass
 
     for grado in target_grados:
         # Distribución del grado (configurada o default)
