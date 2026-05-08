@@ -2284,6 +2284,20 @@ async function generateQuestionReport() {
   renderQuestionAnalysis(analysis.data);
 }
 
+// Helper unificado: prefijo de asignatura + número REAL en el cuestionario.
+// Si el simulacro es de tipo Completo, anexa la sesión (1S/2S) para
+// disambiguar (en Media solo hay sesión M, no se muestra).
+const _SUBJECT_PREFIX = {
+  'Matematica':'Mat','Lectura Critica':'Lect','Sociales':'Soc',
+  'Naturales':'Nat','Ingles':'Ing',
+};
+function _qFmt(q) {
+  const pre = _SUBJECT_PREFIX[q.subject] || 'Q';
+  const idx = q.idx_orig != null ? q.idx_orig : q.q;
+  const ses = (q.sesion && q.sesion !== 'M') ? ` ${q.sesion}` : '';
+  return `${pre} ${idx}${ses}`;
+}
+
 function renderQuestionAnalysis(data) {
   const out = document.getElementById('r-output');
   const gradeF = document.getElementById('r-grade-select')?.value || '';
@@ -2362,10 +2376,17 @@ function renderQuestionAnalysis(data) {
     arr.forEach((q, i) => {
       const pct = q._pct;
       const color = pct < 30 ? '#ef4444' : pct < 50 ? '#f59e0b' : pct < 70 ? '#eab308' : '#22c55e';
-      html += `<tr>
+      const isAnu = q.anulada === true;
+      const rowBg = isAnu ? 'background:rgba(250,204,21,.10);' : '';
+      const anuBadge = isAnu
+        ? `<span style="display:inline-block;margin-left:6px;padding:1px 6px;
+              border-radius:4px;background:#fde68a;color:#92400e;
+              font-size:.68rem;font-weight:700;letter-spacing:.5px;">ANULADA</span>`
+        : '';
+      html += `<tr style="${rowBg}">
         <td>${i+1}</td>
-        <td><strong>${subjLabel.split(' ')[0]} ${q.q}</strong></td>
-        <td><code>${q.key}</code></td>
+        <td><strong>${_qFmt(q)}</strong>${anuBadge}</td>
+        <td><code>${q.key || '*'}</code></td>
         <td>${q._c}/${q._n}</td>
         <td>
           <div style="display:flex;align-items:center;gap:6px;">
@@ -2459,11 +2480,12 @@ function _questionRowsForSubject(questions, subject, groupBy, groupKey) {
     })
     .filter(Boolean)
     .sort((a,b) => a.st.pct - b.st.pct);
-  const prefix = subjLabel.split(' ')[0];
   return {
     label: subjLabel,
     rows: arr.map((it,i) => [
-      i+1, `${prefix} ${it.q.q}`, it.q.key,
+      i+1,
+      _qFmt(it.q) + (it.q.anulada ? ' [ANUL]' : ''),
+      it.q.key || '*',
       `${it.st.c}/${it.st.n}`, `${it.st.pct}%`
     ]),
   };
@@ -2577,17 +2599,18 @@ function _drawQuestionTableWithBars(doc, x, y, items) {
       doc.setFillColor(245, 247, 252);
       doc.rect(x, y, totalW, cellH, 'F');
     }
+    // Fondo amarillo claro para anuladas
+    if (it.q.anulada) {
+      doc.setFillColor(254, 243, 199);
+      doc.rect(x, y, totalW, cellH, 'F');
+    }
     cx = x;
     doc.setTextColor(40,40,40);
     const pct = it.st.pct;
-    const subjPrefix = ({
-      'Matematica':'Mat','Lectura Critica':'Lect','Sociales':'Soc',
-      'Naturales':'Nat','Ingles':'Ing'
-    })[it.q.subject] || 'Q';
     const cells = [
       String(ri + 1),
-      `${subjPrefix} ${it.q.q}`,
-      it.q.key,
+      _qFmt(it.q) + (it.q.anulada ? ' *ANUL*' : ''),
+      it.q.key || '*',
       `${it.st.c}/${it.st.n}`,
       `${pct}%`,
     ];
