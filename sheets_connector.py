@@ -32,6 +32,7 @@ KEY_ROW_NAME = '*** CLAVE ***'
 COURSES_SHEET = 'Cursos'
 SIMULACROS_SHEET = 'Simulacros'
 DISTRIBUCION_SHEET = 'Distribucion'
+KEYS_GRADE_SHEET   = 'ClavesGrado'
 
 # Tipos de simulacro
 SIM_COMPLETO = 'completo'   # 2 sesiones (1S + 2S)
@@ -632,6 +633,127 @@ def get_distribucion_for(tipo: str, grado: str) -> list:
     return []
 
 
+# ── Claves por (simulacro, sesion, grado) ────────────────────────────────
+def _ensure_keys_grade_sheet(max_q=200):
+    """
+    Hoja 'ClavesGrado' con columnas:
+      A: Simulacro  B: Sesion  C: Grado  D...: P1..Pmax_q
+    Cada fila almacena la clave para una combinación.
+    """
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(KEYS_GRADE_SHEET)
+        header = ws.row_values(1) or []
+        if len(header) < 3 or header[0].strip().lower() != 'simulacro':
+            new_header = ['Simulacro', 'Sesion', 'Grado'] + [f'P{i}' for i in range(1, max_q + 1)]
+            end_col = _col_letter(len(new_header) - 1)
+            ws.update(f'A1:{end_col}1', [new_header], value_input_option='RAW')
+    except Exception:
+        cols_total = 3 + max_q
+        ws = ss.add_worksheet(title=KEYS_GRADE_SHEET, rows=200, cols=cols_total + 5)
+        new_header = ['Simulacro', 'Sesion', 'Grado'] + [f'P{i}' for i in range(1, max_q + 1)]
+        end_col = _col_letter(len(new_header) - 1)
+        ws.update(f'A1:{end_col}1', [new_header], value_input_option='RAW')
+        try:
+            ws.format(f'A1:{end_col}1', {
+                'backgroundColor': {'red':0.39, 'green':0.40, 'blue':0.95},
+                'textFormat': {'bold':True,
+                               'foregroundColor':{'red':1,'green':1,'blue':1}},
+                'horizontalAlignment':'CENTER',
+            })
+        except Exception:
+            pass
+    return ws
+
+
+def get_key_for_grade(simulacro: str, sesion: str, grado: str) -> list:
+    """Retorna la clave guardada para (simulacro, sesion, grado), o [] si no existe."""
+    simulacro = (simulacro or '').strip()
+    sesion    = (sesion or '').strip().upper()
+    grado     = str(grado or '').strip()
+    if not simulacro or not sesion or not grado:
+        return []
+    try:
+        ws = _ensure_keys_grade_sheet()
+        rows = ws.get_all_values()
+        for r in rows[1:]:
+            if (len(r) >= 3
+                and (r[0] or '').strip() == simulacro
+                and (r[1] or '').strip().upper() == sesion
+                and str(r[2] or '').strip() == grado):
+                # Devolver desde la columna 4 hasta la última no vacía
+                answers = r[3:]
+                while answers and not (answers[-1] or '').strip():
+                    answers.pop()
+                return [(a or '').strip() for a in answers]
+        return []
+    except Exception:
+        return []
+
+
+def save_key_for_grade(simulacro: str, sesion: str, grado: str, answers: list) -> dict:
+    """Guarda/actualiza la clave para (simulacro, sesion, grado)."""
+    simulacro = (simulacro or '').strip()
+    sesion    = (sesion or '').strip().upper()
+    grado     = str(grado or '').strip()
+    if not simulacro or not sesion or not grado:
+        return {'success': False, 'error': 'simulacro, sesion y grado son requeridos.'}
+    if not isinstance(answers, list):
+        return {'success': False, 'error': 'answers debe ser una lista.'}
+    n = len(answers)
+    if n > 200:
+        return {'success': False, 'error': 'Demasiadas respuestas (max 200).'}
+    try:
+        ws = _ensure_keys_grade_sheet(max_q=max(125, n))
+        rows = ws.get_all_values()
+        target_row = None
+        for i, r in enumerate(rows):
+            if i == 0: continue
+            if (len(r) >= 3
+                and (r[0] or '').strip() == simulacro
+                and (r[1] or '').strip().upper() == sesion
+                and str(r[2] or '').strip() == grado):
+                target_row = i + 1
+                break
+        # Construir la fila completa
+        row_data = [simulacro, sesion, grado] + [(a or '').upper() if a else '' for a in answers]
+        end_col = _col_letter(len(row_data) - 1)
+        if target_row:
+            ws.update(f'A{target_row}:{end_col}{target_row}', [row_data], value_input_option='RAW')
+        else:
+            ws.append_row(row_data, value_input_option='RAW')
+        return {'success': True, 'count': sum(1 for a in answers if a)}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def list_keys_grade() -> list:
+    """Lista todas las combinaciones (simulacro, sesion, grado) que tienen clave."""
+    try:
+        ws = _ensure_keys_grade_sheet()
+        rows = ws.get_all_values()[1:]
+        out = []
+        for r in rows:
+            if len(r) < 3: continue
+            sim   = (r[0] or '').strip()
+            ses   = (r[1] or '').strip().upper()
+            grado = str(r[2] or '').strip()
+            if not sim or not ses or not grado: continue
+            answers = r[3:]
+            while answers and not (answers[-1] or '').strip():
+                answers.pop()
+            count = sum(1 for a in answers if (a or '').strip())
+            out.append({
+                'simulacro': sim, 'sesion': ses, 'grado': grado,
+                'count': count, 'total': len(answers),
+            })
+        out.sort(key=lambda x: (x['simulacro'], x['sesion'],
+                                int(x['grado']) if x['grado'].isdigit() else 99))
+        return out
+    except Exception:
+        return []
+
+
 def uppercase_all_student_names() -> dict:
     """Recorre todas las hojas de respuestas y convierte la columna Nombre (col C)
        a MAYÚSCULAS, excepto en filas KEY o TOTALES y hojas administrativas."""
@@ -1080,6 +1202,26 @@ def _score_student_with_distribution(answers_by_session, keys_by_session, distri
     return out
 
 
+def _find_simulacro_for_sheet(sheet_name):
+    """Devuelve el nombre del simulacro que contiene esa hoja, o '' si no se encuentra."""
+    try:
+        sims = list_simulacros()
+        for s in sims:
+            if sheet_name in (s.get('sheets') or []):
+                return s['nombre']
+    except Exception:
+        pass
+    return ''
+
+
+def _find_simulacro_for_sheets(sheet_names):
+    """Igual que _find_simulacro_for_sheet pero con varias hojas (devuelve la primera coincidencia)."""
+    for sn in sheet_names:
+        n = _find_simulacro_for_sheet(sn)
+        if n: return n
+    return ''
+
+
 def _grade_of_curso(curso, courses_list=None):
     if courses_list is None:
         courses_list = list_courses()
@@ -1191,6 +1333,8 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
 
     courses_list = list_courses()
     distribuciones = list_distribuciones()
+    sim_name = _find_simulacro_for_sheets([sheet_1s, sheet_2s])
+    keys_by_grade = {}  # {grado: {'1S': k1s, '2S': k2s}}
 
     # Calcular resultados
     results = []
@@ -1200,23 +1344,32 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         s_any = s1 or s2
         name  = s_any.get('name','')
         sid   = s_any.get('id','') or (key if not key.startswith('_') else '')
-        # Curso: priorizar el de 1S, luego 2S
         curso = ''
         if s1 and s1.get('curso'): curso = s1['curso']
         elif s2 and s2.get('curso'): curso = s2['curso']
         ans_1s = s1['answers'] if s1 else []
         ans_2s = s2['answers'] if s2 else []
 
-        # Distribución según el grado del estudiante
         grado = _grade_of_curso(curso, courses_list)
         dist = distribuciones.get(('completo', grado))
         if not dist:
             dist = DEFAULT_DISTRIBUCIONES.get(('completo', grado))
         if not dist:
-            dist = DEFAULT_DISTRIBUCIONES.get(('completo', '11'))  # fallback
+            dist = DEFAULT_DISTRIBUCIONES.get(('completo', '11'))
+
+        # Claves por grado (si están registradas)
+        if grado not in keys_by_grade:
+            specific_1s = get_key_for_grade(sim_name, '1S', grado) if sim_name else []
+            specific_2s = get_key_for_grade(sim_name, '2S', grado) if sim_name else []
+            keys_by_grade[grado] = {
+                '1S': specific_1s or key_1s,
+                '2S': specific_2s or key_2s,
+            }
+        kfor = keys_by_grade[grado]
 
         scores = _score_student_with_distribution(
-            {'1S': ans_1s, '2S': ans_2s}, {'1S': key_1s, '2S': key_2s}, dist)
+            {'1S': ans_1s, '2S': ans_2s},
+            {'1S': kfor['1S'], '2S': kfor['2S']}, dist)
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))
@@ -1340,6 +1493,9 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
     courses_list = list_courses()
     distribuciones = list_distribuciones()
 
+    # Cache de claves por grado: {grado: clave_M}
+    keys_by_grade = {}
+
     results = []
     for key in sorted(students.keys()):
         s     = students[key]
@@ -1354,10 +1510,18 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         if not dist:
             dist = DEFAULT_DISTRIBUCIONES.get(('media', grado))
         if not dist:
-            dist = DEFAULT_DISTRIBUCIONES.get(('media', '10'))  # fallback general
+            dist = DEFAULT_DISTRIBUCIONES.get(('media', '10'))
+
+        # Clave: si hay una específica para (simulacro, M, grado), úsala;
+        # sino usa la global del sheet (key_m)
+        if grado not in keys_by_grade:
+            sim_name = _find_simulacro_for_sheet(sheet_m)
+            specific = get_key_for_grade(sim_name, 'M', grado) if sim_name else []
+            keys_by_grade[grado] = specific or key_m
+        key_for_student = keys_by_grade[grado]
 
         scores = _score_student_with_distribution(
-            {'M': ans}, {'M': key_m}, dist)
+            {'M': ans}, {'M': key_for_student}, dist)
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))

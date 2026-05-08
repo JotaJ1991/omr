@@ -780,33 +780,96 @@
 
   <!-- ══ TAB CLAVE DE RESPUESTAS ══════════════════════════════════════════════ -->
   <div id="tab-key" class="tab-content">
+
+    <!-- Card NUEVO: Clave por (simulacro, sesión, grado) -->
     <div class="card">
-      <h2>🔑 Clave de respuestas</h2>
+      <h2>🔑 Clave por simulacro y grado</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
-        Define las respuestas correctas para la hoja activa.
-        Se guardan en la fila 2 del Sheets. Al escanear estudiantes,
-        el sistema calculará automáticamente correctas y porcentaje.
+        Selecciona un <strong>simulacro</strong>, la <strong>sesión</strong> y el <strong>grado</strong>
+        para definir su clave de respuestas. Cada combinación tiene su propia clave.
       </p>
 
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-        <label style="font-size:.85rem;font-weight:500;color:var(--muted);">Preguntas:</label>
-        <input type="number" id="key-num-q" value="125" min="1" max="125"
-          style="width:70px;padding:6px 8px;border:1.5px solid var(--border);
-                 border-radius:7px;font-size:.9rem;font-weight:600;text-align:center;"
-          oninput="buildKeyGrid(this.value)">
-        <span class="key-status" id="key-status">0 de 125 definidas</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="flex:2;min-width:160px;">
+          <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
+          <select id="kg-sim" onchange="_onKgChange()">
+            <option value="">— selecciona —</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Sesión</label>
+          <select id="kg-ses" onchange="_onKgChange()">
+            <option value="M">M (Media)</option>
+            <option value="1S">1S</option>
+            <option value="2S">2S</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);">Grado</label>
+          <select id="kg-grado" onchange="_onKgChange()">
+            <option value="">—</option>
+            <option value="6">6°</option>
+            <option value="7">7°</option>
+            <option value="8">8°</option>
+            <option value="9">9°</option>
+            <option value="10">10°</option>
+            <option value="11">11°</option>
+          </select>
+        </div>
       </div>
 
-      <div class="key-grid" id="key-grid"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+        <label style="font-size:.85rem;font-weight:500;color:var(--muted);">Preguntas:</label>
+        <input type="number" id="kg-num-q" value="125" min="1" max="200"
+          style="width:80px;padding:6px 8px;border:1.5px solid var(--border);
+                 border-radius:7px;font-size:.9rem;font-weight:600;text-align:center;"
+          oninput="buildKgGrid(this.value)">
+        <span id="kg-status" style="font-size:.82rem;color:var(--muted);">— sin selección —</span>
+      </div>
+
+      <div class="key-grid" id="kg-grid"></div>
 
       <div class="btn-group" style="margin-top:14px;">
-        <button class="btn-key-clear" onclick="clearKeyGrid()">🗑️ Limpiar</button>
-        <button class="btn-key-save"  onclick="saveKey()">💾 Guardar clave</button>
+        <button class="btn-key-clear" onclick="clearKgGrid()" type="button">🗑️ Limpiar</button>
+        <button class="btn-key-save"  onclick="saveKgKey()" type="button">💾 Guardar clave</button>
       </div>
-      <div class="score-note" id="key-saved-note">
-        ✅ Clave guardada correctamente en la hoja activa.
+      <div class="score-note" id="kg-saved-note">
+        ✅ Clave guardada para (simulacro, sesión, grado).
       </div>
     </div>
+
+    <!-- Card LEGACY: Clave por hoja activa (modo avanzado, fallback) -->
+    <details>
+      <summary style="cursor:pointer;font-size:.85rem;color:var(--muted);
+                       padding:8px 12px;background:rgba(255,255,255,.04);
+                       border:1px solid var(--card-border);border-radius:8px;">
+        ⚙️ Modo avanzado — Clave por hoja activa (legacy)
+      </summary>
+      <div class="card" style="margin-top:8px;">
+        <h2>🔑 Clave de respuestas (hoja activa)</h2>
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+          Define las respuestas correctas para la hoja activa.
+          Se guardan en la fila 2 del Sheets. Solo se usa si NO hay clave por
+          (simulacro, sesión, grado) configurada.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <label style="font-size:.85rem;font-weight:500;color:var(--muted);">Preguntas:</label>
+          <input type="number" id="key-num-q" value="125" min="1" max="125"
+            style="width:70px;padding:6px 8px;border:1.5px solid var(--border);
+                   border-radius:7px;font-size:.9rem;font-weight:600;text-align:center;"
+            oninput="buildKeyGrid(this.value)">
+          <span class="key-status" id="key-status">0 de 125 definidas</span>
+        </div>
+        <div class="key-grid" id="key-grid"></div>
+        <div class="btn-group" style="margin-top:14px;">
+          <button class="btn-key-clear" onclick="clearKeyGrid()">🗑️ Limpiar</button>
+          <button class="btn-key-save"  onclick="saveKey()">💾 Guardar clave</button>
+        </div>
+        <div class="score-note" id="key-saved-note">
+          ✅ Clave guardada correctamente en la hoja activa.
+        </div>
+      </div>
+    </details>
   </div><!-- /tab-key -->
 
   <!-- ══ TAB RESULTADOS (UNIFICADO + REPORTES) ═════════════════════════════ -->
@@ -1388,7 +1451,146 @@ async function loadSimulacros() {
     renderSimulacrosList();
     _refreshSimulacroSelect();
     _refreshUnifiedSimSelect();
+    _populateKgSimSelect();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
+}
+
+// ══ CLAVE POR (simulacro, sesion, grado) ════════════════════════════════════
+let kgAnswers = [];
+let _kgCurrentLoaded = '';   // "sim|ses|grado" cargado actualmente
+
+function _populateKgSimSelect() {
+  const sel = document.getElementById('kg-sim');
+  if (!sel) return;
+  const prev = sel.value;
+  let html = '<option value="">— selecciona —</option>';
+  _simulacrosCache.forEach(s => {
+    const tipoLbl = s.tipo === 'completo' ? 'Completo' : 'Media';
+    html += `<option value="${s.nombre}" data-tipo="${s.tipo}">${s.nombre} · ${tipoLbl}</option>`;
+  });
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+function _onKgChange() {
+  const sim   = document.getElementById('kg-sim').value;
+  const ses   = document.getElementById('kg-ses').value;
+  const grado = document.getElementById('kg-grado').value;
+  const status = document.getElementById('kg-status');
+  // Ajustar opciones de sesión según tipo del simulacro
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const sesSel = document.getElementById('kg-ses');
+  if (simObj) {
+    if (simObj.tipo === 'media') {
+      sesSel.innerHTML = '<option value="M">M (Media)</option>';
+    } else {
+      const cur = sesSel.value;
+      sesSel.innerHTML = '<option value="1S">1S</option><option value="2S">2S</option>';
+      if (['1S','2S'].includes(cur)) sesSel.value = cur;
+    }
+  }
+  const sesNow = sesSel.value;
+  if (!sim || !sesNow || !grado) {
+    status.textContent = '— selecciona simulacro, sesión y grado —';
+    document.getElementById('kg-grid').innerHTML = '';
+    return;
+  }
+  loadKgKey(sim, sesNow, grado);
+}
+
+async function loadKgKey(sim, ses, grado) {
+  const status = document.getElementById('kg-status');
+  status.textContent = `Cargando clave de ${sim} · ${ses} · ${grado}°…`;
+  try {
+    const url = `/keys_grade?simulacro=${encodeURIComponent(sim)}&sesion=${encodeURIComponent(ses)}&grado=${encodeURIComponent(grado)}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const ans = (data && data.answers) || [];
+    kgAnswers = ans.slice();
+    const n = parseInt(document.getElementById('kg-num-q').value) || 125;
+    if (ans.length > n) document.getElementById('kg-num-q').value = ans.length;
+    buildKgGrid(parseInt(document.getElementById('kg-num-q').value) || 125);
+    _kgCurrentLoaded = `${sim}|${ses}|${grado}`;
+    const defined = ans.filter(v => v).length;
+    if (defined > 0) {
+      status.innerHTML = `<strong>${defined}</strong> respuestas cargadas para ${sim} · ${ses} · ${grado}°`;
+    } else {
+      status.textContent = `Sin clave para ${sim} · ${ses} · ${grado}°. Define las respuestas y guarda.`;
+    }
+  } catch(e) {
+    status.textContent = 'Error cargando clave.';
+  }
+}
+
+function buildKgGrid(val) {
+  let n = parseInt(val, 10);
+  if (isNaN(n) || n < 1) n = 1;
+  if (n > 200) n = 200;
+  document.getElementById('kg-num-q').value = n;
+  // Ajustar el array de claves
+  if (kgAnswers.length < n) {
+    kgAnswers = kgAnswers.concat(new Array(n - kgAnswers.length).fill(''));
+  }
+  const grid = document.getElementById('kg-grid');
+  grid.innerHTML = Array.from({length: n}, (_, i) => {
+    const v = kgAnswers[i] || '';
+    const filled = v ? ' filled' : '';
+    const opts = ['A','B','C','D','E','F','G','H'];
+    const options = opts.map(o => `<option value="${o}" ${v===o?'selected':''}>${o}</option>`).join('');
+    return `<div class="key-chip${filled}" id="kg-c-${i}">
+      <span class="qnum">${i+1}.</span>
+      <select onchange="setKgAnswer(${i}, this.value)">
+        <option value="" ${v===''?'selected':''}>—</option>
+        ${options}
+      </select>
+    </div>`;
+  }).join('');
+}
+
+function setKgAnswer(idx, val) {
+  kgAnswers[idx] = val;
+  const chip = document.getElementById(`kg-c-${idx}`);
+  if (chip) chip.className = 'key-chip' + (val ? ' filled' : '');
+}
+
+function clearKgGrid() {
+  const n = parseInt(document.getElementById('kg-num-q').value) || 125;
+  kgAnswers = new Array(n).fill('');
+  buildKgGrid(n);
+}
+
+async function saveKgKey() {
+  const sim   = document.getElementById('kg-sim').value;
+  const ses   = document.getElementById('kg-ses').value;
+  const grado = document.getElementById('kg-grado').value;
+  if (!sim || !ses || !grado) {
+    alert('Selecciona simulacro, sesión y grado.');
+    return;
+  }
+  const n = parseInt(document.getElementById('kg-num-q').value) || 125;
+  const data = kgAnswers.slice(0, n);
+  const defined = data.filter(v => v).length;
+  if (!defined) {
+    alert('Define al menos una respuesta antes de guardar.');
+    return;
+  }
+  try {
+    const resp = await fetch('/keys_grade', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({simulacro: sim, sesion: ses, grado, answers: data})
+    });
+    const r = await resp.json();
+    if (r.success) {
+      const note = document.getElementById('kg-saved-note');
+      note.textContent = `✅ Clave guardada (${defined} respuestas) para ${sim} · ${ses} · ${grado}°`;
+      note.classList.add('show');
+      setTimeout(() => note.classList.remove('show'), 4000);
+    } else {
+      alert('Error: ' + (r.error || 'desconocido'));
+    }
+  } catch(e) {
+    alert('Error de conexión al guardar.');
+  }
 }
 
 // Llena el selector de simulacro de la pestaña Escanear

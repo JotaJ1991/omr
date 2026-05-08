@@ -18,6 +18,7 @@ from sheets_connector import (
     uppercase_all_student_names,
     analyze_simulacro_questions,
     list_distribuciones_json, save_distribucion,
+    get_key_for_grade, save_key_for_grade, list_keys_grade,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -316,6 +317,35 @@ def simulacros_add():
     try:
         result = add_simulacro(nombre, fecha, tipo, grados)
         return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/keys_grade', methods=['GET'])
+def keys_grade_list():
+    sim   = (request.args.get('simulacro') or '').strip()
+    ses   = (request.args.get('sesion') or '').strip()
+    grado = (request.args.get('grado') or '').strip()
+    try:
+        if sim and ses and grado:
+            ans = get_key_for_grade(sim, ses, grado)
+            return jsonify({'success': True, 'answers': ans})
+        return jsonify({'success': True, 'keys': list_keys_grade()})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/keys_grade', methods=['POST'])
+def keys_grade_save():
+    data = request.get_json(silent=True) or {}
+    sim   = (data.get('simulacro') or '').strip()
+    ses   = (data.get('sesion') or '').strip()
+    grado = str(data.get('grado') or '').strip()
+    answers = data.get('answers') or []
+    try:
+        return jsonify(save_key_for_grade(sim, ses, grado, answers))
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
