@@ -919,6 +919,20 @@
       <div id="simulacros-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
+    <!-- ── Distribución de preguntas por grado ── -->
+    <div class="card">
+      <h2>📐 Distribución de preguntas por grado</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Define qué preguntas pertenecen a cada asignatura para cada grado y tipo de simulacro.
+        Estos rangos se usan al generar resultados y reportes.
+      </p>
+      <button class="btn-primary" onclick="showDistribModal()" type="button"
+              style="padding:10px 18px;font-size:.88rem;margin-bottom:14px;">
+        ➕ Configurar grado
+      </button>
+      <div id="distribuciones-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+
     <!-- ── Diagnóstico ── -->
     <div class="card">
       <h2>🔬 Diagnóstico OMR</h2>
@@ -971,6 +985,53 @@
       <button class="btn-success"   onclick="createNewSheet()">✅ Crear y seleccionar</button>
     </div>
     <div id="modal-error"
+         style="color:var(--danger);font-size:.85rem;margin-top:10px;display:none;"></div>
+  </div>
+</div>
+
+<!-- Modal distribución por grado -->
+<div class="modal-overlay" id="distrib-modal">
+  <div class="modal" style="width:min(560px, calc(100vw - 32px));">
+    <h3>📐 Distribución de preguntas</h3>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:120px;">
+        <label>Tipo de simulacro</label>
+        <select id="distrib-tipo" onchange="_onDistribTipoChange()">
+          <option value="completo">Completo (1S + 2S)</option>
+          <option value="media" selected>Media jornada (M)</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:90px;">
+        <label>Grado</label>
+        <select id="distrib-grado">
+          <option value="6">6°</option>
+          <option value="7">7°</option>
+          <option value="8">8°</option>
+          <option value="9">9°</option>
+          <option value="10" selected>10°</option>
+          <option value="11">11°</option>
+        </select>
+      </div>
+    </div>
+    <p style="font-size:.78rem;color:var(--muted);margin-bottom:6px;">
+      Define las filas: una por cada bloque de preguntas de una materia.
+    </p>
+    <div id="distrib-rows" style="display:flex;flex-direction:column;gap:6px;
+                                    max-height:280px;overflow:auto;
+                                    border:1px solid var(--card-border);
+                                    border-radius:8px;padding:8px;
+                                    background:rgba(255,255,255,.02);"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn-secondary" onclick="_distribAddRow()" type="button"
+              style="flex:1;padding:8px;font-size:.82rem;">➕ Agregar fila</button>
+      <button class="btn-secondary" onclick="_distribLoadDefault()" type="button"
+              style="flex:1;padding:8px;font-size:.82rem;">📋 Cargar default</button>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="hideDistribModal()">Cancelar</button>
+      <button class="btn-success"   onclick="saveDistrib()">💾 Guardar</button>
+    </div>
+    <div id="distrib-modal-error"
          style="color:var(--danger);font-size:.85rem;margin-top:10px;display:none;"></div>
   </div>
 </div>
@@ -1056,7 +1117,177 @@ let state = {
   await loadProfile();
   await loadCourses();
   await loadSimulacros();
+  await loadDistribuciones();
 })();
+
+// ══ DISTRIBUCIÓN DE PREGUNTAS POR GRADO ════════════════════════════════════
+let _distribCache = [];
+const SUBJECT_OPTIONS = ['Matematica','Lectura Critica','Sociales','Naturales','Ingles'];
+
+async function loadDistribuciones() {
+  try {
+    const resp = await fetch('/distribuciones');
+    const data = await resp.json();
+    _distribCache = data.distribuciones || [];
+    renderDistribucionesList();
+  } catch(e) { console.warn(e); }
+}
+
+function renderDistribucionesList() {
+  const cont = document.getElementById('distribuciones-list');
+  if (!cont) return;
+  if (!_distribCache.length) {
+    cont.innerHTML = `<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:14px;">
+      Sin distribuciones configuradas. Toca "Configurar grado" para empezar.</p>`;
+    return;
+  }
+  cont.innerHTML = _distribCache.map(d => {
+    const total = d.materias.reduce((s, m) => s + (m.fin - m.inicio + 1), 0);
+    return `<div style="border:1px solid var(--card-border);border-radius:10px;padding:10px 12px;
+                   background:rgba(255,255,255,.02);">
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  cursor:pointer;" onclick="editDistrib('${d.tipo}', '${d.grado}')">
+        <div>
+          <div style="font-weight:700;">
+            ${d.tipo === 'completo' ? 'Completo' : 'Media'} · Grado ${d.grado}°
+          </div>
+          <div style="font-size:.72rem;color:var(--muted);">
+            ${d.materias.length} bloques · ${total} preguntas en total
+          </div>
+        </div>
+        <button onclick="event.stopPropagation();editDistrib('${d.tipo}','${d.grado}')"
+                style="border:1px solid var(--card-border);background:transparent;
+                       color:var(--primary-light);padding:5px 10px;border-radius:6px;
+                       cursor:pointer;font-size:.78rem;">✏️ Editar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showDistribModal() {
+  document.getElementById('distrib-tipo').value = 'media';
+  document.getElementById('distrib-grado').value = '10';
+  document.getElementById('distrib-modal-error').style.display = 'none';
+  _distribLoadDefault();
+  document.getElementById('distrib-modal').classList.add('show');
+}
+
+function editDistrib(tipo, grado) {
+  document.getElementById('distrib-tipo').value = tipo;
+  document.getElementById('distrib-grado').value = grado;
+  document.getElementById('distrib-modal-error').style.display = 'none';
+  const d = _distribCache.find(x => x.tipo === tipo && x.grado === grado);
+  if (d) _distribRenderRows(d.materias);
+  else _distribLoadDefault();
+  document.getElementById('distrib-modal').classList.add('show');
+}
+
+function hideDistribModal() {
+  document.getElementById('distrib-modal').classList.remove('show');
+}
+
+function _onDistribTipoChange() {
+  // Nada por ahora; las sesiones se ajustan en cada fila
+}
+
+function _distribLoadDefault() {
+  const tipo = document.getElementById('distrib-tipo').value;
+  const grado = document.getElementById('distrib-grado').value;
+  // Si hay distribución guardada para (tipo, grado), úsala como base
+  const existing = _distribCache.find(x => x.tipo === tipo && x.grado === grado);
+  if (existing) {
+    _distribRenderRows(existing.materias);
+    return;
+  }
+  // Default según tipo
+  let rows;
+  if (tipo === 'media') {
+    rows = [
+      {materia:'Matematica',     sesion:'M', inicio:1,   fin:25},
+      {materia:'Lectura Critica',sesion:'M', inicio:26,  fin:50},
+      {materia:'Sociales',       sesion:'M', inicio:51,  fin:75},
+      {materia:'Naturales',      sesion:'M', inicio:76,  fin:100},
+      {materia:'Ingles',         sesion:'M', inicio:101, fin:125},
+    ];
+  } else {
+    rows = [
+      {materia:'Matematica',     sesion:'1S', inicio:1,  fin:25},
+      {materia:'Matematica',     sesion:'2S', inicio:26, fin:50},
+      {materia:'Lectura Critica',sesion:'1S', inicio:26, fin:66},
+      {materia:'Sociales',       sesion:'1S', inicio:67, fin:91},
+      {materia:'Sociales',       sesion:'2S', inicio:1,  fin:25},
+      {materia:'Naturales',      sesion:'1S', inicio:92, fin:120},
+      {materia:'Naturales',      sesion:'2S', inicio:51, fin:79},
+      {materia:'Ingles',         sesion:'2S', inicio:80, fin:134},
+    ];
+  }
+  _distribRenderRows(rows);
+}
+
+function _distribRenderRows(rows) {
+  const cont = document.getElementById('distrib-rows');
+  cont.innerHTML = '';
+  rows.forEach(r => _distribAddRow(r));
+}
+
+function _distribAddRow(r) {
+  const cont = document.getElementById('distrib-rows');
+  const tipo = document.getElementById('distrib-tipo').value;
+  const sesionsForTipo = tipo === 'media' ? ['M'] : ['1S', '2S'];
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:6px;align-items:center;';
+  div.innerHTML = `
+    <select class="distrib-mat" style="flex:1.5;min-width:0;">
+      ${SUBJECT_OPTIONS.map(s => `<option value="${s}" ${r && r.materia === s ? 'selected' : ''}>${s}</option>`).join('')}
+    </select>
+    <select class="distrib-ses" style="flex:.6;min-width:0;">
+      ${sesionsForTipo.map(s => `<option value="${s}" ${r && r.sesion === s ? 'selected' : ''}>${s}</option>`).join('')}
+    </select>
+    <input type="number" class="distrib-ini" placeholder="Inicio" min="1"
+           value="${r ? r.inicio : ''}" style="flex:.6;min-width:0;">
+    <input type="number" class="distrib-fin" placeholder="Fin" min="1"
+           value="${r ? r.fin : ''}" style="flex:.6;min-width:0;">
+    <button onclick="this.parentNode.remove()"
+            style="background:transparent;border:1px solid var(--border);
+                   color:var(--danger);padding:6px 10px;border-radius:6px;
+                   cursor:pointer;font-size:.78rem;">🗑️</button>`;
+  cont.appendChild(div);
+}
+
+async function saveDistrib() {
+  const tipo = document.getElementById('distrib-tipo').value;
+  const grado = document.getElementById('distrib-grado').value;
+  const errEl = document.getElementById('distrib-modal-error');
+  const rows = Array.from(document.querySelectorAll('#distrib-rows > div')).map(div => ({
+    materia: div.querySelector('.distrib-mat').value,
+    sesion:  div.querySelector('.distrib-ses').value,
+    inicio:  parseInt(div.querySelector('.distrib-ini').value),
+    fin:     parseInt(div.querySelector('.distrib-fin').value),
+  }));
+  for (const r of rows) {
+    if (!r.materia || !r.sesion || isNaN(r.inicio) || isNaN(r.fin) || r.fin < r.inicio) {
+      errEl.textContent = 'Verifica que todas las filas tengan datos correctos.';
+      errEl.style.display = 'block'; return;
+    }
+  }
+  try {
+    const resp = await fetch('/distribuciones', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({tipo, grado, materias: rows})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      _distribCache = data.distribuciones;
+      renderDistribucionesList();
+      hideDistribModal();
+    } else {
+      errEl.textContent = data.error || 'Error.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Error de conexión.'; errEl.style.display = 'block';
+  }
+}
 
 // ══ CURSOS ════════════════════════════════════════════════════════════════
 let _coursesCache = [];   // [{name, grado}, ...]

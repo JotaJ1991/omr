@@ -31,10 +31,37 @@ COL_OFFSET = 4
 KEY_ROW_NAME = '*** CLAVE ***'
 COURSES_SHEET = 'Cursos'
 SIMULACROS_SHEET = 'Simulacros'
+DISTRIBUCION_SHEET = 'Distribucion'
 
 # Tipos de simulacro
 SIM_COMPLETO = 'completo'   # 2 sesiones (1S + 2S)
 SIM_MEDIA    = 'media'      # 1 sesión (M)
+
+# Materias canónicas
+MATERIAS = ['Matematica', 'Lectura Critica', 'Sociales', 'Naturales', 'Ingles']
+
+# Distribuciones por defecto (1-based; al guardar se convierten al sheet)
+# Estructura: {(tipo, grado): [{materia, sesion, inicio, fin}, ...]}
+DEFAULT_DISTRIBUCIONES = {
+    ('completo', '11'): [
+        {'materia':'Matematica',      'sesion':'1S', 'inicio':1,  'fin':25},
+        {'materia':'Matematica',      'sesion':'2S', 'inicio':26, 'fin':50},
+        {'materia':'Lectura Critica', 'sesion':'1S', 'inicio':26, 'fin':66},
+        {'materia':'Sociales',        'sesion':'1S', 'inicio':67, 'fin':91},
+        {'materia':'Sociales',        'sesion':'2S', 'inicio':1,  'fin':25},
+        {'materia':'Naturales',       'sesion':'1S', 'inicio':92, 'fin':120},
+        {'materia':'Naturales',       'sesion':'2S', 'inicio':51, 'fin':79},
+        {'materia':'Ingles',          'sesion':'2S', 'inicio':80, 'fin':134},
+    ],
+    # Para Media jornada por defecto: 5 bloques de 25 preguntas
+    ('media', '10'): [
+        {'materia':'Matematica',      'sesion':'M', 'inicio':1,   'fin':25},
+        {'materia':'Lectura Critica', 'sesion':'M', 'inicio':26,  'fin':50},
+        {'materia':'Sociales',        'sesion':'M', 'inicio':51,  'fin':75},
+        {'materia':'Naturales',       'sesion':'M', 'inicio':76,  'fin':100},
+        {'materia':'Ingles',          'sesion':'M', 'inicio':101, 'fin':125},
+    ],
+}
 
 
 def _get_sheets_client():
@@ -466,6 +493,130 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
                 if item: questions.append(item)
 
     return {'success': True, 'questions': questions, 'simulacro': simulacro_nombre, 'tipo': sim['tipo']}
+
+
+# ── Distribución de preguntas por (tipo, grado) ──────────────────────
+def _ensure_distribucion_sheet():
+    """Hoja 'Distribucion' con columnas: Tipo, Grado, Materia, Sesion, Inicio, Fin."""
+    ss = _open_spreadsheet()
+    fresh = False
+    try:
+        ws = ss.worksheet(DISTRIBUCION_SHEET)
+        header = ws.row_values(1) or []
+        if len(header) < 6 or header[0].strip().lower() != 'tipo':
+            ws.update('A1:F1', [['Tipo','Grado','Materia','Sesion','Inicio','Fin']],
+                      value_input_option='RAW')
+    except Exception:
+        ws = ss.add_worksheet(title=DISTRIBUCION_SHEET, rows=200, cols=8)
+        ws.update('A1:F1', [['Tipo','Grado','Materia','Sesion','Inicio','Fin']],
+                  value_input_option='RAW')
+        try:
+            ws.format('A1:F1', {
+                'backgroundColor': {'red':0.39, 'green':0.40, 'blue':0.95},
+                'textFormat': {'bold':True,
+                               'foregroundColor':{'red':1,'green':1,'blue':1}},
+                'horizontalAlignment':'CENTER',
+            })
+        except Exception:
+            pass
+        fresh = True
+
+    # Si está vacía (solo header), poblar con defaults
+    if fresh or len(ws.col_values(1)) <= 1:
+        rows = []
+        for (tipo, grado), entries in DEFAULT_DISTRIBUCIONES.items():
+            for e in entries:
+                rows.append([tipo, grado, e['materia'], e['sesion'], e['inicio'], e['fin']])
+        if rows:
+            ws.append_rows(rows, value_input_option='RAW')
+    return ws
+
+
+def list_distribuciones() -> dict:
+    """Retorna {(tipo, grado): [{materia, sesion, inicio, fin}, ...]}."""
+    try:
+        ws = _ensure_distribucion_sheet()
+        data = ws.get_all_values()[1:]
+        result = {}
+        for r in data:
+            if len(r) < 6: continue
+            tipo  = (r[0] or '').strip().lower()
+            grado = (r[1] or '').strip()
+            mat   = (r[2] or '').strip()
+            ses   = (r[3] or '').strip().upper()
+            try:
+                ini = int(r[4]); fin = int(r[5])
+            except Exception:
+                continue
+            if not tipo or not grado or not mat or ini < 1 or fin < ini:
+                continue
+            key = (tipo, grado)
+            result.setdefault(key, [])
+            result[key].append({'materia': mat, 'sesion': ses,
+                                 'inicio': ini, 'fin': fin})
+        return result
+    except Exception:
+        return {}
+
+
+def list_distribuciones_json() -> list:
+    """Versión serializable: lista de {tipo, grado, materias: [...]}"""
+    d = list_distribuciones()
+    out = []
+    for (tipo, grado), entries in d.items():
+        out.append({'tipo': tipo, 'grado': grado, 'materias': entries})
+    out.sort(key=lambda x: (x['tipo'], int(x['grado']) if x['grado'].isdigit() else 99))
+    return out
+
+
+def save_distribucion(tipo: str, grado: str, materias: list) -> dict:
+    """Reemplaza la distribución de (tipo, grado)."""
+    tipo  = (tipo or '').strip().lower()
+    grado = str(grado or '').strip()
+    if tipo not in (SIM_COMPLETO, SIM_MEDIA):
+        return {'success': False, 'error': 'Tipo inválido.'}
+    if not grado:
+        return {'success': False, 'error': 'Grado requerido.'}
+    if not isinstance(materias, list) or not materias:
+        return {'success': False, 'error': 'Lista de materias vacía.'}
+    cleaned = []
+    for m in materias:
+        mat = (m.get('materia') or '').strip()
+        ses = (m.get('sesion') or '').strip().upper()
+        try:
+            ini = int(m.get('inicio')); fin = int(m.get('fin'))
+        except Exception:
+            return {'success': False, 'error': 'Inicio/Fin inválidos.'}
+        if not mat or ini < 1 or fin < ini:
+            return {'success': False, 'error': 'Datos incompletos.'}
+        cleaned.append([tipo, grado, mat, ses, ini, fin])
+
+    try:
+        ws = _ensure_distribucion_sheet()
+        all_rows = ws.get_all_values()
+        i = len(all_rows)
+        while i >= 2:
+            row = all_rows[i-1] if i-1 < len(all_rows) else []
+            if (len(row) >= 2 and (row[0] or '').strip().lower() == tipo
+                and str(row[1] or '').strip() == grado):
+                ws.delete_rows(i)
+            i -= 1
+        ws.append_rows(cleaned, value_input_option='RAW')
+        return {'success': True, 'distribuciones': list_distribuciones_json()}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def get_distribucion_for(tipo: str, grado: str) -> list:
+    """Distribución para (tipo, grado), con fallback al default."""
+    tipo  = (tipo or '').strip().lower()
+    grado = str(grado or '').strip()
+    d = list_distribuciones()
+    if (tipo, grado) in d:
+        return d[(tipo, grado)]
+    if (tipo, grado) in DEFAULT_DISTRIBUCIONES:
+        return DEFAULT_DISTRIBUCIONES[(tipo, grado)]
+    return []
 
 
 def uppercase_all_student_names() -> dict:

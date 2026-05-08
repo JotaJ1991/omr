@@ -17,6 +17,7 @@ from sheets_connector import (
     list_simulacros, add_simulacro, delete_simulacro,
     uppercase_all_student_names,
     analyze_simulacro_questions,
+    list_distribuciones_json, save_distribucion,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -315,6 +316,28 @@ def simulacros_add():
     try:
         result = add_simulacro(nombre, fecha, tipo, grados)
         return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/distribuciones', methods=['GET'])
+def distribuciones_list():
+    try:
+        return jsonify({'success': True, 'distribuciones': list_distribuciones_json()})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/distribuciones', methods=['POST'])
+def distribuciones_save():
+    data = request.get_json(silent=True) or {}
+    tipo  = (data.get('tipo') or '').strip()
+    grado = str(data.get('grado') or '').strip()
+    materias = data.get('materias') or []
+    try:
+        return jsonify(save_distribucion(tipo, grado, materias))
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
