@@ -1041,6 +1041,55 @@ M_SIPAGRE_SUBJECTS = [
 ]
 
 
+def _score_student_with_distribution(answers_by_session, keys_by_session, distribucion):
+    """
+    Calcula los puntajes 0-100 por materia usando una distribución (tipo, grado).
+
+    answers_by_session: {'1S': [...], '2S': [...], 'M': [...]}
+    keys_by_session:    {'1S': [...], '2S': [...], 'M': [...]}
+    distribucion: lista de {materia, sesion, inicio (1-based), fin (1-based)}
+
+    Retorna: {materia: float 0-100}.
+    """
+    raw = {m: {'correct': 0, 'total': 0} for m in MATERIAS}
+    for entry in (distribucion or []):
+        mat = entry['materia']
+        ses = (entry['sesion'] or '').upper()
+        try:
+            ini = int(entry['inicio']); fin = int(entry['fin'])
+        except Exception:
+            continue
+        ans = answers_by_session.get(ses, [])
+        key = keys_by_session.get(ses, [])
+        for i in range(ini - 1, fin):
+            if i < 0 or i >= len(key): continue
+            k = (key[i] or '').strip()
+            a = (ans[i] if i < len(ans) else '').strip()
+            if k in ('', '?', '—'):
+                continue
+            if mat not in raw:
+                raw[mat] = {'correct': 0, 'total': 0}
+            raw[mat]['total'] += 1
+            if a == k:
+                raw[mat]['correct'] += 1
+    out = {}
+    for mat in MATERIAS:
+        t = raw.get(mat, {}).get('total', 0)
+        c = raw.get(mat, {}).get('correct', 0)
+        out[mat] = round(c / t * 100, 2) if t else 0.0
+    return out
+
+
+def _grade_of_curso(curso, courses_list=None):
+    if courses_list is None:
+        courses_list = list_courses()
+    c = (curso or '').strip()
+    for cc in courses_list:
+        if cc['name'] == c and cc.get('grado'):
+            return cc['grado']
+    return _grade_from_course_name(c)
+
+
 def _count_correct_range(answers, key, start, end):
     """Cuenta respuestas correctas en rango [start, end] (0-based, inclusivo)."""
     count = 0
@@ -1140,6 +1189,9 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     if not all_ids:
         return {'success': False, 'error': 'No se encontraron estudiantes.'}
 
+    courses_list = list_courses()
+    distribuciones = list_distribuciones()
+
     # Calcular resultados
     results = []
     for key in sorted(all_ids):
@@ -1155,29 +1207,22 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         ans_1s = s1['answers'] if s1 else []
         ans_2s = s2['answers'] if s2 else []
 
-        scores = {}
-        for subj_name, ranges, _points_legacy in SIPAGRE_SUBJECTS:
-            correct = 0
-            total_q = 0
-            for session, start, end in ranges:
-                if session == '1S':
-                    correct += _count_correct_range(ans_1s, key_1s, start, end)
-                else:
-                    correct += _count_correct_range(ans_2s, key_2s, start, end)
-                total_q += (end - start + 1)
-            # Puntaje 0-100 = correctas / total * 100
-            pct_score = (correct / total_q * 100) if total_q > 0 else 0.0
-            scores[subj_name] = {
-                'correct': correct,
-                'total':   total_q,
-                'points':  round(pct_score, 2),
-            }
+        # Distribución según el grado del estudiante
+        grado = _grade_of_curso(curso, courses_list)
+        dist = distribuciones.get(('completo', grado))
+        if not dist:
+            dist = DEFAULT_DISTRIBUCIONES.get(('completo', grado))
+        if not dist:
+            dist = DEFAULT_DISTRIBUCIONES.get(('completo', '11'))  # fallback
 
-        mat  = int(round(scores['Matematica']['points']))
-        lect = int(round(scores['Lectura Critica']['points']))
-        soc  = int(round(scores['Sociales']['points']))
-        nat  = int(round(scores['Naturales']['points']))
-        ing  = int(round(scores['Ingles']['points']))
+        scores = _score_student_with_distribution(
+            {'1S': ans_1s, '2S': ans_2s}, {'1S': key_1s, '2S': key_2s}, dist)
+
+        mat  = int(round(scores['Matematica']))
+        lect = int(round(scores['Lectura Critica']))
+        soc  = int(round(scores['Sociales']))
+        nat  = int(round(scores['Naturales']))
+        ing  = int(round(scores['Ingles']))
         # Pesos: Mat, Lect, Soc, Nat = 3 cada una; Ing = 1.  Suma = 13
         general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
 
@@ -1292,6 +1337,9 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         return {'success': False,
                 'error': f'No se encontraron estudiantes en "{sheet_m}". Verifica que la hoja tenga filas de estudiantes con nombre o ID.'}
 
+    courses_list = list_courses()
+    distribuciones = list_distribuciones()
+
     results = []
     for key in sorted(students.keys()):
         s     = students[key]
@@ -1300,12 +1348,16 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         curso = s.get('curso', '')
         ans   = s['answers']
 
-        scores = {}
-        for subj_name, (start, end), _points_legacy in M_SIPAGRE_SUBJECTS:
-            correct = _count_correct_range(ans, key_m, start, end)
-            total_q = end - start + 1
-            pct_score = (correct / total_q * 100) if total_q > 0 else 0.0
-            scores[subj_name] = round(pct_score, 2)
+        # Distribución según el grado del estudiante
+        grado = _grade_of_curso(curso, courses_list)
+        dist = distribuciones.get(('media', grado))
+        if not dist:
+            dist = DEFAULT_DISTRIBUCIONES.get(('media', grado))
+        if not dist:
+            dist = DEFAULT_DISTRIBUCIONES.get(('media', '10'))  # fallback general
+
+        scores = _score_student_with_distribution(
+            {'M': ans}, {'M': key_m}, dist)
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))
