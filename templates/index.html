@@ -844,9 +844,9 @@
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
         Marca preguntas que se consideran <strong>buenas para todos</strong>
         (sin importar lo que marcó el estudiante o si dejó en blanco).
-        Útil cuando una pregunta tuvo un error de impresión o ambigüedad.
-        La numeración es la <strong>posición original</strong> en la hoja
-        (P1…Pn de la sesión seleccionada).
+        Selecciona la <strong>asignatura</strong> y el <strong>número de
+        pregunta dentro de esa asignatura</strong>. Internamente se convierte
+        a la posición real en la hoja según la distribución del grado.
       </p>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -854,14 +854,6 @@
           <label style="font-size:.78rem;color:var(--muted);">Simulacro</label>
           <select id="anu-sim" onchange="_onAnuChange()">
             <option value="">— selecciona —</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:90px;">
-          <label style="font-size:.78rem;color:var(--muted);">Sesión</label>
-          <select id="anu-ses" onchange="_onAnuChange()">
-            <option value="M">M (Media)</option>
-            <option value="1S">1S</option>
-            <option value="2S">2S</option>
           </select>
         </div>
         <div style="flex:1;min-width:90px;">
@@ -878,23 +870,66 @@
         </div>
       </div>
 
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-        <label style="font-size:.85rem;font-weight:500;color:var(--muted);min-width:140px;">
-          Preguntas a anular:
-        </label>
-        <input type="text" id="anu-csv" placeholder="Ej: 22, 45, 67"
-          style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);
-                 border-radius:7px;font-size:.95rem;font-weight:600;letter-spacing:.5px;">
+      <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap;margin-bottom:10px;
+                  background:rgba(255,255,255,.03);padding:10px;border-radius:8px;
+                  border:1px solid var(--card-border);">
+        <div style="flex:2;min-width:160px;">
+          <label style="font-size:.78rem;color:var(--muted);">Asignatura</label>
+          <select id="anu-mat" style="width:100%;" onchange="_updateAnuPreview()">
+            <option value="Matematica">Matemáticas</option>
+            <option value="Lectura Critica">Lectura Crítica</option>
+            <option value="Sociales">Sociales</option>
+            <option value="Naturales">Naturales</option>
+            <option value="Ingles">Inglés</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:90px;">
+          <label style="font-size:.78rem;color:var(--muted);"># pregunta</label>
+          <input type="number" id="anu-q-num" min="1" max="200" placeholder="22"
+            oninput="_updateAnuPreview()"
+            style="width:100%;padding:7px 10px;border:1.5px solid var(--border);
+                   border-radius:7px;font-size:.95rem;font-weight:600;text-align:center;">
+        </div>
+        <button class="btn-key-save" onclick="addAnuChip()" type="button"
+          style="padding:8px 14px;">➕ Añadir</button>
+        <span id="anu-preview" style="font-size:.78rem;color:var(--muted);
+              flex-basis:100%;margin-top:4px;"></span>
+      </div>
+
+      <div id="anu-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;
+            min-height:32px;padding:6px;background:rgba(255,255,255,.02);
+            border:1px dashed var(--card-border);border-radius:8px;"></div>
+
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <span id="anu-status" style="font-size:.82rem;color:var(--muted);">— sin selección —</span>
       </div>
 
-      <div class="btn-group" style="margin-top:6px;">
-        <button class="btn-key-clear" onclick="clearAnuField()" type="button">🗑️ Limpiar</button>
+      <div class="btn-group" style="margin-top:10px;">
+        <button class="btn-key-clear" onclick="clearAnuChips()" type="button">🗑️ Limpiar todo</button>
         <button class="btn-key-save"  onclick="saveAnuladas()" type="button">💾 Guardar anuladas</button>
       </div>
       <div class="score-note" id="anu-saved-note">
         ✅ Anuladas guardadas. Vuelve a generar resultados para aplicar.
       </div>
+
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-size:.78rem;color:var(--muted);">
+          ⚙️ Modo avanzado — entrar por posición de hoja (CSV)
+        </summary>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="anu-csv-adv" placeholder="Ej: 47, 92"
+            style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);
+                   border-radius:7px;font-size:.9rem;letter-spacing:.5px;">
+          <button onclick="useAdvancedAnuCsv()" type="button"
+            style="padding:6px 12px;font-size:.85rem;background:var(--card-border);
+                   border:none;border-radius:6px;color:var(--text);cursor:pointer;">
+            Reemplazar con CSV
+          </button>
+          <span style="font-size:.72rem;color:var(--muted);flex-basis:100%;">
+            Usa la posición real en la hoja (P1…Pn de la sesión).
+          </span>
+        </div>
+      </details>
 
       <div id="anu-list" style="margin-top:14px;font-size:.82rem;color:var(--muted);"></div>
     </div>
@@ -1656,7 +1691,16 @@ async function saveKgKey() {
   }
 }
 
-// ══ PREGUNTAS ANULADAS por (simulacro, sesion, grado) ════════════════════
+// ══ PREGUNTAS ANULADAS por (simulacro, sesion, grado) ═══════════════════
+// Estado de los chips actuales: array de objetos
+//   [{materia, num, sesion, sheet_pos}]
+// donde sheet_pos es la posición real en la hoja (1-based).
+let _anuChips = [];
+const _ANU_SUBJ_PREFIX = {
+  'Matematica':'Mat','Lectura Critica':'Lect','Sociales':'Soc',
+  'Naturales':'Nat','Ingles':'Ing',
+};
+
 function _populateAnuSimSelect() {
   const sel = document.getElementById('anu-sim');
   if (!sel) return;
@@ -1670,87 +1714,286 @@ function _populateAnuSimSelect() {
   if (prev) sel.value = prev;
 }
 
-function _onAnuChange() {
-  const sim   = document.getElementById('anu-sim').value;
-  const ses   = document.getElementById('anu-ses').value;
-  const grado = document.getElementById('anu-grado').value;
-  const status = document.getElementById('anu-status');
-  // Ajustar opciones de sesión según tipo
-  const simObj = _simulacrosCache.find(s => s.nombre === sim);
-  const sesSel = document.getElementById('anu-ses');
-  if (simObj) {
-    if (simObj.tipo === 'media') {
-      sesSel.innerHTML = '<option value="M">M (Media)</option>';
-    } else {
-      const cur = sesSel.value;
-      sesSel.innerHTML = '<option value="1S">1S</option><option value="2S">2S</option>';
-      if (['1S','2S'].includes(cur)) sesSel.value = cur;
-    }
+// Devuelve la distribución para (tipo, grado) buscando primero en
+// _distribCache y luego en defaults estándar.
+function _anuGetDist(tipo, grado) {
+  const found = _distribCache.find(d => d.tipo === tipo && String(d.grado) === String(grado));
+  if (found && found.materias) return found.materias;
+  // Defaults media (todos los grados 6-10 usan _MEDIA_DEFAULT)
+  if (tipo === 'media') {
+    return [
+      {materia:'Matematica',      sesion:'M', inicio:1,   fin:25},
+      {materia:'Lectura Critica', sesion:'M', inicio:26,  fin:50},
+      {materia:'Sociales',        sesion:'M', inicio:51,  fin:75},
+      {materia:'Naturales',       sesion:'M', inicio:76,  fin:100},
+      {materia:'Ingles',          sesion:'M', inicio:101, fin:125},
+    ];
   }
-  const sesNow = sesSel.value;
-  if (!sim || !sesNow || !grado) {
-    status.textContent = '— selecciona simulacro, sesión y grado —';
-    document.getElementById('anu-csv').value = '';
-    _refreshAnuList();
-    return;
+  // Default completo grado 11
+  if (tipo === 'completo') {
+    return [
+      {materia:'Matematica',      sesion:'1S', inicio:1,  fin:25},
+      {materia:'Matematica',      sesion:'2S', inicio:26, fin:50},
+      {materia:'Lectura Critica', sesion:'1S', inicio:26, fin:66},
+      {materia:'Sociales',        sesion:'1S', inicio:67, fin:91},
+      {materia:'Sociales',        sesion:'2S', inicio:1,  fin:25},
+      {materia:'Naturales',       sesion:'1S', inicio:92, fin:120},
+      {materia:'Naturales',       sesion:'2S', inicio:51, fin:79},
+      {materia:'Ingles',          sesion:'2S', inicio:80, fin:134},
+    ];
   }
-  loadAnuladas(sim, sesNow, grado);
-  _refreshAnuList();
+  return [];
 }
 
-async function loadAnuladas(sim, ses, grado) {
+// Convierte (materia, número-relativo) → {sesion, sheet_pos}
+// usando la distribución del grado. Devuelve null si el número
+// excede el total de preguntas de la materia.
+function _anuResolveSubjectNum(dist, materia, num) {
+  let count = 0;
+  for (const e of (dist || [])) {
+    if (e.materia !== materia) continue;
+    const blockSize = (parseInt(e.fin) - parseInt(e.inicio) + 1);
+    if (num <= count + blockSize) {
+      const offset = num - count - 1;
+      return {sesion: e.sesion, sheet_pos: parseInt(e.inicio) + offset};
+    }
+    count += blockSize;
+  }
+  return null;
+}
+
+// Convierte sheet_pos (sesión específica) → "Mat 22" (etiqueta visible)
+function _anuSheetToLabel(dist, sesion, sheet_pos) {
+  const ses = (sesion || '').toUpperCase();
+  // Encontrar el bloque que contiene sheet_pos en esa sesión
+  // Y contar cuántas preguntas de la misma materia hay antes (en otras sesiones)
+  let prevCount = 0;
+  let foundMat = '';
+  let foundOffset = 0;
+  for (const e of (dist || [])) {
+    const ent_ses = (e.sesion || '').toUpperCase();
+    if (ent_ses === ses && sheet_pos >= e.inicio && sheet_pos <= e.fin) {
+      foundMat = e.materia;
+      foundOffset = sheet_pos - e.inicio + 1;
+      break;
+    }
+  }
+  if (!foundMat) return `P${sheet_pos}${ses && ses !== 'M' ? ' '+ses : ''}`;
+  // Sumar bloques previos de la misma materia
+  for (const e of (dist || [])) {
+    if (e.materia !== foundMat) continue;
+    const ent_ses = (e.sesion || '').toUpperCase();
+    if (ent_ses === ses && sheet_pos >= e.inicio && sheet_pos <= e.fin) break;
+    prevCount += (parseInt(e.fin) - parseInt(e.inicio) + 1);
+  }
+  const subjNum = prevCount + foundOffset;
+  const pre = _ANU_SUBJ_PREFIX[foundMat] || foundMat;
+  const sesLbl = (ses && ses !== 'M') ? ` ${ses}` : '';
+  return `${pre} ${subjNum}${sesLbl}`;
+}
+
+function _onAnuChange() {
+  const sim   = document.getElementById('anu-sim').value;
+  const grado = document.getElementById('anu-grado').value;
   const status = document.getElementById('anu-status');
-  status.textContent = `Cargando anuladas de ${sim} · ${ses} · ${grado}°…`;
+  if (!sim || !grado) {
+    status.textContent = '— selecciona simulacro y grado —';
+    _anuChips = [];
+    _renderAnuChips();
+    _refreshAnuList();
+    _updateAnuPreview();
+    return;
+  }
+  loadAnuladas(sim, grado);
+  _refreshAnuList();
+  _updateAnuPreview();
+}
+
+// Carga TODAS las anuladas del simulacro+grado (en cualquier sesión)
+// y reconstruye los chips con sus etiquetas legibles.
+async function loadAnuladas(sim, grado) {
+  const status = document.getElementById('anu-status');
+  status.textContent = `Cargando anuladas de ${sim} · ${grado}°…`;
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const tipo = simObj ? simObj.tipo : 'media';
+  const dist = _anuGetDist(tipo, grado);
+  // Sesiones a consultar según tipo
+  const sesList = tipo === 'media' ? ['M'] : ['1S', '2S'];
+  _anuChips = [];
   try {
-    const url = `/anuladas?simulacro=${encodeURIComponent(sim)}&sesion=${encodeURIComponent(ses)}&grado=${encodeURIComponent(grado)}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    const nums = (data && data.preguntas) || [];
-    document.getElementById('anu-csv').value = nums.join(', ');
-    if (nums.length > 0) {
-      status.innerHTML = `<strong>${nums.length}</strong> pregunta(s) anulada(s) en ${sim} · ${ses} · ${grado}°`;
+    for (const ses of sesList) {
+      const url = `/anuladas?simulacro=${encodeURIComponent(sim)}&sesion=${encodeURIComponent(ses)}&grado=${encodeURIComponent(grado)}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      const nums = (data && data.preguntas) || [];
+      nums.forEach(n => {
+        // Reconstruir materia/relativo desde sheet_pos
+        const lbl = _anuSheetToLabel(dist, ses, n);
+        // intentar extraer materia del label inverso
+        const matEntry = (dist || []).find(e =>
+          (e.sesion || '').toUpperCase() === ses && n >= e.inicio && n <= e.fin
+        );
+        _anuChips.push({
+          materia: matEntry ? matEntry.materia : 'Matematica',
+          num:    matEntry ? (n - matEntry.inicio + 1) : n,
+          sesion: ses, sheet_pos: n, label: lbl,
+        });
+      });
+    }
+    _renderAnuChips();
+    if (_anuChips.length) {
+      status.innerHTML = `<strong>${_anuChips.length}</strong> pregunta(s) anulada(s) en ${sim} · ${grado}°`;
     } else {
-      status.textContent = `Sin anuladas para ${sim} · ${ses} · ${grado}°.`;
+      status.textContent = `Sin anuladas para ${sim} · ${grado}°.`;
     }
   } catch(e) {
     status.textContent = 'Error cargando anuladas.';
   }
 }
 
-function clearAnuField() {
-  document.getElementById('anu-csv').value = '';
+function _updateAnuPreview() {
+  const prev = document.getElementById('anu-preview');
+  if (!prev) return;
+  const sim   = document.getElementById('anu-sim').value;
+  const grado = document.getElementById('anu-grado').value;
+  const mat   = document.getElementById('anu-mat').value;
+  const num   = parseInt(document.getElementById('anu-q-num').value || '0');
+  if (!sim || !grado || !mat || !num) { prev.textContent = ''; return; }
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const tipo = simObj ? simObj.tipo : 'media';
+  const dist = _anuGetDist(tipo, grado);
+  const r = _anuResolveSubjectNum(dist, mat, num);
+  if (!r) {
+    prev.innerHTML = `<span style="color:#fbbf24;">⚠️ ${_ANU_SUBJ_PREFIX[mat]} ${num} no existe en la distribución de ${grado}°</span>`;
+  } else {
+    const sesLbl = r.sesion === 'M' ? '' : ` (${r.sesion})`;
+    prev.innerHTML = `→ posición real en hoja: <strong>P${r.sheet_pos}${sesLbl}</strong>`;
+  }
+}
+
+function addAnuChip() {
+  const sim   = document.getElementById('anu-sim').value;
+  const grado = document.getElementById('anu-grado').value;
+  const mat   = document.getElementById('anu-mat').value;
+  const num   = parseInt(document.getElementById('anu-q-num').value || '0');
+  if (!sim || !grado) { alert('Selecciona simulacro y grado.'); return; }
+  if (!mat || !num)   { alert('Indica la asignatura y el número.'); return; }
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const tipo = simObj ? simObj.tipo : 'media';
+  const dist = _anuGetDist(tipo, grado);
+  const r = _anuResolveSubjectNum(dist, mat, num);
+  if (!r) {
+    alert(`${_ANU_SUBJ_PREFIX[mat]} ${num} no existe en la distribución de ${grado}°.`);
+    return;
+  }
+  // Evitar duplicados
+  if (_anuChips.some(c => c.sesion === r.sesion && c.sheet_pos === r.sheet_pos)) {
+    return;
+  }
+  const sesLbl = r.sesion === 'M' ? '' : ` ${r.sesion}`;
+  _anuChips.push({
+    materia: mat, num,
+    sesion: r.sesion, sheet_pos: r.sheet_pos,
+    label: `${_ANU_SUBJ_PREFIX[mat]} ${num}${sesLbl}`,
+  });
+  document.getElementById('anu-q-num').value = '';
+  _renderAnuChips();
+  _updateAnuPreview();
+}
+
+function _renderAnuChips() {
+  const cont = document.getElementById('anu-chips');
+  if (!cont) return;
+  if (!_anuChips.length) {
+    cont.innerHTML = `<em style="font-size:.78rem;color:var(--muted);
+      padding:4px 6px;">Sin preguntas en la lista. Selecciona asignatura
+      y número, luego "Añadir".</em>`;
+    return;
+  }
+  cont.innerHTML = _anuChips.map((c, i) => `
+    <span style="display:inline-flex;align-items:center;gap:6px;
+                 background:#fde68a;color:#92400e;padding:4px 8px;
+                 border-radius:6px;font-size:.82rem;font-weight:600;">
+      ${c.label}
+      <span style="font-size:.7rem;font-weight:400;opacity:.8;">P${c.sheet_pos}</span>
+      <button onclick="_removeAnuChip(${i})" type="button"
+        style="border:none;background:transparent;color:#92400e;
+               font-weight:700;cursor:pointer;font-size:1rem;line-height:1;
+               padding:0 2px;">×</button>
+    </span>
+  `).join('');
+}
+
+function _removeAnuChip(i) {
+  _anuChips.splice(i, 1);
+  _renderAnuChips();
+}
+
+function clearAnuChips() {
+  _anuChips = [];
+  _renderAnuChips();
+}
+
+function useAdvancedAnuCsv() {
+  const csv = (document.getElementById('anu-csv-adv').value || '').trim();
+  const sim   = document.getElementById('anu-sim').value;
+  const grado = document.getElementById('anu-grado').value;
+  if (!sim || !grado) { alert('Selecciona simulacro y grado.'); return; }
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const tipo = simObj ? simObj.tipo : 'media';
+  const dist = _anuGetDist(tipo, grado);
+  const sesDefault = tipo === 'media' ? 'M' : '1S';
+  // Reemplazar TODOS los chips actuales con los del CSV
+  _anuChips = [];
+  csv.replace(/;/g, ',').split(',').forEach(tok => {
+    const n = parseInt((tok || '').trim());
+    if (!n || n < 1 || n > 200) return;
+    _anuChips.push({
+      materia: 'Matematica', num: n,
+      sesion: sesDefault, sheet_pos: n,
+      label: _anuSheetToLabel(dist, sesDefault, n),
+    });
+  });
+  _renderAnuChips();
 }
 
 async function saveAnuladas() {
   const sim   = document.getElementById('anu-sim').value;
-  const ses   = document.getElementById('anu-ses').value;
   const grado = document.getElementById('anu-grado').value;
-  const csv   = document.getElementById('anu-csv').value || '';
-  if (!sim || !ses || !grado) {
-    alert('Selecciona simulacro, sesión y grado.');
-    return;
-  }
+  if (!sim || !grado) { alert('Selecciona simulacro y grado.'); return; }
+  const simObj = _simulacrosCache.find(s => s.nombre === sim);
+  const tipo = simObj ? simObj.tipo : 'media';
+  const sesList = tipo === 'media' ? ['M'] : ['1S', '2S'];
+  // Agrupar chips por sesión y guardar UNA llamada por sesión
+  const bySes = {};
+  sesList.forEach(s => bySes[s] = []);
+  _anuChips.forEach(c => {
+    if (!bySes[c.sesion]) bySes[c.sesion] = [];
+    bySes[c.sesion].push(c.sheet_pos);
+  });
   try {
-    const resp = await fetch('/anuladas', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({simulacro: sim, sesion: ses, grado, csv})
-    });
-    const r = await resp.json();
-    if (r.success) {
-      const note = document.getElementById('anu-saved-note');
-      const list = (r.preguntas || []).join(', ') || '(ninguna)';
-      note.textContent = `✅ Anuladas guardadas para ${sim} · ${ses} · ${grado}°: ${list}. Vuelve a generar resultados para aplicar.`;
-      note.classList.add('show');
-      setTimeout(() => note.classList.remove('show'), 5000);
-      // Invalidar cachés de resultados y de análisis por pregunta
-      try {
-        if (typeof _resultsCache === 'object') _resultsCache = {};
-        if (typeof _questionAnalysisCache === 'object') _questionAnalysisCache = {};
-      } catch(e) {}
-      _refreshAnuList();
-    } else {
-      alert('Error: ' + (r.error || 'desconocido'));
+    let totalSaved = 0;
+    for (const ses of sesList) {
+      const nums = (bySes[ses] || []).slice().sort((a,b)=>a-b);
+      const csv  = nums.join(',');
+      const resp = await fetch('/anuladas', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({simulacro: sim, sesion: ses, grado, csv})
+      });
+      const r = await resp.json();
+      if (!r.success) { alert(`Error en ${ses}: ${r.error || ''}`); return; }
+      totalSaved += (r.preguntas || []).length;
     }
+    const note = document.getElementById('anu-saved-note');
+    const labels = _anuChips.map(c => c.label).join(', ') || '(ninguna)';
+    note.textContent = `✅ Anuladas guardadas para ${sim} · ${grado}°: ${labels}. Vuelve a generar resultados para aplicar.`;
+    note.classList.add('show');
+    setTimeout(() => note.classList.remove('show'), 6000);
+    try {
+      if (typeof _resultsCache === 'object') _resultsCache = {};
+      if (typeof _questionAnalysisCache === 'object') _questionAnalysisCache = {};
+    } catch(e) {}
+    _refreshAnuList();
   } catch(e) {
     alert('Error de conexión al guardar.');
   }
@@ -1764,9 +2007,17 @@ async function _refreshAnuList() {
     const data = await resp.json();
     const all = (data && data.anuladas) || [];
     if (!all.length) { div.innerHTML = '<em>No hay preguntas anuladas registradas.</em>'; return; }
+    // Agrupar por (simulacro, grado) para mostrar etiquetas legibles
     let html = '<strong>Anulaciones registradas:</strong><ul style="margin:6px 0 0 16px;padding:0;">';
     all.forEach(a => {
-      html += `<li>${a.simulacro} · ${a.sesion} · ${a.grado}°: <strong>${a.preguntas.join(', ')}</strong></li>`;
+      const simObj = _simulacrosCache.find(s => s.nombre === a.simulacro);
+      const tipo = simObj ? simObj.tipo : 'media';
+      const dist = _anuGetDist(tipo, a.grado);
+      const labels = a.preguntas.map(n => _anuSheetToLabel(dist, a.sesion, n));
+      html += `<li>${a.simulacro} · ${a.grado}°
+        <span style="opacity:.6;">[${a.sesion}]</span>:
+        <strong>${labels.join(', ')}</strong>
+        <span style="opacity:.55;font-size:.74rem;">(P${a.preguntas.join(', P')})</span></li>`;
     });
     html += '</ul>';
     div.innerHTML = html;
