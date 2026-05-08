@@ -563,6 +563,10 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
                     continue
                 if not correct_ans or correct_ans in ('?', '—'): continue
 
+                # IMPORTANTE: el denominador es el TOTAL de estudiantes del grado,
+                # incluyendo a los que no respondieron (cuentan como incorrecto).
+                # Esto mantiene un denominador estable entre preguntas y refleja
+                # fielmente el % de acierto sobre la población.
                 total = 0; correct = 0
                 by_curso = {}
                 for sid, stu in students_dict.items():
@@ -571,9 +575,8 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
                         continue
                     ans_list = stu.get('answers', [])
                     ans = (ans_list[idx] if idx < len(ans_list) else '').strip()
-                    if not ans: continue
                     total += 1
-                    ok = ans == correct_ans
+                    ok = bool(ans) and ans == correct_ans
                     if ok: correct += 1
                     cc = (stu.get('curso','') or '').strip()
                     if cc:
