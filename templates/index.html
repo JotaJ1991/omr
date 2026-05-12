@@ -2378,8 +2378,10 @@ async function downloadIntegralPdf() {
           Math.round(view.reduce((s,r)=>s+(+r.ing||0),0)/general.n),
           general.avg];
         _drawPdfTable(doc, 10, y,
-          ['Curso','Estud.','Mat','Lect','Soc','Quím','Fís','Nat','Ing','General'],
-          cursoRows, [25, 16, 16, 16, 16, 16, 16, 16, 16, 41.9], avgRow);
+          ['Curso','Estud.','Mat','Lect','Soc','Quím','Fís','Prom','Ing','General'],
+          cursoRows, [25, 16, 16, 16, 16, 16, 16, 16, 16, 41.9], avgRow,
+          {groupedHeader: [{from: 5, to: 7, label: 'Ciencias Naturales'}],
+           highlightCols: [5, 6, 7]});
       } else {
         const cursoRows = cursos.map(c => {
           const arr = view.filter(r => (r.curso||'').trim() === c);
@@ -2522,8 +2524,10 @@ async function downloadIntegralPdf() {
         const stAvg = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc,
                        avg.quim, avg.fis, avg.nat, avg.ing, avg.gen];
         _drawPdfTable(doc, 10, y,
-          ['#','Estudiante','ID','Mat','Lect','Soc','Quím','Fís','Nat','Ing','Gen'],
-          stRows, [8, 46, 18, 12, 12, 12, 12, 12, 12, 12, 39.9], stAvg);
+          ['#','Estudiante','ID','Mat','Lect','Soc','Quím','Fís','Prom','Ing','Gen'],
+          stRows, [8, 46, 18, 12, 12, 12, 12, 12, 12, 12, 39.9], stAvg,
+          {groupedHeader: [{from: 6, to: 8, label: 'Ciencias Naturales'}],
+           highlightCols: [6, 7, 8]});
       } else {
         const stRows = arr.map((r,i) => [
           i+1, (r.name || '—').slice(0, 30), r.id || '—',
@@ -3129,12 +3133,21 @@ function renderUnifiedTable() {
     avg.quim = q.length ? Math.round(q.reduce((s,v)=>s+v,0)/q.length) : '—';
     avg.fis  = f.length ? Math.round(f.reduce((s,v)=>s+v,0)/f.length) : '—';
   }
+  // Estilos para la sub-tabla de Naturales (Quím + Fís + Prom)
+  const NAT_CELL = 'background:rgba(250,204,21,.06);';
+  const NAT_GROUP_TH = `
+    background:linear-gradient(135deg,rgba(250,204,21,.22),rgba(202,138,4,.18));
+    color:#fde68a;text-align:center;font-size:.78rem;letter-spacing:.5px;
+    border-bottom:1px solid rgba(250,204,21,.4);padding:5px 8px;`;
+  const NAT_SUB_TH = `
+    background:rgba(250,204,21,.08);font-size:.72rem;color:#fcd34d;
+    padding:4px 6px;`;
   const rows = view.map(r => {
     const idx = unifiedResults.indexOf(r);
     const natCells = allG10
-      ? `<td class="score">${r.quim ?? '—'}</td>
-         <td class="score">${r.fis ?? '—'}</td>
-         <td class="score">${r.nat}</td>`
+      ? `<td class="score" style="${NAT_CELL}">${r.quim ?? '—'}</td>
+         <td class="score" style="${NAT_CELL}">${r.fis ?? '—'}</td>
+         <td class="score" style="${NAT_CELL}font-weight:700;">${r.nat}</td>`
       : `<td class="score">${r.nat}</td>`;
     return `
     <tr>
@@ -3152,29 +3165,48 @@ function renderUnifiedTable() {
       <td><button class="pdf-btn" onclick="downloadUnifiedStudent(${idx})">PDF</button></td>
     </tr>`;
   }).join('');
-  const natHeader = allG10
-    ? `<th title="Química P61-P80">Quím</th>
-       <th title="Física P81-P100">Fís</th>
-       <th title="Promedio Quím+Fís">Nat</th>`
-    : `<th>Nat</th>`;
   const natAvg = allG10
-    ? `<td class="score">${avg.quim}</td>
-       <td class="score">${avg.fis}</td>
-       <td class="score">${avg.nat}</td>`
+    ? `<td class="score" style="${NAT_CELL}">${avg.quim}</td>
+       <td class="score" style="${NAT_CELL}">${avg.fis}</td>
+       <td class="score" style="${NAT_CELL}font-weight:700;">${avg.nat}</td>`
     : `<td class="score">${avg.nat}</td>`;
+  // Encabezado: dos filas si es grado 10 (Naturales agrupa Quím + Fís + Prom)
+  const headHtml = allG10
+    ? `<thead>
+        <tr>
+          <th rowspan="2">Estudiante</th>
+          <th rowspan="2">Curso</th>
+          <th rowspan="2">Mat</th>
+          <th rowspan="2">Lect</th>
+          <th rowspan="2">Soc</th>
+          <th colspan="3" style="${NAT_GROUP_TH}">🔬 Ciencias Naturales</th>
+          <th rowspan="2">Ing</th>
+          <th rowspan="2">General</th>
+          <th rowspan="2"></th>
+        </tr>
+        <tr>
+          <th style="${NAT_SUB_TH}" title="Química P61-P80">Quím</th>
+          <th style="${NAT_SUB_TH}" title="Física P81-P100">Fís</th>
+          <th style="${NAT_SUB_TH}" title="Promedio Quím+Fís">Prom</th>
+        </tr>
+       </thead>`
+    : `<thead><tr>
+        <th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th>
+        <th>Nat</th>
+        <th>Ing</th><th>General</th><th></th>
+       </tr></thead>`;
   list.innerHTML = `
     ${allG10 ? `<p style="font-size:.78rem;color:var(--muted);margin-bottom:8px;
-        padding:6px 10px;background:rgba(99,102,241,.08);border-radius:6px;">
-        🔬 Grado 10° — Naturales desglosada en
-        <strong>Química</strong> (P61-P80) y <strong>Física</strong> (P81-P100).
-        La columna Nat es el promedio de ambas.</p>` : ''}
+        padding:6px 10px;background:rgba(250,204,21,.07);border-left:3px solid #fbbf24;
+        border-radius:4px;">
+        🔬 Grado 10° — Ciencias Naturales se compone de
+        <strong style="color:#fcd34d;">Química</strong> (P61-P80) y
+        <strong style="color:#fcd34d;">Física</strong> (P81-P100).
+        La columna <strong>Prom</strong> es el promedio de ambas y corresponde a la nota
+        oficial de Naturales.</p>` : ''}
     <div class="results-table-wrap">
       <table class="results-table">
-        <thead><tr>
-          <th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th>
-          ${natHeader}
-          <th>Ing</th><th>General</th><th></th>
-        </tr></thead>
+        ${headHtml}
         <tbody>
           ${rows}
           <tr class="avg-row">
@@ -3251,12 +3283,40 @@ function _renderTableGroupedByCurso(view, gradeF) {
   // Ordenar por puntaje general desc
   rows.sort((a,b) => b.general - a.general);
 
-  // Cabecera y celdas de Nat (con/sin desglose)
-  const natHeader = isG10
-    ? `<th title="Química P61-P80">Quím</th>
-       <th title="Física P81-P100">Fís</th>
-       <th title="Promedio Quím+Fís">Nat</th>`
-    : `<th>Nat</th>`;
+  // Estilos compartidos para la sub-tabla Naturales
+  const NAT_CELL = 'background:rgba(250,204,21,.06);';
+  const NAT_GROUP_TH = `
+    background:linear-gradient(135deg,rgba(250,204,21,.22),rgba(202,138,4,.18));
+    color:#fde68a;text-align:center;font-size:.78rem;letter-spacing:.5px;
+    border-bottom:1px solid rgba(250,204,21,.4);padding:5px 8px;`;
+  const NAT_SUB_TH = `
+    background:rgba(250,204,21,.08);font-size:.72rem;color:#fcd34d;
+    padding:4px 6px;`;
+  // Encabezado completo (con o sin grupo Naturales)
+  const headHtml = isG10
+    ? `<thead>
+        <tr>
+          <th rowspan="2">Curso</th>
+          <th rowspan="2">Estudiantes</th>
+          <th rowspan="2">Mat</th>
+          <th rowspan="2">Lect</th>
+          <th rowspan="2">Soc</th>
+          <th colspan="3" style="${NAT_GROUP_TH}">🔬 Ciencias Naturales</th>
+          <th rowspan="2">Ing</th>
+          <th rowspan="2">General</th>
+        </tr>
+        <tr>
+          <th style="${NAT_SUB_TH}" title="Química P61-P80">Quím</th>
+          <th style="${NAT_SUB_TH}" title="Física P81-P100">Fís</th>
+          <th style="${NAT_SUB_TH}" title="Promedio Quím+Fís">Prom</th>
+        </tr>
+       </thead>`
+    : `<thead><tr>
+        <th>Curso</th><th>Estudiantes</th>
+        <th>Mat</th><th>Lect</th><th>Soc</th>
+        <th>Nat</th>
+        <th>Ing</th><th>General</th>
+       </tr></thead>`;
 
   let html = `
     <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">
@@ -3264,22 +3324,21 @@ function _renderTableGroupedByCurso(view, gradeF) {
       Selecciona un curso del filtro para ver los estudiantes individuales.
     </p>
     ${isG10 ? `<p style="font-size:.78rem;color:var(--muted);margin-bottom:8px;
-        padding:6px 10px;background:rgba(99,102,241,.08);border-radius:6px;">
-        🔬 Grado 10° — Naturales desglosada en
-        <strong>Química</strong> (P61-P80) y <strong>Física</strong> (P81-P100).
-        Nat = promedio de ambas.</p>` : ''}
+        padding:6px 10px;background:rgba(250,204,21,.07);border-left:3px solid #fbbf24;
+        border-radius:4px;">
+        🔬 Grado 10° — <strong>Ciencias Naturales</strong> se compone de
+        <strong style="color:#fcd34d;">Química</strong> (P61-P80) y
+        <strong style="color:#fcd34d;">Física</strong> (P81-P100).
+        La columna <strong>Prom</strong> es el promedio de ambas (la nota oficial de
+        Naturales).</p>` : ''}
     <div class="results-table-wrap"><table class="results-table">
-    <thead><tr>
-      <th>Curso</th><th>Estudiantes</th>
-      <th>Mat</th><th>Lect</th><th>Soc</th>
-      ${natHeader}
-      <th>Ing</th><th>General</th>
-    </tr></thead><tbody>`;
+    ${headHtml}
+    <tbody>`;
   rows.forEach(r => {
     const natCells = isG10
-      ? `<td class="score">${r.quim}</td>
-         <td class="score">${r.fis}</td>
-         <td class="score">${r.nat}</td>`
+      ? `<td class="score" style="${NAT_CELL}">${r.quim}</td>
+         <td class="score" style="${NAT_CELL}">${r.fis}</td>
+         <td class="score" style="${NAT_CELL}font-weight:700;">${r.nat}</td>`
       : `<td class="score">${r.nat}</td>`;
     html += `<tr style="cursor:pointer;" onclick="_selectCursoFromTable('${r.curso.replace(/'/g,"\\'")}')">
       <td><strong>${r.curso}</strong></td>
@@ -3293,9 +3352,9 @@ function _renderTableGroupedByCurso(view, gradeF) {
     </tr>`;
   });
   const natAvg = isG10
-    ? `<td class="score">${totalRow.quim}</td>
-       <td class="score">${totalRow.fis}</td>
-       <td class="score">${totalRow.nat}</td>`
+    ? `<td class="score" style="${NAT_CELL}">${totalRow.quim}</td>
+       <td class="score" style="${NAT_CELL}">${totalRow.fis}</td>
+       <td class="score" style="${NAT_CELL}font-weight:700;">${totalRow.nat}</td>`
     : `<td class="score">${totalRow.nat}</td>`;
   html += `<tr class="avg-row">
     <td><strong>PROMEDIO GRADO ${gradeF}°</strong></td>
@@ -3333,13 +3392,17 @@ function _renderTableGroupedByCurso(view, gradeF) {
   list.innerHTML = html;
 
   // Cachear data para PDF (con o sin desglose Quím/Fís para 10°)
-  let headers, pdfRows, avgRow, colWidths;
+  let headers, pdfRows, avgRow, colWidths, tableOpts;
   if (isG10) {
-    headers = ['Curso', 'Estud.', 'Mat', 'Lect', 'Soc', 'Quím', 'Fís', 'Nat', 'Ing', 'General'];
+    headers = ['Curso', 'Estud.', 'Mat', 'Lect', 'Soc', 'Quím', 'Fís', 'Prom', 'Ing', 'General'];
     pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.quim, r.fis, r.nat, r.ing, r.general]);
     avgRow  = [`PROMEDIO ${gradeF}°`, totalRow.n, totalRow.mat, totalRow.lect, totalRow.soc,
                totalRow.quim, totalRow.fis, totalRow.nat, totalRow.ing, totalRow.general];
     colWidths = [30, 18, 17, 17, 17, 17, 17, 17, 17, 25.9];
+    tableOpts = {
+      groupedHeader: [{from: 5, to: 7, label: 'Ciencias Naturales'}],
+      highlightCols: [5, 6, 7],
+    };
   } else {
     headers = ['Curso', 'Estudiantes', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General'];
     pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.nat, r.ing, r.general]);
@@ -3351,7 +3414,7 @@ function _renderTableGroupedByCurso(view, gradeF) {
     title: `Resultados por curso — Grado ${gradeF}°`,
     subtitle: `${cursos.length} cursos · ${gN} estudiantes`,
     headers, rows: pdfRows, avgRow,
-    colWidths,
+    colWidths, tableOpts,
     fileName: `Tabla_Cursos_${gradeF}grado_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
   };
 }
@@ -3458,10 +3521,40 @@ async function downloadUnifiedStudent(idx) {
 // ══ HELPERS PDF para reportes ══════════════════════════════════════════════
 // Dibuja una tabla simple en jsPDF; rows = [[c1,c2,...], ...]
 // avgRow opcional: misma estructura que una fila pero se pinta destacada al final.
-function _drawPdfTable(doc, x, y, headers, rows, colWidths, avgRow) {
+function _drawPdfTable(doc, x, y, headers, rows, colWidths, avgRow, opts) {
+  opts = opts || {};
+  const groupedHeader = opts.groupedHeader || null;  // [{from, to, label}]
+  const highlightCols = opts.highlightCols || [];    // [i, i, ...] columnas con tinte
   const cellH = 7;
+  const groupH = 5.5;
   const totalW = colWidths.reduce((a,b)=>a+b, 0);
-  // Header con azul SIPAGRE
+
+  // ── Banda superior de "grupo" (ej. "Naturales" sobre Quím/Fís/Prom) ──
+  if (groupedHeader && groupedHeader.length) {
+    // Acumulado de offsets en X para cada columna
+    const offsets = [x];
+    for (let i = 0; i < colWidths.length; i++) offsets.push(offsets[i] + colWidths[i]);
+    // Fondo blanco completo (para que las celdas no-grupo queden limpias)
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x, y, totalW, groupH, 'F');
+    groupedHeader.forEach(g => {
+      const gx = offsets[g.from];
+      const gw = offsets[g.to + 1] - offsets[g.from];
+      // Banda dorada clara con texto azul oscuro
+      doc.setFillColor(254, 243, 199);
+      doc.rect(gx, y, gw, groupH, 'F');
+      // Borde inferior dorado
+      doc.setFillColor(...SIPAGRE_GOLD);
+      doc.rect(gx, y + groupH - 0.5, gw, 0.5, 'F');
+      // Etiqueta
+      doc.setFont('helvetica','bold'); doc.setFontSize(8);
+      doc.setTextColor(...SIPAGRE_BLUE_DARK);
+      doc.text(String(g.label), gx + gw / 2, y + groupH - 1.8, {align: 'center'});
+    });
+    y += groupH;
+  }
+
+  // ── Header normal azul SIPAGRE ──
   doc.setFillColor(...SIPAGRE_BLUE);
   doc.rect(x, y, totalW, cellH, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(9);
@@ -3478,10 +3571,21 @@ function _drawPdfTable(doc, x, y, headers, rows, colWidths, avgRow) {
 
   // Filas
   doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  // Pre-calculo offsets para resaltar columnas si aplica
+  const _offsets = [x];
+  for (let i = 0; i < colWidths.length; i++) _offsets.push(_offsets[i] + colWidths[i]);
   rows.forEach((row, ri) => {
     if (ri % 2 === 1) {
       doc.setFillColor(245, 247, 252);
       doc.rect(x, y, totalW, cellH, 'F');
+    }
+    // Tinte amarillo claro en columnas resaltadas (sub-tabla Naturales)
+    if (highlightCols.length) {
+      doc.setFillColor(254, 243, 199);
+      highlightCols.forEach(ci => {
+        doc.setFillColor(255, 251, 230);
+        doc.rect(_offsets[ci], y, colWidths[ci], cellH, 'F');
+      });
     }
     cx = x;
     doc.setTextColor(40,40,40);
@@ -4336,7 +4440,7 @@ function _drawSummaryCards(doc, x, y, items) {
   return cy + cellH + 4;
 }
 
-async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths, fileName, extra}) {
+async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths, fileName, extra, tableOpts}) {
   await _loadLogo();
   const jsPDF = getJsPDF();
   const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
@@ -4383,7 +4487,7 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
     }
   }
   if (y > 240) { doc.addPage('letter','p'); y = 20; }
-  _drawPdfTable(doc, 10, y, headers, rows, colWidths, avgRow);
+  _drawPdfTable(doc, 10, y, headers, rows, colWidths, avgRow, tableOpts);
   const simLabel = unifiedSimulacro
                    ? `Simulacro ${unifiedSimulacro.nombre}`
                    : 'Simulacro';
@@ -4675,11 +4779,11 @@ async function downloadTablePdfReport() {
     ing:  Math.round(sorted.reduce((s,r)=>s+(+r.ing||0),0)/n),
     gen:  Math.round(sorted.reduce((s,r)=>s+(+r.general||0),0)/n),
   };
-  let headers, rows, avgRow, colWidths;
+  let headers, rows, avgRow, colWidths, tableOpts;
   if (allG10) {
     avg.quim = avgSubset(sorted, 'quim');
     avg.fis  = avgSubset(sorted, 'fis');
-    headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Quím', 'Fís', 'Nat', 'Ing', 'Gen'];
+    headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Quím', 'Fís', 'Prom', 'Ing', 'Gen'];
     rows = sorted.map((r, i) => [
       i+1, (r.name || '—').slice(0, 26), r.curso || '—',
       r.mat, r.lect, r.soc,
@@ -4689,6 +4793,10 @@ async function downloadTablePdfReport() {
     avgRow = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc,
               avg.quim, avg.fis, avg.nat, avg.ing, avg.gen];
     colWidths = [9, 52, 16, 12, 12, 12, 12, 12, 12, 12, 14.9];
+    tableOpts = {
+      groupedHeader: [{from: 6, to: 8, label: 'Ciencias Naturales'}],
+      highlightCols: [6, 7, 8],
+    };
   } else {
     headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'Gen'];
     rows = sorted.map((r, i) => [
@@ -4702,7 +4810,7 @@ async function downloadTablePdfReport() {
     title: 'Tabla de estudiantes',
     subtitle: `${scopeLabel} · ${n} estudiantes${allG10 ? ' · 10° con desglose Quím/Fís' : ''}`,
     headers, rows, avgRow,
-    colWidths,
+    colWidths, tableOpts,
     fileName: `Tabla_Estudiantes_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
   });
 }
