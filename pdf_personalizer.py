@@ -24,8 +24,38 @@ from pathlib import Path
 from typing import Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-import qrcode
-from openpyxl import load_workbook
+# Importaciones que pueden faltar en algunos despliegues — se manejan con
+# mensajes de error claros si fallan.
+try:
+    import qrcode
+    _QRCODE_OK = True
+except ImportError:
+    _QRCODE_OK = False
+    qrcode = None
+
+try:
+    from openpyxl import load_workbook
+    _OPENPYXL_OK = True
+except ImportError:
+    _OPENPYXL_OK = False
+    load_workbook = None
+
+
+def _check_deps() -> Optional[str]:
+    """Devuelve None si todo OK, o un mensaje de error con instrucciones."""
+    missing = []
+    if not _QRCODE_OK:    missing.append('qrcode')
+    if not _OPENPYXL_OK:  missing.append('openpyxl')
+    if missing:
+        return (f"Faltan dependencias Python: {', '.join(missing)}. "
+                f"En el servidor: pip install {' '.join(missing)}")
+    if not shutil.which('pdflatex'):
+        return ("pdflatex no está instalado en el servidor. Esta función "
+                "requiere LaTeX (MiKTeX o TeXLive) para generar los PDFs. "
+                "Si la app corre en Render u otro PaaS sin LaTeX, "
+                "ejecuta la generación en tu equipo local donde tengas "
+                "MiKTeX instalado.")
+    return None
 
 
 ROOT = Path(__file__).parent
@@ -68,6 +98,10 @@ def parse_roster_xlsx(xlsx_bytes: bytes) -> dict:
       {'success': True, 'students': [{'curso','id','nombre'}, ...]}
     o {'success': False, 'error': '...'}
     """
+    if not _OPENPYXL_OK:
+        return {'success': False,
+                'error': 'openpyxl no está instalado. Agrega openpyxl al '
+                         'requirements.txt y vuelve a desplegar.'}
     try:
         wb = load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     except Exception as e:
@@ -246,11 +280,11 @@ def generate_pdfs_zip(students: list, simulacro_id: str,
 
     progress_cb(current, total, message): callback opcional para progreso.
     """
+    dep_err = _check_deps()
+    if dep_err:
+        return {'success': False, 'error': dep_err}
     if not TPL_1S.exists() or not TPL_2S.exists():
         return {'success': False, 'error': 'Plantillas LaTeX no encontradas.'}
-    if not shutil.which('pdflatex'):
-        return {'success': False,
-                'error': 'pdflatex no esta instalado en el servidor.'}
 
     sim_id_safe = _safe_filename(simulacro_id)
     total = len(students) * 2
