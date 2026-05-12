@@ -426,6 +426,68 @@ def uppercase_names_endpoint():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ── PERSONALIZACIÓN DE HOJAS IETAGRO (QR + datos pre-impresos) ─────────────
+@app.route('/personalize/preview', methods=['POST'])
+def personalize_preview():
+    """
+    Recibe un archivo XLSX y devuelve la lista de estudiantes detectados
+    (sin generar PDFs). Útil para que la UI muestre preview antes.
+    """
+    try:
+        from pdf_personalizer import parse_roster_xlsx
+        f = request.files.get('roster')
+        if not f:
+            return jsonify({'success': False,
+                            'error': 'No se recibió archivo (campo "roster").'}), 400
+        xlsx_bytes = f.read()
+        return jsonify(parse_roster_xlsx(xlsx_bytes))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/personalize/generate', methods=['POST'])
+def personalize_generate():
+    """
+    Recibe el XLSX + nombre del simulacro, genera todos los PDFs personalizados
+    (1S+2S por estudiante) y devuelve un ZIP organizado por curso.
+    """
+    try:
+        from pdf_personalizer import parse_roster_xlsx, generate_pdfs_zip
+        f = request.files.get('roster')
+        sim_id = (request.form.get('simulacro') or '').strip()
+        if not f:
+            return jsonify({'success': False,
+                            'error': 'No se recibió archivo (campo "roster").'}), 400
+        if not sim_id:
+            return jsonify({'success': False,
+                            'error': 'Falta el nombre del simulacro.'}), 400
+        xlsx_bytes = f.read()
+        parsed = parse_roster_xlsx(xlsx_bytes)
+        if not parsed.get('success'):
+            return jsonify(parsed), 400
+        # Generar
+        result = generate_pdfs_zip(parsed['students'], sim_id)
+        if not result.get('success'):
+            return jsonify(result), 500
+        # Devolver ZIP
+        zip_bytes = result['zip_bytes']
+        sim_safe = ''.join(c if c.isalnum() else '_' for c in sim_id).strip('_')
+        return Response(
+            zip_bytes,
+            mimetype='application/zip',
+            headers={
+                'Content-Disposition':
+                    f'attachment; filename="hojas_{sim_safe}.zip"',
+                'X-PDF-Count': str(result.get('count', 0)),
+                'X-PDF-Failures': str(result.get('failures', 0)),
+            }
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/simulacros', methods=['DELETE'])
 def simulacros_delete():
     data = request.get_json(silent=True) or {}

@@ -1092,6 +1092,73 @@
       <div id="distribuciones-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
+    <!-- ── Hojas personalizadas (QR + datos pre-impresos) ── -->
+    <div class="card">
+      <h2>📇 Hojas personalizadas con QR</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Genera hojas de respuestas con los datos del estudiante pre-impresos
+        y un código QR único. Al escanear, el sistema reconocerá automáticamente
+        al estudiante sin necesidad de escribirlo manualmente.
+      </p>
+
+      <!-- Paso 1: subir Excel -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:14px;margin-bottom:12px;">
+        <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
+                    margin-bottom:8px;">
+          1️⃣ Cargar lista de estudiantes (.xlsx)
+        </div>
+        <p style="font-size:.75rem;color:var(--muted);margin-bottom:10px;">
+          Columnas requeridas: <code>Curso</code>, <code>Documento</code>,
+          <code>Nombres</code>.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="personalize-xlsx" accept=".xlsx,.xls"
+                 style="display:none;" onchange="onPersonalizeFileChange(this)">
+          <button class="btn-secondary" type="button"
+                  onclick="document.getElementById('personalize-xlsx').click()">
+            📂 Seleccionar Excel
+          </button>
+          <span id="personalize-file-name" style="font-size:.82rem;
+                color:var(--muted);">Ningún archivo seleccionado</span>
+        </div>
+      </div>
+
+      <!-- Preview (oculto hasta subir) -->
+      <div id="personalize-preview" style="display:none;
+           background:rgba(99,102,241,.06);border:1px solid var(--card-border);
+           border-radius:10px;padding:14px;margin-bottom:12px;"></div>
+
+      <!-- Paso 2: seleccionar simulacro y generar -->
+      <div id="personalize-step2" style="display:none;
+           background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+           border-radius:10px;padding:14px;">
+        <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
+                    margin-bottom:8px;">
+          2️⃣ Seleccionar simulacro y generar
+        </div>
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;
+                    margin-bottom:10px;">
+          <div style="flex:1;min-width:200px;">
+            <label style="font-size:.74rem;color:var(--muted);">Simulacro</label>
+            <select id="personalize-sim" style="width:100%;">
+              <option value="">— selecciona —</option>
+            </select>
+          </div>
+          <button class="btn-success" type="button" onclick="generatePersonalizedPdfs()"
+                  id="personalize-generate-btn"
+                  style="padding:10px 18px;font-size:.88rem;">
+            ⚡ Generar PDFs
+          </button>
+        </div>
+        <div id="personalize-status" style="font-size:.82rem;color:var(--muted);
+              margin-top:6px;"></div>
+      </div>
+
+      <!-- Resultado -->
+      <div id="personalize-result" style="margin-top:12px;"></div>
+    </div>
+
     <!-- ── Diagnóstico ── -->
     <div class="card">
       <h2>🔬 Diagnóstico OMR</h2>
@@ -1549,8 +1616,193 @@ async function loadSimulacros() {
     _refreshUnifiedSimSelect();
     _populateKgSimSelect();
     _populateAnuSimSelect();
+    _populatePersonalizeSimSelect();
     _refreshAnuList();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
+}
+
+// ══ HOJAS PERSONALIZADAS CON QR (config tab) ═══════════════════════════════
+let _personalizeFile = null;
+let _personalizeRoster = null;   // resultado del preview
+
+function _populatePersonalizeSimSelect() {
+  const sel = document.getElementById('personalize-sim');
+  if (!sel) return;
+  const prev = sel.value;
+  // Solo simulacros tipo "completo" (1S+2S) por ahora — IETAGRO
+  let html = '<option value="">— selecciona —</option>';
+  _simulacrosCache.forEach(s => {
+    if (s.tipo === 'completo') {
+      html += `<option value="${s.nombre}">${s.nombre}</option>`;
+    }
+  });
+  sel.innerHTML = html;
+  if (prev) sel.value = prev;
+}
+
+async function onPersonalizeFileChange(input) {
+  const f = input.files[0];
+  const nameEl = document.getElementById('personalize-file-name');
+  if (!f) { nameEl.textContent = 'Ningún archivo seleccionado'; return; }
+  _personalizeFile = f;
+  nameEl.innerHTML = `📄 <strong>${f.name}</strong>
+    <span style="opacity:.6;">(${(f.size/1024).toFixed(1)} KB)</span>`;
+
+  // Subir y obtener preview
+  const previewEl = document.getElementById('personalize-preview');
+  previewEl.style.display = 'block';
+  previewEl.innerHTML = '<p style="color:var(--muted);">⏳ Procesando…</p>';
+  const fd = new FormData();
+  fd.append('roster', f);
+  try {
+    const resp = await fetch('/personalize/preview', {method:'POST', body: fd});
+    const data = await resp.json();
+    if (!data.success) {
+      previewEl.innerHTML = `<p style="color:var(--danger);">
+        ❌ ${data.error || 'Error desconocido'}</p>`;
+      document.getElementById('personalize-step2').style.display = 'none';
+      _personalizeRoster = null;
+      return;
+    }
+    _personalizeRoster = data;
+    const byCurso = data.by_curso || {};
+    const cursosArr = Object.entries(byCurso).sort();
+    let html = `
+      <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
+                  margin-bottom:8px;">
+        ✅ Roster cargado correctamente
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+                  gap:8px;margin-bottom:10px;">
+        <div style="background:rgba(255,255,255,.05);border-radius:8px;
+                    padding:8px;text-align:center;">
+          <div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">
+            ${data.count}</div>
+          <div style="font-size:.7rem;color:var(--muted);">Estudiantes</div>
+        </div>
+        <div style="background:rgba(255,255,255,.05);border-radius:8px;
+                    padding:8px;text-align:center;">
+          <div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">
+            ${cursosArr.length}</div>
+          <div style="font-size:.7rem;color:var(--muted);">Cursos</div>
+        </div>
+        <div style="background:rgba(255,255,255,.05);border-radius:8px;
+                    padding:8px;text-align:center;">
+          <div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);">
+            ${data.count * 2}</div>
+          <div style="font-size:.7rem;color:var(--muted);">PDFs a generar</div>
+        </div>
+      </div>
+      <div style="font-size:.74rem;color:var(--muted);margin-bottom:6px;">
+        Distribución por curso:
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        ${cursosArr.map(([c, n]) =>
+          `<span style="padding:3px 10px;background:rgba(99,102,241,.15);
+                  border-radius:12px;font-size:.78rem;font-weight:600;
+                  color:var(--primary-light);">${c}: ${n}</span>`
+        ).join('')}
+      </div>
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;font-size:.78rem;color:var(--muted);">
+          Ver primeros 5 estudiantes
+        </summary>
+        <table style="width:100%;margin-top:6px;font-size:.78rem;
+                       border-collapse:collapse;">
+          <thead><tr style="border-bottom:1px solid var(--card-border);">
+            <th style="text-align:left;padding:4px;">Curso</th>
+            <th style="text-align:left;padding:4px;">Documento</th>
+            <th style="text-align:left;padding:4px;">Nombre</th>
+          </tr></thead>
+          <tbody>
+          ${data.students.slice(0, 5).map(s => `<tr>
+            <td style="padding:3px 4px;">${s.curso}</td>
+            <td style="padding:3px 4px;">${s.id}</td>
+            <td style="padding:3px 4px;">${s.nombre}</td>
+          </tr>`).join('')}
+          </tbody>
+        </table>
+      </details>`;
+    previewEl.innerHTML = html;
+    // Mostrar paso 2
+    document.getElementById('personalize-step2').style.display = 'block';
+  } catch (e) {
+    previewEl.innerHTML = `<p style="color:var(--danger);">
+      ❌ Error de conexión: ${e.message}</p>`;
+  }
+}
+
+async function generatePersonalizedPdfs() {
+  const sim = document.getElementById('personalize-sim').value;
+  const btn = document.getElementById('personalize-generate-btn');
+  const statusEl = document.getElementById('personalize-status');
+  const resultEl = document.getElementById('personalize-result');
+  if (!_personalizeFile) {
+    alert('Primero carga el archivo Excel.');
+    return;
+  }
+  if (!sim) {
+    alert('Selecciona un simulacro.');
+    return;
+  }
+  const totalPdfs = (_personalizeRoster?.count || 0) * 2;
+  // ~1.5s/PDF amortizado con 4 workers
+  const estSec = Math.max(15, Math.round(totalPdfs * 1.5));
+  const estMin = Math.ceil(estSec / 60);
+  btn.disabled = true;
+  btn.textContent = '⏳ Generando…';
+  statusEl.innerHTML = `<span style="color:var(--muted);">
+    Generando ${totalPdfs} PDFs en paralelo
+    (estimado: ~${estMin} min). No cierres esta pestaña…</span>`;
+  resultEl.innerHTML = '';
+
+  const fd = new FormData();
+  fd.append('roster', _personalizeFile);
+  fd.append('simulacro', sim);
+  try {
+    const resp = await fetch('/personalize/generate', {method:'POST', body: fd});
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({error: 'Error desconocido'}));
+      statusEl.innerHTML = `<span style="color:var(--danger);">
+        ❌ ${errData.error || 'Error al generar PDFs'}</span>`;
+      btn.disabled = false;
+      btn.textContent = '⚡ Generar PDFs';
+      return;
+    }
+    const count    = resp.headers.get('X-PDF-Count') || '?';
+    const failures = resp.headers.get('X-PDF-Failures') || '0';
+    const blob = await resp.blob();
+    // Descargar
+    const url = URL.createObjectURL(blob);
+    const fname = `hojas_${sim.replace(/[^a-z0-9]+/gi,'_')}.zip`;
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    statusEl.innerHTML = '';
+    resultEl.innerHTML = `<div style="background:rgba(34,197,94,.1);
+        border:1px solid rgba(34,197,94,.4);border-radius:10px;padding:14px;">
+      <div style="font-size:.92rem;font-weight:700;color:#22c55e;margin-bottom:4px;">
+        ✅ ${count} PDFs generados
+      </div>
+      <p style="font-size:.82rem;color:var(--muted);margin:6px 0;">
+        Se descargó <strong>${fname}</strong>. Dentro está organizado por curso.
+        ${parseInt(failures) > 0 ? `<br><span style="color:#fbbf24;">⚠️ ${failures}
+        fallos durante la generación.</span>` : ''}
+      </p>
+      <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">
+        Cada PDF tiene su QR único con los datos del estudiante codificados.
+        Al escanear se reconocerá automáticamente el estudiante y la sesión.
+      </p>
+    </div>`;
+    btn.disabled = false;
+    btn.textContent = '⚡ Generar PDFs';
+  } catch (e) {
+    statusEl.innerHTML = `<span style="color:var(--danger);">
+      ❌ Error de conexión: ${e.message}</span>`;
+    btn.disabled = false;
+    btn.textContent = '⚡ Generar PDFs';
+  }
 }
 
 // ══ CLAVE POR (simulacro, sesion, grado) ════════════════════════════════════
