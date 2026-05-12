@@ -215,11 +215,17 @@ def _render_template(tpl_path: Path, dest_tex: Path, vars: dict):
 def _compile_latex(tex_path: Path, out_dir: Path) -> Optional[Path]:
     """Compila el .tex y devuelve la ruta del PDF, o None si falla.
 
-    Importante: usamos nombres RELATIVOS (solo filename) en vez de rutas
-    absolutas, porque en Windows si la ruta contiene un componente con
-    '~' (shortname 8.3, ej. 'ESTUDI~1'), LaTeX lo interpreta como
-    espacio no rompible y falla. Al correr con cwd=tmpdir y pasar solo
-    nombres de archivo, evitamos ese problema.
+    IMPORTANTE: corre pdflatex DOS VECES. La plantilla usa
+    `remember picture` con `current page` para posicionar los marcadores
+    fiduciales en las esquinas, lo cual requiere dos pasadas: la primera
+    registra las coordenadas en el .aux, la segunda las lee. Sin esto,
+    los fiduciales no aparecen y el OMR no puede corregir la perspectiva.
+
+    Usamos nombres RELATIVOS (solo filename) en vez de rutas absolutas
+    porque en Windows si la ruta contiene un componente con '~'
+    (shortname 8.3, ej. 'ESTUDI~1'), LaTeX lo interpreta como espacio
+    no rompible y falla. Al correr con cwd=tmpdir y pasar solo nombres
+    de archivo, evitamos ese problema.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     # Si out_dir == tex_path.parent, no necesitamos --output-directory
@@ -229,10 +235,15 @@ def _compile_latex(tex_path: Path, out_dir: Path) -> Optional[Path]:
     else:
         cmd = ['pdflatex', '-interaction=nonstopmode', '-halt-on-error',
                '-output-directory', out_dir.name, tex_path.name]
-    r = subprocess.run(cmd, capture_output=True, text=True,
-                       cwd=str(tex_path.parent), timeout=60)
+    # Dos pasadas para que `remember picture` registre y use las
+    # coordenadas de los marcadores fiduciales.
+    for _ in range(2):
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           cwd=str(tex_path.parent), timeout=60)
+        if r.returncode != 0:
+            return None
     pdf = out_dir / (tex_path.stem + '.pdf')
-    return pdf if (r.returncode == 0 and pdf.exists()) else None
+    return pdf if pdf.exists() else None
 
 
 # Función worker para multiprocessing (debe estar a nivel de módulo para serializar)

@@ -74,7 +74,13 @@ def render(template_path: Path, dest_tex: Path, vars: dict):
 
 
 def compile_latex(tex_path: Path, out_dir: Path) -> Path:
-    """Compila el .tex y devuelve la ruta del PDF resultante."""
+    """Compila el .tex y devuelve la ruta del PDF resultante.
+
+    Corre pdflatex DOS VECES porque la plantilla usa `remember picture`
+    con `current page` para los marcadores fiduciales de las esquinas,
+    lo cual requiere dos pasadas (la primera escribe coordenadas en
+    .aux, la segunda las lee).
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         'pdflatex',
@@ -83,12 +89,15 @@ def compile_latex(tex_path: Path, out_dir: Path) -> Path:
         '-output-directory', str(out_dir),
         str(tex_path),
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(tex_path.parent))
+    for _ in range(2):
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(tex_path.parent))
+        if r.returncode != 0:
+            print('--- LaTeX log (últimas 30 líneas) ---')
+            print('\n'.join(r.stdout.splitlines()[-30:]))
+            raise RuntimeError(f'pdflatex falló para {tex_path.name}')
     pdf_path = out_dir / (tex_path.stem + '.pdf')
-    if r.returncode != 0 or not pdf_path.exists():
-        print('--- LaTeX log (últimas 30 líneas) ---')
-        print('\n'.join(r.stdout.splitlines()[-30:]))
-        raise RuntimeError(f'pdflatex falló para {tex_path.name}')
+    if not pdf_path.exists():
+        raise RuntimeError(f'No se generó PDF para {tex_path.name}')
     return pdf_path
 
 
