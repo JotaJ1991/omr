@@ -2257,13 +2257,8 @@ function generateIntegralReport() {
       compartir con coordinación o directivos.
     </p>`;
 
-  // ¿Todo el scope es grado 10°? → ofrecemos cards extra y desglose
+  // ¿Todo el scope es grado 10°? → mostrar aclaracion sobre desglose en tablas
   const allG10View = view.every(r => String(gradoDeCurso(r.curso || '')) === '10');
-  const _numV = v => (v === '' || v == null) ? null : (+v || 0);
-  const _avgSubsetV = (arr, k) => {
-    const vs = arr.map(r => _numV(r[k])).filter(v => v !== null);
-    return vs.length ? Math.round(vs.reduce((s,v)=>s+v,0)/vs.length) : '—';
-  };
 
   // Resumen
   html += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
@@ -2275,11 +2270,6 @@ function generateIntegralReport() {
     ['Mediana',         general.median],
     ['Becarios (≥300)', becarios.length],
   ];
-  if (allG10View) {
-    cards.push(['Quím prom.', _avgSubsetV(view, 'quim')]);
-    cards.push(['Fís prom.',  _avgSubsetV(view, 'fis')]);
-    cards.push(['Nat prom.',  Math.round(view.reduce((s,r)=>s+(+r.nat||0),0)/view.length)]);
-  }
   cards.forEach(([label, val]) => {
     html += `<div style="background:rgba(255,255,255,.04);border:1px solid var(--card-border);
                   border-radius:10px;padding:10px;text-align:center;">
@@ -2294,7 +2284,7 @@ function generateIntegralReport() {
                 border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:.85rem;">
     <strong>El PDF incluirá:</strong>
     <ul style="margin:6px 0 0 18px;line-height:1.7;">
-      <li>Portada con datos generales${allG10View ? ' (incluye promedios Quím/Fís/Nat)' : ''}</li>`;
+      <li>Portada con datos generales</li>`;
   if (scopeType === 'grado') {
     html += `<li>Tabla · Puntajes por curso${allG10View ? ' <span style="color:var(--primary-light);font-weight:600;">con columnas Quím · Fís · Nat</span>' : ''} (resumen del grado ${gradeF}°)</li>
              <li>Gráficos comparativos: barras, boxplot y radar de cursos</li>`;
@@ -2344,7 +2334,7 @@ async function downloadIntegralPdf() {
     let y = _drawReportHeader(doc, `Análisis integral`, `${simName} · ${scopeLabel}`);
     y = _drawSectionTitle(doc, 10, y + 2, 'bars', 'Datos relevantes');
     y += 2;
-    const cardsList = [
+    y = _drawSummaryCards(doc, 10, y, [
       {icon:'',  label:'Estudiantes',      value: general.n},
       {icon:'',  label:'Cursos',           value: cursos.length},
       {icon:'',  label:'Promedio',         value: general.avg},
@@ -2353,21 +2343,7 @@ async function downloadIntegralPdf() {
       {icon:'',  label:'Max',              value: general.max},
       {icon:'',  label:'Desv. estandar',   value: general.std},
       {icon:'',  label:'Becarios (>=300)', value: becarios.length},
-    ];
-    // Para grado 10: agregar promedios Quim/Fis/Nat de la cohorte
-    const allG10_cover = view.every(r => String(gradoDeCurso(r.curso || '')) === '10');
-    if (allG10_cover) {
-      const _avgSub = (k) => {
-        const vs = view.map(r => (r[k] === '' || r[k] == null) ? null : (+r[k] || 0))
-                       .filter(v => v !== null);
-        return vs.length ? Math.round(vs.reduce((s,v)=>s+v,0)/vs.length) : '—';
-      };
-      const natAvg = Math.round(view.reduce((s,r)=>s+(+r.nat||0),0)/view.length);
-      cardsList.push({icon:'', label:'Quimica (10)',  value: _avgSub('quim')});
-      cardsList.push({icon:'', label:'Fisica (10)',   value: _avgSub('fis')});
-      cardsList.push({icon:'', label:'Naturales (10)',value: natAvg});
-    }
-    y = _drawSummaryCards(doc, 10, y, cardsList);
+    ]);
 
     // ── PORTADA + TABLA DE CURSOS (misma página) ──
     // Detecta si todos los estudiantes del scope son de grado 10°
