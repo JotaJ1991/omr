@@ -3056,7 +3056,10 @@ function renderUnifiedTable() {
       No hay estudiantes con esos filtros.</p>`;
     return;
   }
+  // ¿Todos los visibles son grado 10°? → desplegar Quim/Fís/Nat
+  const allG10 = view.every(r => String(gradoDeCurso(r.curso || '')) === '10');
   const n = view.length;
+  const num = v => (v === '' || v == null) ? null : (+v || 0);
   const avg = {
     mat:  Math.round(view.reduce((s,r) => s + (+r.mat ||0), 0) / n),
     lect: Math.round(view.reduce((s,r) => s + (+r.lect||0), 0) / n),
@@ -3065,8 +3068,19 @@ function renderUnifiedTable() {
     ing:  Math.round(view.reduce((s,r) => s + (+r.ing ||0), 0) / n),
     gen:  Math.round(view.reduce((s,r) => s + (+r.general||0), 0) / n),
   };
+  if (allG10) {
+    const q = view.map(r => num(r.quim)).filter(v => v !== null);
+    const f = view.map(r => num(r.fis )).filter(v => v !== null);
+    avg.quim = q.length ? Math.round(q.reduce((s,v)=>s+v,0)/q.length) : '—';
+    avg.fis  = f.length ? Math.round(f.reduce((s,v)=>s+v,0)/f.length) : '—';
+  }
   const rows = view.map(r => {
     const idx = unifiedResults.indexOf(r);
+    const natCells = allG10
+      ? `<td class="score">${r.quim ?? '—'}</td>
+         <td class="score">${r.fis ?? '—'}</td>
+         <td class="score">${r.nat}</td>`
+      : `<td class="score">${r.nat}</td>`;
     return `
     <tr>
       <td>
@@ -3077,18 +3091,34 @@ function renderUnifiedTable() {
       <td class="score">${r.mat}</td>
       <td class="score">${r.lect}</td>
       <td class="score">${r.soc}</td>
-      <td class="score">${r.nat}</td>
+      ${natCells}
       <td class="score">${r.ing}</td>
       <td class="general-score">${r.general}</td>
       <td><button class="pdf-btn" onclick="downloadUnifiedStudent(${idx})">PDF</button></td>
     </tr>`;
   }).join('');
+  const natHeader = allG10
+    ? `<th title="Química P61-P80">Quím</th>
+       <th title="Física P81-P100">Fís</th>
+       <th title="Promedio Quím+Fís">Nat</th>`
+    : `<th>Nat</th>`;
+  const natAvg = allG10
+    ? `<td class="score">${avg.quim}</td>
+       <td class="score">${avg.fis}</td>
+       <td class="score">${avg.nat}</td>`
+    : `<td class="score">${avg.nat}</td>`;
   list.innerHTML = `
+    ${allG10 ? `<p style="font-size:.78rem;color:var(--muted);margin-bottom:8px;
+        padding:6px 10px;background:rgba(99,102,241,.08);border-radius:6px;">
+        🔬 Grado 10° — Naturales desglosada en
+        <strong>Química</strong> (P61-P80) y <strong>Física</strong> (P81-P100).
+        La columna Nat es el promedio de ambas.</p>` : ''}
     <div class="results-table-wrap">
       <table class="results-table">
         <thead><tr>
           <th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th>
-          <th>Nat</th><th>Ing</th><th>General</th><th></th>
+          ${natHeader}
+          <th>Ing</th><th>General</th><th></th>
         </tr></thead>
         <tbody>
           ${rows}
@@ -3098,7 +3128,7 @@ function renderUnifiedTable() {
             <td class="score">${avg.mat}</td>
             <td class="score">${avg.lect}</td>
             <td class="score">${avg.soc}</td>
-            <td class="score">${avg.nat}</td>
+            ${natAvg}
             <td class="score">${avg.ing}</td>
             <td class="general-score">${avg.gen}</td>
             <td></td>
@@ -3129,15 +3159,26 @@ function _renderTableGroupedByCurso(view, gradeF) {
     groups[c].push(r);
   });
   const cursos = Object.keys(groups).sort();
+  const isG10 = String(gradeF) === '10';
+  const num = v => (v === '' || v == null) ? null : (+v || 0);
+  const avgSubset = (arr, k) => {
+    const vals = arr.map(r => num(r[k])).filter(v => v !== null);
+    return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : '—';
+  };
   const rows = cursos.map(c => {
     const arr = groups[c];
     const n = arr.length;
     const avg = (k) => Math.round(arr.reduce((s,r) => s + (+r[k] || 0), 0) / n);
-    return {
+    const base = {
       curso: c, n,
       mat: avg('mat'), lect: avg('lect'), soc: avg('soc'),
       nat: avg('nat'), ing: avg('ing'), general: avg('general'),
     };
+    if (isG10) {
+      base.quim = avgSubset(arr, 'quim');
+      base.fis  = avgSubset(arr, 'fis');
+    }
+    return base;
   });
   // Promedio del grado completo
   const gN = view.length;
@@ -3147,39 +3188,67 @@ function _renderTableGroupedByCurso(view, gradeF) {
     mat: gAvg('mat'), lect: gAvg('lect'), soc: gAvg('soc'),
     nat: gAvg('nat'), ing: gAvg('ing'), general: gAvg('general'),
   };
+  if (isG10) {
+    totalRow.quim = avgSubset(view, 'quim');
+    totalRow.fis  = avgSubset(view, 'fis');
+  }
 
   // Ordenar por puntaje general desc
   rows.sort((a,b) => b.general - a.general);
+
+  // Cabecera y celdas de Nat (con/sin desglose)
+  const natHeader = isG10
+    ? `<th title="Química P61-P80">Quím</th>
+       <th title="Física P81-P100">Fís</th>
+       <th title="Promedio Quím+Fís">Nat</th>`
+    : `<th>Nat</th>`;
 
   let html = `
     <p style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">
       📊 Vista agregada por curso · Grado ${gradeF}° (${cursos.length} cursos, ${gN} estudiantes).
       Selecciona un curso del filtro para ver los estudiantes individuales.
     </p>
+    ${isG10 ? `<p style="font-size:.78rem;color:var(--muted);margin-bottom:8px;
+        padding:6px 10px;background:rgba(99,102,241,.08);border-radius:6px;">
+        🔬 Grado 10° — Naturales desglosada en
+        <strong>Química</strong> (P61-P80) y <strong>Física</strong> (P81-P100).
+        Nat = promedio de ambas.</p>` : ''}
     <div class="results-table-wrap"><table class="results-table">
     <thead><tr>
       <th>Curso</th><th>Estudiantes</th>
-      <th>Mat</th><th>Lect</th><th>Soc</th><th>Nat</th><th>Ing</th><th>General</th>
+      <th>Mat</th><th>Lect</th><th>Soc</th>
+      ${natHeader}
+      <th>Ing</th><th>General</th>
     </tr></thead><tbody>`;
   rows.forEach(r => {
+    const natCells = isG10
+      ? `<td class="score">${r.quim}</td>
+         <td class="score">${r.fis}</td>
+         <td class="score">${r.nat}</td>`
+      : `<td class="score">${r.nat}</td>`;
     html += `<tr style="cursor:pointer;" onclick="_selectCursoFromTable('${r.curso.replace(/'/g,"\\'")}')">
       <td><strong>${r.curso}</strong></td>
       <td>${r.n}</td>
       <td class="score">${r.mat}</td>
       <td class="score">${r.lect}</td>
       <td class="score">${r.soc}</td>
-      <td class="score">${r.nat}</td>
+      ${natCells}
       <td class="score">${r.ing}</td>
       <td class="general-score">${r.general}</td>
     </tr>`;
   });
+  const natAvg = isG10
+    ? `<td class="score">${totalRow.quim}</td>
+       <td class="score">${totalRow.fis}</td>
+       <td class="score">${totalRow.nat}</td>`
+    : `<td class="score">${totalRow.nat}</td>`;
   html += `<tr class="avg-row">
     <td><strong>PROMEDIO GRADO ${gradeF}°</strong></td>
     <td>${totalRow.n}</td>
     <td class="score">${totalRow.mat}</td>
     <td class="score">${totalRow.lect}</td>
     <td class="score">${totalRow.soc}</td>
-    <td class="score">${totalRow.nat}</td>
+    ${natAvg}
     <td class="score">${totalRow.ing}</td>
     <td class="general-score">${totalRow.general}</td>
   </tr>`;
@@ -3208,16 +3277,26 @@ function _renderTableGroupedByCurso(view, gradeF) {
     </button>`;
   list.innerHTML = html;
 
-  // Cachear data para PDF
-  const headers = ['Curso', 'Estudiantes', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General'];
-  const pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.nat, r.ing, r.general]);
-  const avgRow  = [`PROMEDIO ${gradeF}°`, totalRow.n, totalRow.mat, totalRow.lect,
-                   totalRow.soc, totalRow.nat, totalRow.ing, totalRow.general];
+  // Cachear data para PDF (con o sin desglose Quím/Fís para 10°)
+  let headers, pdfRows, avgRow, colWidths;
+  if (isG10) {
+    headers = ['Curso', 'Estud.', 'Mat', 'Lect', 'Soc', 'Quím', 'Fís', 'Nat', 'Ing', 'General'];
+    pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.quim, r.fis, r.nat, r.ing, r.general]);
+    avgRow  = [`PROMEDIO ${gradeF}°`, totalRow.n, totalRow.mat, totalRow.lect, totalRow.soc,
+               totalRow.quim, totalRow.fis, totalRow.nat, totalRow.ing, totalRow.general];
+    colWidths = [30, 18, 17, 17, 17, 17, 17, 17, 17, 25.9];
+  } else {
+    headers = ['Curso', 'Estudiantes', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General'];
+    pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.nat, r.ing, r.general]);
+    avgRow  = [`PROMEDIO ${gradeF}°`, totalRow.n, totalRow.mat, totalRow.lect,
+               totalRow.soc, totalRow.nat, totalRow.ing, totalRow.general];
+    colWidths = [35, 22, 22, 22, 22, 22, 22, 28.9];
+  }
   _lastCursosTableData = {
     title: `Resultados por curso — Grado ${gradeF}°`,
     subtitle: `${cursos.length} cursos · ${gN} estudiantes`,
     headers, rows: pdfRows, avgRow,
-    colWidths: [35, 22, 22, 22, 22, 22, 22, 28.9],
+    colWidths,
     fileName: `Tabla_Cursos_${gradeF}grado_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
   };
 }
@@ -4527,6 +4606,12 @@ async function downloadTablePdfReport() {
   if (!view.length) return;
   const sorted = view.slice().sort((a,b)=>(+b.general||0)-(+a.general||0));
   const n = sorted.length;
+  const allG10 = sorted.every(r => String(gradoDeCurso(r.curso || '')) === '10');
+  const num = v => (v === '' || v == null) ? null : (+v || 0);
+  const avgSubset = (arr, k) => {
+    const vals = arr.map(r => num(r[k])).filter(v => v !== null);
+    return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : '—';
+  };
   const avg = {
     mat:  Math.round(sorted.reduce((s,r)=>s+(+r.mat||0),0)/n),
     lect: Math.round(sorted.reduce((s,r)=>s+(+r.lect||0),0)/n),
@@ -4535,17 +4620,34 @@ async function downloadTablePdfReport() {
     ing:  Math.round(sorted.reduce((s,r)=>s+(+r.ing||0),0)/n),
     gen:  Math.round(sorted.reduce((s,r)=>s+(+r.general||0),0)/n),
   };
-  const headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'Gen'];
-  const rows = sorted.map((r, i) => [
-    i+1, (r.name || '—').slice(0, 28), r.curso || '—',
-    r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
-  ]);
-  const avgRow = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc, avg.nat, avg.ing, avg.gen];
+  let headers, rows, avgRow, colWidths;
+  if (allG10) {
+    avg.quim = avgSubset(sorted, 'quim');
+    avg.fis  = avgSubset(sorted, 'fis');
+    headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Quím', 'Fís', 'Nat', 'Ing', 'Gen'];
+    rows = sorted.map((r, i) => [
+      i+1, (r.name || '—').slice(0, 26), r.curso || '—',
+      r.mat, r.lect, r.soc,
+      r.quim ?? '—', r.fis ?? '—', r.nat,
+      r.ing, r.general,
+    ]);
+    avgRow = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc,
+              avg.quim, avg.fis, avg.nat, avg.ing, avg.gen];
+    colWidths = [9, 52, 16, 12, 12, 12, 12, 12, 12, 12, 14.9];
+  } else {
+    headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'Gen'];
+    rows = sorted.map((r, i) => [
+      i+1, (r.name || '—').slice(0, 28), r.curso || '—',
+      r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
+    ]);
+    avgRow = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc, avg.nat, avg.ing, avg.gen];
+    colWidths = [10, 60, 18, 14, 14, 14, 14, 14, 17.9];
+  }
   await _saveReportPdf({
     title: 'Tabla de estudiantes',
-    subtitle: `${scopeLabel} · ${n} estudiantes`,
+    subtitle: `${scopeLabel} · ${n} estudiantes${allG10 ? ' · 10° con desglose Quím/Fís' : ''}`,
     headers, rows, avgRow,
-    colWidths: [10, 60, 18, 14, 14, 14, 14, 14, 17.9],
+    colWidths,
     fileName: `Tabla_Estudiantes_${unifiedSimulacro?.nombre||''}.pdf`.replace(/[^a-z0-9.]+/gi,'_'),
   });
 }

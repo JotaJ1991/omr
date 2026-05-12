@@ -1476,6 +1476,38 @@ M_SIPAGRE_SUBJECTS = [
 ]
 
 
+def _compute_nat_subscores_grade10(ans, key, anuladas_set=None):
+    """
+    Para grado 10° Media: calcula sub-puntajes
+      - Química:  P61-P80  (20 preguntas)
+      - Física:   P81-P100 (20 preguntas)
+    Devuelve {'quim': float, 'fis': float} en escala 0-100.
+    Aplica la misma lógica que el scoring oficial: las preguntas anuladas
+    cuentan como correctas para todos.
+    """
+    anu = anuladas_set or set()
+    try: anu = set(int(n) for n in anu)
+    except Exception: anu = set()
+
+    def block_score(ini, fin):
+        total = 0; correct = 0
+        for i in range(ini - 1, fin):
+            q_num = i + 1
+            is_anu = q_num in anu
+            if is_anu:
+                total += 1; correct += 1
+                continue
+            k = (key[i] if i < len(key) else '').strip()
+            if not k or k in ('?', '—', '-'):
+                continue
+            a = (ans[i] if i < len(ans) else '').strip()
+            total += 1
+            if a == k: correct += 1
+        return round(correct / total * 100, 2) if total else 0.0
+
+    return {'quim': block_score(61, 80), 'fis': block_score(81, 100)}
+
+
 def _score_student_with_distribution(answers_by_session, keys_by_session,
                                      distribucion, anuladas_by_session=None):
     """
@@ -1964,6 +1996,15 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         # Pesos: Mat, Lect, Soc, Nat = 3 cada una; Ing = 1.  Suma = 13
         general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
 
+        # Solo grado 10°: descomponer Naturales en Química (P61-P80) y
+        # Física (P81-P100). Para otros grados se queda vacío.
+        quim, fis = '', ''
+        if str(grado) == '10':
+            sub = _compute_nat_subscores_grade10(
+                ans, key_for_student, set(anu_m or []))
+            quim = int(round(sub['quim']))
+            fis  = int(round(sub['fis']))
+
         results.append({
             'id':       sid,
             'name':     name,
@@ -1973,6 +2014,9 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
             'soc':      soc,
             'nat':      nat,
             'ing':      ing,
+            'quim':     quim,  # solo 10°; otros grados ''
+            'fis':      fis,   # solo 10°; otros grados ''
+            'grado':    grado,
             'general':  general,
             'type':     'M',
         })
@@ -1991,9 +2035,10 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
     header = [
         'ID Estudiante', 'Nombre', 'Curso',
         'Matematica', 'Lectura Critica', 'Sociales',
-        'Naturales', 'Ingles', 'Puntaje General'
+        'Naturales', 'Ingles', 'Puntaje General',
+        'Quimica (10°)', 'Fisica (10°)'
     ]
-    ws_res.update('A1:I1', [header], value_input_option='RAW')
+    ws_res.update('A1:K1', [header], value_input_option='RAW')
 
     rows = []
     for r in results:
@@ -2001,6 +2046,7 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
             r['id'], r['name'], r.get('curso',''),
             r['mat'], r['lect'], r['soc'],
             r['nat'], r['ing'], r['general'],
+            r.get('quim',''), r.get('fis',''),
         ])
 
     if rows:
@@ -2011,14 +2057,21 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         n = len(results)
         avg = {k: int(round(sum(r[k] for r in results) / n))
                for k in ['mat','lect','soc','nat','ing','general']}
+        # Promedio Quim/Fis solo sobre los de 10°
+        only10 = [r for r in results
+                  if isinstance(r.get('quim'), int) and isinstance(r.get('fis'), int)]
+        avg_quim = (int(round(sum(r['quim'] for r in only10) / len(only10)))
+                    if only10 else '')
+        avg_fis  = (int(round(sum(r['fis']  for r in only10) / len(only10)))
+                    if only10 else '')
         avg_row = end_row + 1
         ws_res.update(
-            f'A{avg_row}:I{avg_row}',
+            f'A{avg_row}:K{avg_row}',
             [['', 'PROMEDIO', '', avg['mat'], avg['lect'], avg['soc'],
-              avg['nat'], avg['ing'], avg['general']]],
+              avg['nat'], avg['ing'], avg['general'], avg_quim, avg_fis]],
             value_input_option='RAW')
         try:
-            ws_res.format(f'A{avg_row}:I{avg_row}', {
+            ws_res.format(f'A{avg_row}:K{avg_row}', {
                 'backgroundColor': {'red': 0.93, 'green': 0.93, 'blue': 0.93},
                 'textFormat': {'bold': True},
                 'horizontalAlignment': 'CENTER'
