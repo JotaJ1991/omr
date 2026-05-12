@@ -124,22 +124,32 @@ def main():
     print(f'Roster: {len(students)} estudiantes\n')
 
     sessions = [
-        ('1S', TEMPLATES / 'sipagre_1s_personalizado.tex'),
-        ('2S', TEMPLATES / 'sipagre_2s_personalizado.tex'),
+        ('1S', TEMPLATES / 'ietagro_1s.tex'),
+        ('2S', TEMPLATES / 'ietagro_2s.tex'),
     ]
 
     generated = []
     for stu in students:
         for ses, tpl in sessions:
-            # 1) Generar QR
-            payload = f'SIPAGRE|{SIM_ID}|{ses}|{stu["id"]}|{stu["curso"]}'
+            # 1) Generar QR — prefijo "OMR|" agnóstico al colegio
+            payload = f'OMR|{SIM_ID}|{ses}|{stu["id"]}|{stu["curso"]}'
             qr_path = TMP / f'qr_{stu["id"]}_{ses}.png'
             make_qr(payload, qr_path)
 
-            # 2) Rellenar template
-            short_name = ' '.join(stu['nombre'].split()[:3])  # 3 primeras palabras
+            # 2) Rellenar template — usar nombre completo si entra (~28 chars),
+            #    sino abreviar segundos nombres a inicial.
+            full_name = stu['nombre'].strip()
+            display_name = full_name
+            if len(display_name) > 28:
+                parts = full_name.split()
+                # Mantener primer nombre + apellidos completos, abreviar el resto
+                if len(parts) >= 4:
+                    # Asumir: [N1] [N2] [Ap1] [Ap2] → "N1 N2. AP1 AP2" o más corto
+                    display_name = f'{parts[0]} {parts[1][0]}. {" ".join(parts[2:])}'
+                if len(display_name) > 28:
+                    display_name = display_name[:27] + '.'
             vars = {
-                'NOMBRE':   latex_escape(short_name),
+                'NOMBRE':   latex_escape(display_name),
                 'ID':       latex_escape(stu['id']),
                 'CURSO':    latex_escape(stu['curso']),
                 'SESION':   ses,

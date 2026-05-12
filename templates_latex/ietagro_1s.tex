@@ -1,25 +1,27 @@
-% Plantilla SIPAGRE — 1° PARTE (1S) PERSONALIZADA
-% =================================================
-% Generada a partir del template original con los siguientes cambios:
-%   - Se añade \usepackage{graphicx} para incluir el QR
-%   - Se acorta la línea "DOCUMENTO IDENTIDAD" (3 cm en vez de 6 cm)
-%   - Se añade un QR de 20mm × 20mm en el extremo derecho del título box
-%   - Se imprimen automáticamente Nombre, ID, Curso del estudiante
+% Plantilla IETAGRO Puerto Giraldo — 1° PARTE (1S)
+% ==================================================
+% Hoja de respuestas personalizada con QR.
+% Datos del estudiante pre-impresos (no se escribe manualmente).
 %
 % Placeholders (rellenados por Python antes de compilar):
 %   <<NOMBRE>>   Nombres y apellidos del estudiante (mayúsculas)
 %   <<ID>>       Documento de identidad
 %   <<CURSO>>    Curso (ej. 1101)
-%   <<SESION>>   "1S"
 %   <<QR_PATH>>  Ruta absoluta del PNG del QR
 %
-% NO se modifica nada de las columnas de respuestas ni de los timing marks,
-% para que el OMR existente siga funcionando sin recalibrar.
+% Diseño del header:
+%   - Altura 4cm (era 2.4cm) para acomodar QR grande y datos pre-impresos
+%   - Banda de color (azul oscuro) en la franja izquierda como acento visual
+%   - Sin líneas para escritura manual (nombres se imprimen automáticamente)
+%   - QR de 32mm × 32mm a la derecha
+%
+% La zona de respuestas (columnas, timing marks, burbujas) NO cambia,
+% por lo que el OMR existente sigue funcionando sin recalibrar.
 
 \documentclass[letterpaper]{article}
 \usepackage[top=1.1cm, bottom=0.9cm, left=1.2cm, right=1.1cm]{geometry}
 \usepackage{tikz}
-\usepackage{graphicx}                                            % <-- NUEVO (para el QR)
+\usepackage{graphicx}
 \usetikzlibrary{calc, shapes.geometric, positioning}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -39,15 +41,9 @@
 
 % ================= ESTILO CUADROS REDONDEADOS =================
 \tikzset{cuadrocolumna/.style={
-    draw,
-    draw=black!70,
-    line width=1.2pt,
-    rounded corners=10pt,
-    inner sep=8pt,
-    outer sep=0pt,
-    fill=white,
-    align=left,
-    anchor=north,
+    draw, draw=black!70, line width=1.2pt,
+    rounded corners=10pt, inner sep=8pt, outer sep=0pt,
+    fill=white, align=left, anchor=north,
     text width=\linewidth-16pt
 }}
 
@@ -118,98 +114,87 @@
 
 \vspace*{2mm}
 
-% ================== ENCABEZADO PRINCIPAL (MODIFICADO) ==================
+% ================== ENCABEZADO IETAGRO (REDISEÑADO) ==================
 \noindent\makebox[\textwidth][c]{
 \begin{tikzpicture}[x=1cm, y=1cm]
 
-% --- Caja principal (5mm más alta que el original para acomodar el QR) ---
-\draw[line width=2pt, rounded corners=10pt] (-9, -2.1) rectangle (9, -5.0);
+% --- Caja principal (4 cm de alto) ---
+\draw[line width=2pt, rounded corners=10pt] (-9, -2.1) rectangle (9, -6.1);
 
-% --- Título (font reducido a \large para no colisionar con el QR) ---
-\node[font=\large\bfseries, align=center] at (0, -2.50)
-  {SIPAGRE - SIMULACRO PARA GRANDES RETOS 1° PARTE};
+% --- Franja vertical azul oscuro a la izquierda (acento visual) ---
+\fill[black!85, rounded corners=10pt] (-9, -2.1) rectangle (-8.55, -6.1);
+% Pequeño rectángulo blanco para que el rounded corners corte limpio
+\fill[black!85] (-8.85, -2.1) rectangle (-8.55, -6.1);
 
-% --- IZQUIERDA: Nombre del estudiante ---
-% Nombre PRE-IMPRESO encima de la línea
-\node[font=\normalsize, anchor=south] at (-4.75, -3.46) {<<NOMBRE>>};
-\draw[line width=1.5pt] (-8, -3.5) -- (-1.5, -3.5);
-\node[font=\normalsize\bfseries] at (-4.55, -4.0) {NOMBRES Y APELLIDOS};
+% --- Título principal: nombre del colegio ---
+\node[font=\Large\bfseries, anchor=west] at (-8.3, -2.65)
+  {IETAGRO PUERTO GIRALDO};
 
-% --- CENTRO: Logo "Pruebas Saber 11°" (sin cambios) ---
-\begin{scope}[shift={(0, -3.5)}]
-    \fill[black] (-1.3, 0.7) -- (-0.9, 0.3) -- (-0.5, 0.7) -- (-0.5, 0.45) -- (-0.9, 0.05) -- (-1.3, 0.45) -- cycle;
-    \fill[black] (-1.3, 0.3) -- (-0.9, -0.1) -- (-0.5, 0.3) -- (-0.5, 0.05) -- (-0.9, -0.35) -- (-1.3, 0.05) -- cycle;
-    \node[anchor=west, align=left, inner sep=0] at (-0.3, 0.2) {\fontsize{6}{7}\selectfont Pruebas\\[-0.5ex]\large\bfseries Saber};
-    \fill[black!90] (1.6, 0.2) circle (0.45);
-    \node[text=white, font=\bfseries\normalsize] at (1.6, 0.2) {11$^\circ$};
-\end{scope}
+% --- Subtítulo: tipo de prueba + sesión ---
+\node[font=\normalsize, text=black!60, anchor=west] at (-8.3, -3.20)
+  {Simulacro Saber 11°  ·  PRIMERA PARTE};
 
-% --- DOCUMENTO (línea acortada de 6cm → 3cm para liberar espacio al QR) ---
-% ID PRE-IMPRESO encima de la línea
-\node[font=\normalsize, anchor=south] at (4.0, -3.46) {<<ID>>};
-\draw[line width=1.5pt] (2.5, -3.5) -- (5.5, -3.5);
-\node[font=\normalsize\bfseries] at (4.0, -4.0) {DOC. IDENTIDAD};
+% --- Línea fina separadora (no cruza el QR) ---
+\draw[line width=0.8pt, black!30] (-8.3, -3.55) -- (4.5, -3.55);
 
-% --- NUEVO: QR + etiqueta CURSO/SESIÓN en el extremo derecho ---
-% QR de 20mm × 20mm centrado en (7.5, -3.45)
-\node[anchor=center] at (7.5, -3.45) {%
-  \includegraphics[width=2.0cm]{<<QR_PATH>>}};
-% Etiqueta legible debajo del QR (dentro de la caja)
-\node[font=\footnotesize\bfseries, anchor=center] at (7.5, -4.75)
-  {CURSO <<CURSO>> · <<SESION>>};
+% --- Etiqueta + Nombre del estudiante ---
+\node[font=\scriptsize\bfseries, text=black!50, anchor=west] at (-8.3, -3.95)
+  {ESTUDIANTE};
+\node[font=\large\bfseries, anchor=west] at (-8.3, -4.45)
+  {<<NOMBRE>>};
+
+% --- Etiquetas inferiores: DOCUMENTO / CURSO / SESIÓN ---
+\node[font=\scriptsize\bfseries, text=black!50, anchor=west] at (-8.3, -5.10)
+  {DOCUMENTO};
+\node[font=\large\bfseries, anchor=west] at (-8.3, -5.55)
+  {<<ID>>};
+
+\node[font=\scriptsize\bfseries, text=black!50, anchor=west] at (-3.8, -5.10)
+  {CURSO};
+\node[font=\large\bfseries, anchor=west] at (-3.8, -5.55)
+  {<<CURSO>>};
+
+\node[font=\scriptsize\bfseries, text=black!50, anchor=west] at (-1.0, -5.10)
+  {SESIÓN};
+\node[font=\large\bfseries, anchor=west] at (-1.0, -5.55)
+  {1° PARTE};
+
+% --- QR grande (32mm × 32mm) en el extremo derecho ---
+\node[anchor=center] at (6.9, -4.10) {%
+  \includegraphics[width=3.2cm]{<<QR_PATH>>}};
 
 \end{tikzpicture}
 }
 
 \vspace{6mm}
 
-%================= RESPUESTAS (IDÉNTICAS AL ORIGINAL) =================
+%================= RESPUESTAS (1° PARTE — columna 4 con A-H) =================
 \noindent
-% Columna 1
 \begin{minipage}[t]{0.20\textwidth}
   \vspace{0pt}
-  \noindent
   \begin{tikzpicture}
-    \node[cuadrocolumna] {
-        \HDR
-        \foreach \n in {1,...,35}{\Q{\n}}
-    };
+    \node[cuadrocolumna] { \HDR \foreach \n in {1,...,35}{\Q{\n}} };
   \end{tikzpicture}
 \end{minipage}%
 \hfill
-% Columna 2
 \begin{minipage}[t]{0.20\textwidth}
   \vspace{0pt}
-  \noindent
   \begin{tikzpicture}
-    \node[cuadrocolumna] {
-        \HDR
-        \foreach \n in {36,...,70}{\Q{\n}}
-    };
+    \node[cuadrocolumna] { \HDR \foreach \n in {36,...,70}{\Q{\n}} };
   \end{tikzpicture}
 \end{minipage}%
 \hfill
-% Columna 3
 \begin{minipage}[t]{0.20\textwidth}
   \vspace{0pt}
-  \noindent
   \begin{tikzpicture}
-    \node[cuadrocolumna] {
-        \HDR
-        \foreach \n in {71,...,105}{\Q{\n}}
-    };
+    \node[cuadrocolumna] { \HDR \foreach \n in {71,...,105}{\Q{\n}} };
   \end{tikzpicture}
 \end{minipage}%
 \hfill
-% Columna 4 (MÁS ANCHA para A-H)
 \begin{minipage}[t]{0.28\textwidth}
   \vspace{0pt}
-  \noindent
   \begin{tikzpicture}
-    \node[cuadrocolumna] {
-        \HDRH
-        \foreach \n in {106,...,140}{\QH{\n}}
-    };
+    \node[cuadrocolumna] { \HDRH \foreach \n in {106,...,140}{\QH{\n}} };
   \end{tikzpicture}
 \end{minipage}
 
