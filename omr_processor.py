@@ -29,6 +29,11 @@ def process_exam_image(image_path: str,
 
     warped, p_ok = _correct_perspective(gray, profile)
 
+    # ── DETECCIÓN DEL QR (hojas personalizadas IETAGRO) ──
+    # Se busca ANTES del CLAHE/binarize porque el QR funciona mejor con
+    # niveles de gris originales. No bloquea el flujo si no se encuentra.
+    qr_info = _detect_student_qr(warped)
+
     # CLAHE opcional según el perfil
     if profile.get('clahe_clip', 0) > 0:
         warped = _apply_clahe(warped,
@@ -55,6 +60,86 @@ def process_exam_image(image_path: str,
         'perspective_corrected': p_ok,
         'total_q':               total_q,
         'profile_id':            profile_id,
+        'qr':                    qr_info,        # None si no se detectó
+    }
+
+
+# ===========================================================================
+# DETECCIÓN DE QR EN HOJAS PERSONALIZADAS
+# ===========================================================================
+
+# Detector compartido a nivel de módulo (más eficiente que crear uno por llamada)
+_QR_DETECTOR = cv2.QRCodeDetector()
+
+# Región esperada del QR en el warped (basado en geometría de las plantillas
+# IETAGRO: 22mm × 22mm centrado en la esquina superior derecha del header).
+# ROI ampliado generosamente: 70%-100% del ancho × 0%-18% del alto.
+_QR_ROI_X_FRAC = (0.70, 1.00)
+_QR_ROI_Y_FRAC = (0.00, 0.18)
+
+
+def _detect_student_qr(warped):
+    """
+    Busca el QR de identificación del estudiante en el warped.
+    Devuelve un dict con la información parseada o None.
+
+    El payload tiene formato:  OMR|<simulacro>|<sesion>|<id>|<curso>
+    """
+    if warped is None or warped.size == 0:
+        return None
+    h, w = warped.shape[:2]
+    x0 = int(w * _QR_ROI_X_FRAC[0])
+    x1 = int(w * _QR_ROI_X_FRAC[1])
+    y0 = int(h * _QR_ROI_Y_FRAC[0])
+    y1 = int(h * _QR_ROI_Y_FRAC[1])
+    roi = warped[y0:y1, x0:x1]
+
+    # OpenCV QRCodeDetector funciona con imágenes BGR/gray. Si es gray,
+    # lo convertimos a BGR para mejor compatibilidad entre versiones.
+    if len(roi.shape) == 2:
+        roi_for_detect = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+    else:
+        roi_for_detect = roi
+
+    data = ''
+    try:
+        data, _points, _ = _QR_DETECTOR.detectAndDecode(roi_for_detect)
+    except Exception:
+        data = ''
+
+    # Fallback: si falló en el ROI, intentar con la imagen completa
+    if not data:
+        try:
+            if len(warped.shape) == 2:
+                full = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
+            else:
+                full = warped
+            data, _points, _ = _QR_DETECTOR.detectAndDecode(full)
+        except Exception:
+            data = ''
+
+    return _parse_qr_payload(data) if data else None
+
+
+def _parse_qr_payload(data: str) -> dict:
+    """Parsea 'OMR|<sim>|<ses>|<id>|<curso>' → dict, o None si no es válido."""
+    if not data:
+        return None
+    parts = data.split('|')
+    if len(parts) < 5 or parts[0] != 'OMR':
+        return None
+    sim   = (parts[1] or '').strip()
+    ses   = (parts[2] or '').strip().upper()
+    sid   = (parts[3] or '').strip()
+    curso = (parts[4] or '').strip()
+    if not (sim and ses and sid):
+        return None
+    return {
+        'raw':       data,
+        'simulacro': sim,
+        'sesion':    ses,
+        'student_id': sid,
+        'curso':     curso,
     }
 
 

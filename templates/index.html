@@ -5839,6 +5839,62 @@ document.getElementById('modal-overlay').addEventListener('click', function(e){
   if(e.target===this) hideNewSheetModal();
 });
 
+// ══ QR DE HOJAS PERSONALIZADAS — auto-fill al detectar ══════════════════════
+// Cuando /process devuelve `qr` (no null), el estudiante ya está identificado
+// por el código QR de la hoja. Auto-rellena los campos del formulario.
+let _lastQrData = null;
+function _applyQrAutofill(qr) {
+  if (!qr) return;
+  _lastQrData = qr;
+
+  // Rellenar el ID del estudiante
+  const idInput = document.getElementById('student-id');
+  if (idInput && qr.student_id) {
+    idInput.value = qr.student_id;
+    idInput.classList.remove('required-empty');
+  }
+
+  // Mostrar / actualizar banner de QR detectado
+  let banner = document.getElementById('qr-detected-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'qr-detected-banner';
+    banner.style.cssText = `
+      background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.45);
+      border-radius:10px;padding:10px 14px;margin-top:10px;
+      font-size:.85rem;color:#86efac;display:flex;align-items:center;gap:10px;
+      flex-wrap:wrap;`;
+    // Insertarlo después del input de nombre del estudiante
+    const nameInput = document.getElementById('student-name');
+    if (nameInput && nameInput.parentNode) {
+      nameInput.parentNode.insertBefore(banner, nameInput.parentNode.lastChild);
+    }
+  }
+  const sesLbl = qr.sesion === 'M' ? 'Media' :
+                 qr.sesion === '1S' ? '1° PARTE' :
+                 qr.sesion === '2S' ? '2° PARTE' : qr.sesion;
+  banner.innerHTML = `
+    <span style="font-size:1.2rem;">📇</span>
+    <div style="flex:1;">
+      <strong style="color:#22c55e;">QR detectado — estudiante identificado</strong>
+      <div style="font-size:.78rem;color:#a7f3d0;margin-top:4px;">
+        ID <strong>${qr.student_id}</strong> · Curso <strong>${qr.curso}</strong>
+        · Sesión <strong>${sesLbl}</strong> · Simulacro <em>${qr.simulacro.replace(/_/g, ' ')}</em>
+      </div>
+      <div style="font-size:.72rem;color:#86efac;margin-top:4px;opacity:.8;">
+        Los datos del estudiante se llenaron automáticamente. Verifica el nombre y guarda.
+      </div>
+    </div>`;
+  banner.style.display = 'flex';
+}
+
+// Si el usuario procesa una imagen SIN QR, ocultar el banner anterior
+function _clearQrBanner() {
+  const banner = document.getElementById('qr-detected-banner');
+  if (banner) banner.style.display = 'none';
+  _lastQrData = null;
+}
+
 // ══ PREVISUALIZACIÓN ═══════════════════════════════════════════════════════
 document.getElementById('file-input').addEventListener('change', _onFileSelected);
 
@@ -5884,6 +5940,15 @@ async function processPhoto() {
     state.lastNewFilled = isFirstPhoto ? [] : (data.filled_qs || []);
     // Actualizar total_q si el perfil cambió
     if (data.total_q) state.profileTotalQ = data.total_q;
+
+    // ── QR de hoja personalizada detectado: auto-rellenar campos ──
+    if (data.qr) {
+      _applyQrAutofill(data.qr);
+    } else if (isFirstPhoto) {
+      // Si esta es la primera foto y NO trae QR, limpiar cualquier
+      // banner residual de un escaneo anterior.
+      _clearQrBanner();
+    }
 
     setStatus('','');
     renderResult(data, isFirstPhoto);
@@ -6032,12 +6097,62 @@ function takeAnotherPhoto() {
 }
 
 // ══ GUARDAR EN SHEETS ══════════════════════════════════════════════════════
+
+// Si el QR detectó un simulacro/sesión, resuelve cuál hoja real
+// corresponde dentro de los simulacros existentes.
+function _resolveSheetFromQr(qr) {
+  if (!qr || !qr.simulacro || !qr.sesion) return null;
+  const safe = s => (s || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const target = safe(qr.simulacro);
+  for (const s of (_simulacrosCache || [])) {
+    if (safe(s.nombre) !== target) continue;
+    // Encontrar la hoja de esa sesión
+    for (const sn of (s.sheets || [])) {
+      const up = sn.toUpperCase();
+      const ses = qr.sesion.toUpperCase();
+      if (up.endsWith(` - ${ses}`) || up.endsWith(` ${ses}`) || up.endsWith(ses)) {
+        return {simulacro: s, sheet: sn};
+      }
+    }
+  }
+  return null;
+}
+
 async function confirmSave() {
-  const name = document.getElementById('student-name').value.trim();
+  let   name = document.getElementById('student-name').value.trim();
   const id   = document.getElementById('student-id').value.trim();
 
-  // Validar: al menos nombre o ID
-  if (!name && !id) {
+  // ── Si hay QR detectado, usar hoja del simulacro y permitir sin nombre ──
+  let targetSheet = state.activeSheet;
+  let curso = '';
+  const cursoSel = document.getElementById('student-curso');
+  if (cursoSel) curso = cursoSel.value;
+  let qrUsed = false;
+
+  if (_lastQrData) {
+    const resolved = _resolveSheetFromQr(_lastQrData);
+    if (resolved) {
+      targetSheet = resolved.sheet;
+      qrUsed = true;
+      // El ID del QR tiene prioridad si el input está vacío
+      if (!id && _lastQrData.student_id) {
+        document.getElementById('student-id').value = _lastQrData.student_id;
+      }
+      // Curso del QR si no está seleccionado
+      if (!curso && _lastQrData.curso) curso = _lastQrData.curso;
+      // Permitir guardar sin nombre si tenemos ID del QR (es identificable)
+      if (!name && _lastQrData.student_id) name = '';
+    } else {
+      setStatus('error',
+        `⚠️ QR detectó simulacro "${_lastQrData.simulacro}" pero no se encuentra registrado.`);
+      return;
+    }
+  }
+
+  const idFinal = id || (_lastQrData ? _lastQrData.student_id : '');
+
+  // Validar: al menos nombre o ID (el QR ya provee ID, así que basta con eso)
+  if (!name && !idFinal) {
     document.getElementById('student-name').classList.add('required-empty');
     document.getElementById('student-id').classList.add('required-empty');
     document.getElementById('student-name').focus();
@@ -6046,23 +6161,23 @@ async function confirmSave() {
     return;
   }
 
-  setStatus('loading', `Guardando en "${state.activeSheet}"…`);
+  setStatus('loading',
+    qrUsed ? `Guardando en "${targetSheet}" (auto vía QR)…`
+           : `Guardando en "${targetSheet}"…`);
 
   // Deshabilitar botón para evitar doble guardado
   document.querySelectorAll('#action-btns button').forEach(b => b.disabled=true);
 
   try {
-    const cursoSel = document.getElementById('student-curso');
-    const curso    = cursoSel ? cursoSel.value : '';
     const resp = await fetch('/save', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         student_name: name,
-        exam_id:      id,
+        exam_id:      idFinal,
         curso:        curso,
         answers:      state.answers.slice(0, state.numQuestions),
-        sheet_name:   state.activeSheet
+        sheet_name:   targetSheet
       })
     });
     const data = await resp.json();
@@ -6122,6 +6237,8 @@ function resetScan() {
   document.getElementById('student-name').value = '';
   document.getElementById('student-id').value   = '';
   // Curso se preserva intencionalmente entre estudiantes
+  // Limpiar QR detectado (si lo había) para no arrastrarlo al siguiente
+  if (typeof _clearQrBanner === 'function') _clearQrBanner();
   document.getElementById('result-panel').style.display  = 'none';
   document.getElementById('incomplete-banner').style.display = 'none';
   document.getElementById('found-banner').style.display      = 'none';

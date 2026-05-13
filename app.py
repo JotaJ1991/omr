@@ -206,6 +206,7 @@ def process():
             'total_q':     total_q,
             'profile_id':  pid,
             'debug_image': img_b64,
+            'qr':          result.get('qr'),   # info del estudiante si la hoja tiene QR
         })
 
     except Exception as e:
