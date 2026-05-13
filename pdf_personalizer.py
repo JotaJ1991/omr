@@ -301,6 +301,16 @@ def generate_pdfs_zip(students: list, simulacro_id: str,
     total = len(students) * 2
     failures = []
 
+    # ── Persistir el roster en Sheets para que el OMR pueda mapear ID→nombre
+    #    al detectar el QR. No bloquea el flujo si falla.
+    roster_saved = 0
+    try:
+        from sheets_connector import save_roster_for_simulacro
+        rr = save_roster_for_simulacro(sim_id_safe, students)
+        roster_saved = rr.get('count', 0) if rr.get('success') else 0
+    except Exception:
+        roster_saved = 0
+
     with tempfile.TemporaryDirectory(prefix='ietagro_pdfs_') as tmpdir:
         tmpdir = Path(tmpdir)
 
@@ -339,8 +349,9 @@ def generate_pdfs_zip(students: list, simulacro_id: str,
                 arcname = f'{curso}/{fname}'
                 zf.write(pdf_path, arcname=arcname)
         return {
-            'success':  True,
-            'zip_bytes': zip_buf.getvalue(),
-            'count':    len(out_pdfs),
-            'failures': len(failures),
+            'success':      True,
+            'zip_bytes':    zip_buf.getvalue(),
+            'count':        len(out_pdfs),
+            'failures':     len(failures),
+            'roster_saved': roster_saved,
         }

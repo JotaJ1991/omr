@@ -20,6 +20,7 @@ from sheets_connector import (
     list_distribuciones_json, save_distribucion,
     get_key_for_grade, save_key_for_grade, list_keys_grade,
     get_anuladas_for_grade, save_anuladas_for_grade, list_anuladas,
+    get_student_from_roster, list_roster,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -195,6 +196,26 @@ def process():
         missing    = total_q - detected
         new_filled = len(filled) if current else 0
 
+        # Enriquecer el QR con datos del roster (si el estudiante está registrado)
+        qr_info = result.get('qr')
+        if qr_info and qr_info.get('student_id'):
+            try:
+                roster_match = get_student_from_roster(
+                    qr_info.get('simulacro', ''),
+                    qr_info.get('student_id', ''))
+                if roster_match:
+                    qr_info = dict(qr_info)
+                    qr_info['nombre'] = roster_match.get('nombre', '')
+                    # Si el roster tiene curso y el QR no, usar el del roster
+                    if not qr_info.get('curso') and roster_match.get('curso'):
+                        qr_info['curso'] = roster_match['curso']
+                    qr_info['roster_matched'] = True
+                else:
+                    qr_info = dict(qr_info)
+                    qr_info['roster_matched'] = False
+            except Exception:
+                pass
+
         return jsonify({
             'success':     True,
             'answers':     merged,
@@ -206,7 +227,7 @@ def process():
             'total_q':     total_q,
             'profile_id':  pid,
             'debug_image': img_b64,
-            'qr':          result.get('qr'),   # info del estudiante si la hoja tiene QR
+            'qr':          qr_info,   # info del estudiante si la hoja tiene QR
         })
 
     except Exception as e:
@@ -246,18 +267,22 @@ def save():
         correct  = sheets_result.get('correct')
         pct      = sheets_result.get('pct', '')
 
+        was_update = bool(sheets_result.get('updated'))
+        verb = 'Actualizado' if was_update else 'Guardado'
         if correct is not None:
-            msg = f'Guardado en "{sheet_name}" — {correct}/{n} correctas ({pct})'
+            msg = f'{verb} en "{sheet_name}" — {correct}/{n} correctas ({pct})'
         else:
-            msg = f'Guardado en "{sheet_name}" — {detected}/{n} detectadas.'
+            msg = f'{verb} en "{sheet_name}" — {detected}/{n} detectadas.'
 
         return jsonify({
             'success':    True,
             'row':        sheets_result.get('row'),
             'sheets_url': sheets_result.get('url'),
+            'sheet_name': sheet_name,
             'detected':   detected,
             'correct':    correct,
             'pct':        pct,
+            'updated':    was_update,
             'message':    msg
         })
     except Exception as e:
@@ -480,8 +505,9 @@ def personalize_generate():
             headers={
                 'Content-Disposition':
                     f'attachment; filename="hojas_{sim_safe}.zip"',
-                'X-PDF-Count': str(result.get('count', 0)),
-                'X-PDF-Failures': str(result.get('failures', 0)),
+                'X-PDF-Count':     str(result.get('count', 0)),
+                'X-PDF-Failures':  str(result.get('failures', 0)),
+                'X-Roster-Saved':  str(result.get('roster_saved', 0)),
             }
         )
     except Exception as e:

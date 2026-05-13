@@ -34,6 +34,7 @@ SIMULACROS_SHEET = 'Simulacros'
 DISTRIBUCION_SHEET = 'Distribucion'
 KEYS_GRADE_SHEET   = 'ClavesGrado'
 ANULADAS_SHEET     = 'PreguntasAnuladas'
+ROSTER_SHEET       = 'RosterPersonalizado'
 
 # Tipos de simulacro
 SIM_COMPLETO = 'completo'   # 2 sesiones (1S + 2S)
@@ -1374,7 +1375,7 @@ def save_to_sheets(student_name: str, exam_id: str,
             worksheet.delete_rows(i + 1)
             break
 
-    # ── Agregar fila del estudiante ───────────────────────────────────────────
+    # ── Construir fila del estudiante ─────────────────────────────────────────
     now      = datetime.now()
     row_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
                 student_name, exam_id]
@@ -1384,13 +1385,31 @@ def save_to_sheets(student_name: str, exam_id: str,
                  pct_str]
     # Agregar curso al final si la columna existe
     if curso_col >= 0:
-        # rellenar gaps si curso_col > len(row_data)
         while len(row_data) < curso_col:
             row_data.append('')
         row_data.append(curso or '')
 
-    worksheet.append_row(row_data, value_input_option='RAW')
-    row_num = len(worksheet.col_values(1))
+    # ── DEDUPE: si ya hay fila con el mismo ID, ACTUALIZAR en lugar de agregar
+    #    El ID está en col D (índice 3). Omite fila 1 (header) y fila 2 (clave).
+    existing_row = None
+    if exam_id:
+        for i, row in enumerate(all_rows):
+            if i < 2: continue
+            if len(row) > 3 and (row[3] or '').strip() == str(exam_id).strip():
+                existing_row = i + 1   # 1-based
+                break
+
+    was_updated = False
+    if existing_row:
+        # UPDATE: usar la fila existente para preservar orden histórico
+        end_col = _col_letter(len(row_data) - 1)
+        worksheet.update(f'A{existing_row}:{end_col}{existing_row}',
+                         [row_data], value_input_option='RAW')
+        row_num = existing_row
+        was_updated = True
+    else:
+        worksheet.append_row(row_data, value_input_option='RAW')
+        row_num = len(worksheet.col_values(1))
 
     _update_totals_row(worksheet, n_questions)
 
@@ -1398,6 +1417,7 @@ def save_to_sheets(student_name: str, exam_id: str,
         'row':     row_num,
         'correct': correct if key_n > 0 else None,
         'pct':     pct_str,
+        'updated': was_updated,
         'url':     f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
     }
 
@@ -2095,3 +2115,113 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         'results':  results,
         'url':      f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ROSTER PERSONALIZADO (para hojas con QR — mapea ID -> nombre/curso)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _ensure_roster_sheet():
+    """Crea la hoja Roster si no existe. Cols: Simulacro, Curso, ID, Nombre."""
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(ROSTER_SHEET)
+        header = ws.row_values(1) or []
+        if len(header) < 4 or header[0].strip().lower() != 'simulacro':
+            ws.update('A1:D1', [['Simulacro', 'Curso', 'ID', 'Nombre']],
+                      value_input_option='RAW')
+    except Exception:
+        ws = ss.add_worksheet(title=ROSTER_SHEET, rows=2000, cols=4)
+        ws.update('A1:D1', [['Simulacro', 'Curso', 'ID', 'Nombre']],
+                  value_input_option='RAW')
+        try:
+            ws.format('A1:D1', {
+                'backgroundColor': {'red': 0.12, 'green': 0.23, 'blue': 0.54},
+                'textFormat': {'bold': True,
+                               'foregroundColor': {'red':1,'green':1,'blue':1}},
+            })
+        except Exception:
+            pass
+    return ws
+
+
+def save_roster_for_simulacro(simulacro_safe: str, students: list) -> dict:
+    """
+    Reemplaza el roster del simulacro indicado (por nombre 'safe', formato
+    igual al del QR). students: lista de dicts con 'curso', 'id', 'nombre'.
+    """
+    simulacro_safe = (simulacro_safe or '').strip()
+    if not simulacro_safe:
+        return {'success': False, 'error': 'simulacro requerido'}
+    if not isinstance(students, list):
+        return {'success': False, 'error': 'students debe ser lista'}
+    try:
+        ws = _ensure_roster_sheet()
+        all_rows = ws.get_all_values()
+        # Borrar filas existentes de este simulacro (de abajo arriba)
+        for i in range(len(all_rows) - 1, 0, -1):
+            r = all_rows[i]
+            if r and len(r) > 0 and (r[0] or '').strip() == simulacro_safe:
+                try:
+                    ws.delete_rows(i + 1)  # 1-based
+                except Exception:
+                    pass
+        # Insertar nuevos
+        rows_to_add = []
+        for s in students:
+            curso = str(s.get('curso', '')).strip()
+            ident = str(s.get('id', '')).strip()
+            nombre = str(s.get('nombre', '')).strip().upper()
+            if not (ident and (curso or nombre)):
+                continue
+            rows_to_add.append([simulacro_safe, curso, ident, nombre])
+        if rows_to_add:
+            ws.append_rows(rows_to_add, value_input_option='RAW')
+        return {'success': True, 'count': len(rows_to_add)}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def get_student_from_roster(simulacro_safe: str, student_id: str) -> dict:
+    """
+    Busca un estudiante por ID dentro del roster de un simulacro.
+    Devuelve {'curso', 'id', 'nombre'} o None.
+    """
+    simulacro_safe = (simulacro_safe or '').strip()
+    student_id = (student_id or '').strip()
+    if not simulacro_safe or not student_id:
+        return None
+    try:
+        ws = _ensure_roster_sheet()
+        for r in ws.get_all_values()[1:]:
+            if (len(r) >= 4
+                and (r[0] or '').strip() == simulacro_safe
+                and (r[2] or '').strip() == student_id):
+                return {
+                    'curso':  (r[1] or '').strip(),
+                    'id':     (r[2] or '').strip(),
+                    'nombre': (r[3] or '').strip(),
+                }
+    except Exception:
+        pass
+    return None
+
+
+def list_roster(simulacro_safe: str = '') -> list:
+    """Lista el roster, opcionalmente filtrado por simulacro_safe."""
+    try:
+        ws = _ensure_roster_sheet()
+        out = []
+        for r in ws.get_all_values()[1:]:
+            if len(r) < 4: continue
+            sim = (r[0] or '').strip()
+            if simulacro_safe and sim != simulacro_safe: continue
+            out.append({
+                'simulacro': sim,
+                'curso':     (r[1] or '').strip(),
+                'id':        (r[2] or '').strip(),
+                'nombre':    (r[3] or '').strip(),
+            })
+        return out
+    except Exception:
+        return []
