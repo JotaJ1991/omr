@@ -1775,7 +1775,7 @@ async function generatePersonalizedPdfs() {
     const blob = await resp.blob();
     // Descargar
     const url = URL.createObjectURL(blob);
-    const fname = `hojas_${sim.replace(/[^a-z0-9]+/gi,'_')}.zip`;
+    const fname = `hojas_${sim.replace(/[^a-z0-9]+/gi,'_')}.pdf`;
     const a = document.createElement('a');
     a.href = url; a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
@@ -1784,10 +1784,11 @@ async function generatePersonalizedPdfs() {
     resultEl.innerHTML = `<div style="background:rgba(34,197,94,.1);
         border:1px solid rgba(34,197,94,.4);border-radius:10px;padding:14px;">
       <div style="font-size:.92rem;font-weight:700;color:#22c55e;margin-bottom:4px;">
-        ✅ ${count} PDFs generados
+        ✅ PDF generado con ${count} páginas
       </div>
       <p style="font-size:.82rem;color:var(--muted);margin:6px 0;">
-        Se descargó <strong>${fname}</strong>. Dentro está organizado por curso.
+        Se descargó <strong>${fname}</strong> — un único archivo con todas las hojas.
+        Páginas ordenadas por curso, estudiante y sesión (1S antes que 2S).
         ${parseInt(failures) > 0 ? `<br><span style="color:#fbbf24;">⚠️ ${failures}
         fallos durante la generación.</span>` : ''}
       </p>
@@ -1797,8 +1798,8 @@ async function generatePersonalizedPdfs() {
         Al escanear, el sistema buscará el nombre por ID automáticamente.
       </p>` : ''}
       <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">
-        Cada PDF tiene su QR único con los datos del estudiante codificados.
-        Al escanear se reconocerá automáticamente el estudiante y la sesión.
+        Cada página tiene su QR único. Al escanear se reconocerá automáticamente
+        al estudiante y la sesión, sin importar el orden de impresión.
       </p>
     </div>`;
     btn.disabled = false;

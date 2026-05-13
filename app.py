@@ -496,15 +496,15 @@ def personalize_generate():
         result = generate_pdfs_zip(parsed['students'], sim_id)
         if not result.get('success'):
             return jsonify(result), 500
-        # Devolver ZIP
-        zip_bytes = result['zip_bytes']
+        # Devolver UN SOLO PDF con todas las páginas mergeadas
+        pdf_bytes = result.get('pdf_bytes') or result['zip_bytes']
         sim_safe = ''.join(c if c.isalnum() else '_' for c in sim_id).strip('_')
         return Response(
-            zip_bytes,
-            mimetype='application/zip',
+            pdf_bytes,
+            mimetype='application/pdf',
             headers={
                 'Content-Disposition':
-                    f'attachment; filename="hojas_{sim_safe}.zip"',
+                    f'attachment; filename="hojas_{sim_safe}.pdf"',
                 'X-PDF-Count':     str(result.get('count', 0)),
                 'X-PDF-Failures':  str(result.get('failures', 0)),
                 'X-Roster-Saved':  str(result.get('roster_saved', 0)),

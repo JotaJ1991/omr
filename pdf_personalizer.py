@@ -40,12 +40,20 @@ except ImportError:
     _OPENPYXL_OK = False
     load_workbook = None
 
+try:
+    from pypdf import PdfWriter, PdfReader
+    _PYPDF_OK = True
+except ImportError:
+    _PYPDF_OK = False
+    PdfWriter = PdfReader = None
+
 
 def _check_deps() -> Optional[str]:
     """Devuelve None si todo OK, o un mensaje de error con instrucciones."""
     missing = []
     if not _QRCODE_OK:    missing.append('qrcode')
     if not _OPENPYXL_OK:  missing.append('openpyxl')
+    if not _PYPDF_OK:     missing.append('pypdf')
     if missing:
         return (f"Faltan dependencias Python: {', '.join(missing)}. "
                 f"En el servidor: pip install {' '.join(missing)}")
@@ -283,13 +291,22 @@ def _build_one_pdf(args):
 def generate_pdfs_zip(students: list, simulacro_id: str,
                       progress_cb=None, max_workers: int = 4) -> dict:
     """
-    Genera los PDFs personalizados (1S + 2S por estudiante) y los empaqueta
-    en un ZIP organizado por curso. Devuelve {'success': True, 'zip_bytes': ...}.
+    Genera los PDFs personalizados (1S + 2S por estudiante) y los MERGEA
+    en UN ÚNICO PDF con todas las páginas, ordenadas por curso/estudiante.
 
-    Usa multiprocessing para paralelizar las compilaciones de pdflatex
-    (cada una toma ~5-6s, así que con 4 workers reducimos ~4x).
+    Orden de páginas:
+        Curso 11A:
+          Estudiante 1: pág 1 = 1S, pág 2 = 2S
+          Estudiante 2: pág 3 = 1S, pág 4 = 2S
+          ...
+        Curso 11B: ...
 
-    progress_cb(current, total, message): callback opcional para progreso.
+    Devuelve {'success': True, 'pdf_bytes': bytes, 'count': N_páginas, ...}.
+    Mantiene la clave 'zip_bytes' = pdf_bytes por compatibilidad con el
+    endpoint pero el contenido ya es un PDF (no un ZIP).
+
+    Usa multiprocessing para paralelizar pdflatex (~4x speedup con 4 workers).
+    progress_cb(current, total): callback opcional para progreso.
     """
     dep_err = _check_deps()
     if dep_err:
@@ -320,7 +337,7 @@ def generate_pdfs_zip(students: list, simulacro_id: str,
             jobs.append((stu, '1S', str(TPL_1S), sim_id_safe, str(tmpdir)))
             jobs.append((stu, '2S', str(TPL_2S), sim_id_safe, str(tmpdir)))
 
-        out_pdfs = []
+        out_pdfs = []  # tuples (stu_id, ses, curso, pdf_path)
         done = 0
         with ProcessPoolExecutor(max_workers=max_workers) as ex:
             futures = {ex.submit(_build_one_pdf, j): j for j in jobs}
@@ -331,7 +348,12 @@ def generate_pdfs_zip(students: list, simulacro_id: str,
                 try:
                     r = fut.result()
                     if r.get('ok'):
-                        out_pdfs.append((r['curso'], r['filename'], r['path']))
+                        # Recuperar info del job para ordenar
+                        job = futures[fut]
+                        stu_obj = job[0]
+                        ses     = job[1]
+                        out_pdfs.append((r['curso'], stu_obj.get('nombre', ''),
+                                         stu_obj['id'], ses, r['path']))
                     else:
                         failures.append((r.get('stu_id'), r.get('ses'), r.get('err')))
                 except Exception as e:
@@ -342,15 +364,30 @@ def generate_pdfs_zip(students: list, simulacro_id: str,
                     'error': 'No se pudo generar ningún PDF.',
                     'failures': failures}
 
-        # Empaquetar en ZIP por curso
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for curso, fname, pdf_path in sorted(out_pdfs):
-                arcname = f'{curso}/{fname}'
-                zf.write(pdf_path, arcname=arcname)
+        # ── Orden estable: curso ASC, nombre ASC, ID ASC, sesión 1S→2S ──
+        ses_order = {'1S': 0, '2S': 1, 'M': 2}
+        out_pdfs.sort(key=lambda x: (x[0], x[1], x[2], ses_order.get(x[3], 9)))
+
+        # ── Mergear en un solo PDF ──
+        try:
+            writer = PdfWriter()
+            for curso, nombre, sid, ses, pdf_path in out_pdfs:
+                reader = PdfReader(str(pdf_path))
+                for page in reader.pages:
+                    writer.add_page(page)
+            merged_buf = io.BytesIO()
+            writer.write(merged_buf)
+            writer.close()
+            pdf_bytes = merged_buf.getvalue()
+        except Exception as e:
+            return {'success': False,
+                    'error': f'Error al mergear PDFs: {e}',
+                    'failures': failures}
+
         return {
             'success':      True,
-            'zip_bytes':    zip_buf.getvalue(),
+            'zip_bytes':    pdf_bytes,   # nombre legacy: ahora es PDF
+            'pdf_bytes':    pdf_bytes,
             'count':        len(out_pdfs),
             'failures':     len(failures),
             'roster_saved': roster_saved,
