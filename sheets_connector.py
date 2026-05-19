@@ -2405,21 +2405,60 @@ def get_student_results_all_simulacros(student_id: str) -> list:
             except Exception:
                 pass
 
+            # ── PERCENTILES POR GRADO ──
+            # Para cada asignatura y para el general, calcula:
+            #   percentil = (# estudiantes del grado con puntaje <= el suyo) / n * 100
+            # Permite que el PDF muestre las barras de percentil.
+            percentiles = {}
+            try:
+                # Recolectar todos los puntajes del grado
+                grade_rows = []
+                for r in rows[1:]:
+                    if not r or len(r) < 3: continue
+                    if (r[1] or '').strip() == 'PROMEDIO': continue
+                    if not ((r[0] or '').strip() or (r[1] or '').strip()): continue
+                    if grado_stu and _grade_from_course_name(
+                            (r[2] or '').strip()) == grado_stu:
+                        grade_rows.append(r)
+                    elif not grado_stu and (r[2] or '').strip() == curso:
+                        grade_rows.append(r)
+                n = len(grade_rows)
+                fields_idx = {
+                    'mat':  3, 'lect': 4, 'soc': 5, 'nat': 6, 'ing': 7,
+                    'general': 8,
+                }
+                if n > 0:
+                    for f, ci in fields_idx.items():
+                        my_v = _num(student_row[ci]) if ci < len(student_row) else None
+                        if my_v is None:
+                            percentiles[f] = 0
+                            continue
+                        cnt = 0
+                        for r in grade_rows:
+                            if ci >= len(r): continue
+                            v = _num(r[ci])
+                            if v is not None and v <= my_v:
+                                cnt += 1
+                        percentiles[f] = int(round(cnt / n * 100))
+            except Exception:
+                percentiles = {}
+
             out.append({
-                'simulacro':  sim.get('nombre', ''),
-                'tipo':       sim.get('tipo', ''),
-                'fecha':      sim.get('fecha', ''),
-                'sheet':      res_sheet,
-                'nombre':     nombre,
-                'curso':      curso,
-                'grado':      grado_stu,
-                'puntajes':   puntajes,
-                'avg_curso':  avg_curso,
-                'avg_grado':  avg_grado,
-                'pos_curso':  pos_curso,
-                'tot_curso':  tot_curso,
-                'n_curso':    cnt_curso,
-                'n_grado':    cnt_grado,
+                'simulacro':   sim.get('nombre', ''),
+                'tipo':        sim.get('tipo', ''),
+                'fecha':       sim.get('fecha', ''),
+                'sheet':       res_sheet,
+                'nombre':      nombre,
+                'curso':       curso,
+                'grado':       grado_stu,
+                'puntajes':    puntajes,
+                'avg_curso':   avg_curso,
+                'avg_grado':   avg_grado,
+                'pos_curso':   pos_curso,
+                'tot_curso':   tot_curso,
+                'n_curso':     cnt_curso,
+                'n_grado':     cnt_grado,
+                'percentiles': percentiles,
             })
 
     # Orden: más reciente primero

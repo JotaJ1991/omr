@@ -320,8 +320,9 @@
 
 </div>
 
-<!-- jsPDF (para generar el PDF de descarga) -->
+<!-- jsPDF + módulo compartido del reporte individual -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="/static/js/pdf_individual.js"></script>
 
 <script>
 const SUBJECT_LABELS = {
@@ -497,221 +498,58 @@ function renderSimSection(r, idx) {
     </div>`;
 }
 
-// ══ GENERACIÓN DE PDF (jsPDF) ══════════════════════════════════════════════
-function downloadStudentPdf(simIdx, btn) {
+// ══ GENERACIÓN DE PDF ═══════════════════════════════════════════════════════
+// Usa el mismo renderStudentPage que el dashboard admin (módulo compartido
+// /static/js/pdf_individual.js). Así el reporte individual del portal es
+// idéntico al de la app JMR.
+async function downloadStudentPdf(simIdx, btn) {
   if (!_studentData) return;
   const sim = _studentData.results[simIdx];
   if (!sim) return;
+  if (!window.JMRPdf) {
+    alert('El módulo de PDF no cargó. Refresca la página.');
+    return;
+  }
 
   const originalText = btn.textContent;
   btn.disabled = true;
   btn.textContent = '⏳ Generando...';
 
   try {
-    // jsPDF UMD lo expone como window.jspdf.jsPDF
-    const { jsPDF } = window.jspdf;
+    // Precargar logos
+    await window.JMRPdf._loadLogo();
+
+    const jsPDF = window.JMRPdf.getJsPDF();
     const doc = new jsPDF({orientation: 'p', unit: 'mm', format: 'letter'});
 
-    const PW = 215.9 - 20;   // ancho útil
-    const BLUE_DARK  = [16, 30, 84];
-    const BLUE       = [30, 58, 138];
-    const BLUE_LIGHT = [59, 99, 191];
-    const GOLD       = [250, 204, 21];
-    const GOLD_DARK  = [202, 138, 4];
-    const GRAY       = [120, 120, 120];
-
+    // Adaptar los datos del portal al formato que espera renderStudentPage:
+    // necesita {name, id, curso, mat, lect, soc, nat, ing, general}.
     const student = _studentData.student || {};
     const p = sim.puntajes || {};
-    const avgC = sim.avg_curso || {};
-    const isG10 = String(sim.grado) === '10';
-
-    // ── Header con gradiente ──
-    const steps = 60;
-    for (let i = 0; i < steps; i++) {
-      const t = i / steps;
-      const r = Math.round(BLUE_DARK[0]  + (BLUE_LIGHT[0] - BLUE_DARK[0]) * t);
-      const g = Math.round(BLUE_DARK[1]  + (BLUE_LIGHT[1] - BLUE_DARK[1]) * t);
-      const b = Math.round(BLUE_DARK[2]  + (BLUE_LIGHT[2] - BLUE_DARK[2]) * t);
-      doc.setFillColor(r, g, b);
-      doc.rect(10 + (PW * i/steps), 10, PW/steps + 0.3, 30, 'F');
-    }
-    // Línea dorada
-    doc.setFillColor(...GOLD);
-    doc.rect(10, 38, PW, 2, 'F');
-    // Texto del header
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.setTextColor(255, 255, 255);
-    doc.text('INFORME INDIVIDUAL DE RESULTADOS', 14, 22);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    doc.setTextColor(...GOLD);
-    doc.text(`${sim.simulacro}`, 14, 30);
-    doc.setFontSize(8); doc.setTextColor(255,255,255);
-    doc.text(`Pruebas Saber 11° · ${sim.tipo === 'completo' ? '2 sesiones' : 'Media jornada'}`,
-             14, 36);
-
-    let y = 50;
-
-    // ── Datos del estudiante ──
-    doc.setFillColor(245, 247, 252);
-    doc.roundedRect(10, y, PW, 30, 2, 2, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.setTextColor(...BLUE_DARK);
-    doc.text('DATOS DEL ESTUDIANTE', 14, y + 6);
-    doc.setFillColor(...GOLD);
-    doc.rect(14, y + 7.5, 50, 0.5, 'F');
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    doc.setTextColor(40, 40, 40);
-    doc.text(`Estudiante:`, 14, y + 14);
-    doc.text(`Documento:`, 14, y + 20);
-    doc.text(`Curso:`, 14, y + 26);
-    doc.setFont('helvetica', 'bold');
-    doc.text(student.nombre || '—',           40, y + 14);
-    doc.text(student.id     || '—',           40, y + 20);
-    doc.text(`${student.curso || '—'}  ·  Grado ${student.grado ? student.grado+'°' : '—'}`,
-             40, y + 26);
-    // Fecha (derecha)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    doc.setTextColor(...GRAY);
-    if (sim.fecha) doc.text(`Fecha del simulacro: ${sim.fecha}`, PW - 4, y + 6, {align:'right'});
-    y += 36;
-
-    // ── Hero: puntaje general ──
-    if (p.gen != null) {
-      doc.setFillColor(254, 243, 199);  // dorado claro
-      doc.roundedRect(10, y, PW, 28, 2, 2, 'F');
-      doc.setDrawColor(...GOLD);
-      doc.setLineWidth(0.5);
-      doc.roundedRect(10, y, PW, 28, 2, 2, 'S');
-      doc.setLineWidth(0.2);
-      // Etiqueta
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-      doc.setTextColor(...GOLD_DARK);
-      doc.text('PUNTAJE GENERAL', PW/2 + 10, y + 7, {align: 'center'});
-      // Valor grande
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(28);
-      doc.setTextColor(...BLUE_DARK);
-      doc.text(String(p.gen), PW/2 + 10, y + 19, {align: 'center'});
-      doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
-      doc.setTextColor(...BLUE);
-      doc.text('puntos', PW/2 + 10 + (String(p.gen).length * 4.5), y + 19);
-      // Posición
-      if (sim.pos_curso && sim.tot_curso) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-        doc.setTextColor(...BLUE_DARK);
-        doc.text(`Posición ${sim.pos_curso} de ${sim.tot_curso} en tu curso ${sim.curso}`,
-                 PW/2 + 10, y + 25, {align: 'center'});
-      }
-      y += 34;
-    }
-
-    // ── Tabla de asignaturas ──
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.setTextColor(...BLUE_DARK);
-    doc.text('PUNTAJES POR ASIGNATURA', 14, y);
-    doc.setFillColor(...GOLD);
-    doc.rect(14, y + 1.5, 50, 0.5, 'F');
-    y += 7;
-
-    // Header de tabla
-    const COLS = [80, 30, 30, 30];      // Asig, Tuyo, Curso, Diff
-    const SX   = [14, 94, 124, 154];
-    doc.setFillColor(...BLUE);
-    doc.rect(14, y, PW - 8, 7, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    doc.setTextColor(255, 255, 255);
-    doc.text('Asignatura',   SX[0] + 2,         y + 5);
-    doc.text('Tu puntaje',   SX[1] + COLS[1]/2, y + 5, {align: 'center'});
-    doc.text('Prom. curso',  SX[2] + COLS[2]/2, y + 5, {align: 'center'});
-    doc.text('Diferencia',   SX[3] + COLS[3]/2, y + 5, {align: 'center'});
-    doc.setFillColor(...GOLD);
-    doc.rect(14, y + 6.4, PW - 8, 0.6, 'F');
-    y += 7;
-
-    // Filas
-    const subjects = isG10
-      ? ['mat', 'lect', 'soc', 'quim', 'fis', 'ing']
-      : ['mat', 'lect', 'soc', 'nat',  'ing'];
-    const labels = {
-      mat: 'Matemáticas',
-      lect: 'Lectura Crítica',
-      soc: 'Sociales',
-      nat: 'Ciencias Naturales',
-      quim: 'Química (10°)',
-      fis: 'Física (10°)',
-      ing: 'Inglés',
+    const st = {
+      name:    student.nombre || '',
+      id:      student.id     || '',
+      curso:   sim.curso      || student.curso || '',
+      mat:     p.mat || 0,
+      lect:    p.lect || 0,
+      soc:     p.soc || 0,
+      nat:     p.nat || 0,
+      ing:     p.ing || 0,
+      general: p.gen || 0,
     };
-    doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
-    subjects.forEach((k, ri) => {
-      const v = p[k];
-      if (v == null) return;
-      const cmpVal = avgC[k];
-      // Fila zebrada
-      if (ri % 2 === 1) {
-        doc.setFillColor(245, 247, 252);
-        doc.rect(14, y, PW - 8, 7, 'F');
-      }
-      doc.setTextColor(30, 30, 30);
-      doc.text(labels[k], SX[0] + 2, y + 5);
-      doc.setFont('helvetica','bold');
-      doc.text(String(v),     SX[1] + COLS[1]/2, y + 5, {align: 'center'});
-      doc.setFont('helvetica','normal');
-      doc.text(cmpVal != null ? String(cmpVal) : '—',
-               SX[2] + COLS[2]/2, y + 5, {align: 'center'});
-      if (cmpVal != null) {
-        const diff = v - cmpVal;
-        if (diff > 0) doc.setTextColor(34, 197, 94);
-        else if (diff < 0) doc.setTextColor(239, 68, 68);
-        else doc.setTextColor(120, 120, 120);
-        doc.setFont('helvetica','bold');
-        const sign = diff > 0 ? '+' : '';
-        doc.text(`${sign}${diff}`, SX[3] + COLS[3]/2, y + 5, {align: 'center'});
-        doc.setFont('helvetica','normal');
-      } else {
-        doc.setTextColor(120,120,120);
-        doc.text('—', SX[3] + COLS[3]/2, y + 5, {align: 'center'});
-      }
-      y += 7;
-    });
+    // El backend provee percentiles ya calculados (por_grado). Si vienen
+    // los usamos; si no, calculamos {0} (no podemos sin más datos).
+    const pcts = sim.percentiles || {};
+    const tipoLbl = sim.tipo === 'media' ? ' (Media)' : '';
+    const label = `${sim.simulacro}${tipoLbl}`;
 
-    // Si grado 10, agregar fila destacada "Naturales (promedio)"
-    if (isG10 && p.nat != null) {
-      doc.setFillColor(254, 243, 199);  // dorado claro
-      doc.rect(14, y, PW - 8, 7, 'F');
-      doc.setFont('helvetica','bold'); doc.setFontSize(9.5);
-      doc.setTextColor(...BLUE_DARK);
-      doc.text('Naturales (promedio Quím + Fís)', SX[0] + 2, y + 5);
-      doc.text(String(p.nat), SX[1] + COLS[1]/2, y + 5, {align: 'center'});
-      if (avgC.nat != null) {
-        doc.setFont('helvetica','normal');
-        doc.text(String(avgC.nat), SX[2] + COLS[2]/2, y + 5, {align: 'center'});
-        const diff = p.nat - avgC.nat;
-        if (diff > 0) doc.setTextColor(34, 197, 94);
-        else if (diff < 0) doc.setTextColor(239, 68, 68);
-        else doc.setTextColor(120, 120, 120);
-        doc.setFont('helvetica','bold');
-        const sign = diff > 0 ? '+' : '';
-        doc.text(`${sign}${diff}`, SX[3] + COLS[3]/2, y + 5, {align: 'center'});
-      }
-      y += 7;
-    }
+    window.JMRPdf.renderStudentPage(doc, st, pcts, false, label);
 
-    // ── Footer ──
-    const now = new Date();
-    const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    doc.setFillColor(...GOLD);
-    doc.rect(10, 268, PW, 0.6, 'F');
-    doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
-    doc.setTextColor(...GRAY);
-    doc.text(`Generado el ${ts} desde el portal estudiantil · Documento personal, no oficial`,
-             10 + PW/2, 273, {align: 'center'});
-
-    // ── Guardar ──
-    const safeName = (student.nombre || 'estudiante')
+    const safeName = (st.name || 'estudiante')
       .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const safeSim = (sim.simulacro || 'simulacro')
       .replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    doc.save(`resultados_${safeName}_${safeSim}.pdf`);
+    doc.save(`Resultado_${safeName}_${safeSim}.pdf`);
   } catch(e) {
     console.error(e);
     alert('No se pudo generar el PDF: ' + e.message);
