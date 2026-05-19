@@ -406,6 +406,19 @@ def add_simulacro(nombre: str, fecha: str, tipo: str, grados: list) -> dict:
         return {'success': False, 'error': 'El nombre es obligatorio.'}
     if tipo not in (SIM_COMPLETO, SIM_MEDIA):
         return {'success': False, 'error': 'Tipo inválido (completo o media).'}
+
+    # ── Validación: el nombre NO puede terminar en sufijos que coincidan con
+    # los que se añaden a las hojas por sesión, porque generaría hojas con
+    # nombres dobles tipo "Mayo 2026 Mañana M M" que confunden al sistema.
+    bad_suffixes = (' M', ' 1S', ' 2S', '- M', '-M', '- 1S', '- 2S')
+    n_upper = nombre.upper()
+    for suf in bad_suffixes:
+        if n_upper.endswith(suf.upper()):
+            return {'success': False,
+                    'error': (f'El nombre no debe terminar en "{suf.strip()}" '
+                              f'porque genera conflictos con las hojas de sesión. '
+                              f'Usa un nombre como "Mayo 2026 IETECI Mañana" '
+                              f'(el sistema añade la sesión automáticamente).')}
     if not isinstance(grados, list):
         grados = []
     grados = [str(g).strip() for g in grados if str(g).strip()]
