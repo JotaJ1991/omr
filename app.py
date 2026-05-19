@@ -21,6 +21,7 @@ from sheets_connector import (
     get_key_for_grade, save_key_for_grade, list_keys_grade,
     get_anuladas_for_grade, save_anuladas_for_grade, list_anuladas,
     get_student_from_roster, list_roster,
+    get_student_results_all_simulacros,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -624,6 +625,93 @@ def debug_image():
         'answers':     result.get('answers', []),
         'debug_image': img_b64
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PORTAL ESTUDIANTIL  (público — login con ID + contraseña=ID)
+# ═══════════════════════════════════════════════════════════════════════════
+import time
+from collections import defaultdict
+
+# Rate-limit en memoria contra brute-force: máx 10 intentos/min por IP
+_login_attempts = defaultdict(list)
+_RATE_WINDOW_S = 60
+_RATE_MAX = 10
+
+
+def _rate_limit_ok(ip: str) -> bool:
+    now = time.time()
+    # Limpia intentos viejos
+    _login_attempts[ip] = [t for t in _login_attempts[ip]
+                           if now - t < _RATE_WINDOW_S]
+    if len(_login_attempts[ip]) >= _RATE_MAX:
+        return False
+    _login_attempts[ip].append(now)
+    return True
+
+
+@app.route('/resultados', methods=['GET'])
+def resultados_portal():
+    """Página del portal estudiantil (login)."""
+    return render_template('portal_estudiante.html')
+
+
+@app.route('/resultados/login', methods=['POST'])
+def resultados_login():
+    """Valida credenciales (usuario=ID, contraseña=ID) y devuelve resultados."""
+    ip = request.remote_addr or 'unknown'
+    if not _rate_limit_ok(ip):
+        return jsonify({'success': False,
+                        'error': 'Demasiados intentos. Espera un minuto.'}), 429
+
+    data = request.get_json(silent=True) or {}
+    user = (data.get('usuario') or '').strip()
+    pwd  = (data.get('password') or '').strip()
+
+    if not user or not pwd:
+        return jsonify({'success': False,
+                        'error': 'Debes ingresar usuario y contraseña.'}), 400
+    # Esquema simple: la contraseña debe ser igual al usuario (ID)
+    if user != pwd:
+        return jsonify({'success': False,
+                        'error': 'Credenciales incorrectas.'}), 401
+
+    try:
+        results = get_student_results_all_simulacros(user)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False,
+                        'error': f'Error consultando resultados: {e}'}), 500
+
+    if not results:
+        return jsonify({'success': False,
+                        'error': 'No encontramos resultados con ese ID. '
+                                 'Verifica el número o pregunta a tu docente.'}), 404
+
+    # Datos del estudiante (tomamos el primer resultado para el header)
+    student_info = {
+        'id':     user,
+        'nombre': results[0].get('nombre', ''),
+        'curso':  results[0].get('curso', ''),
+        'grado':  results[0].get('grado', ''),
+    }
+    # Guardar sesión para el dashboard
+    session['student_id'] = user
+    session['student_info'] = student_info
+
+    return jsonify({
+        'success':     True,
+        'student':     student_info,
+        'results':     results,
+        'count':       len(results),
+    })
+
+
+@app.route('/resultados/logout', methods=['POST'])
+def resultados_logout():
+    session.pop('student_id', None)
+    session.pop('student_info', None)
+    return jsonify({'success': True})
 
 
 if __name__ == '__main__':

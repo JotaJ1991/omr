@@ -2225,3 +2225,203 @@ def list_roster(simulacro_safe: str = '') -> list:
         return out
     except Exception:
         return []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PORTAL ESTUDIANTIL — Consulta de resultados por ID
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_student_results_all_simulacros(student_id: str) -> list:
+    """
+    Busca al estudiante (por ID) en TODAS las hojas de resultados de TODOS
+    los simulacros existentes.
+
+    Devuelve una lista (puede tener varios elementos si está en varios
+    simulacros):
+      [{
+        'simulacro':  'Mayo 2026 IETAGRO',
+        'tipo':       'completo' | 'media',
+        'fecha':      '2026-05-10',
+        'sheet':      'Resultados Mayo 2026 IETAGRO',
+        'nombre':     'MARIA JOSE GUTIERREZ',
+        'curso':      '1101',
+        'puntajes':   {'mat':, 'lect':, 'soc':, 'nat':, 'ing':, 'gen':,
+                       'quim':?, 'fis':?},
+        'avg_curso':  {...},     # promedio del curso (comparación)
+        'avg_grado':  {...},     # promedio del grado (comparación)
+      }, ...]
+    """
+    student_id = str(student_id or '').strip()
+    if not student_id:
+        return []
+    try:
+        sims = list_simulacros()
+    except Exception:
+        sims = []
+
+    spreadsheet = _open_spreadsheet()
+
+    # Indexar simulacros por nombre para mapear hojas (incluso huérfanas)
+    sim_by_name = {(s.get('nombre') or '').strip(): s for s in (sims or [])}
+
+    # Buscar TODAS las hojas que empiezan con "Resultados " (cubre incluso
+    # las que quedaron huérfanas tras renombrar el simulacro).
+    candidate_sheets = []
+    try:
+        for ws in spreadsheet.worksheets():
+            title = ws.title or ''
+            if title.lower().startswith('resultados '):
+                candidate_sheets.append(title)
+    except Exception:
+        # fallback a las asociadas
+        for s in (sims or []):
+            rs = s.get('results') or []
+            if isinstance(rs, str): rs = [rs]
+            candidate_sheets.extend(rs)
+
+    out = []
+
+    for res_sheet in candidate_sheets:
+        # Inferir simulacro desde el nombre de la hoja
+        title_no_prefix = res_sheet[len('Resultados '):].strip()
+        sim = sim_by_name.get(title_no_prefix)
+        if sim is None:
+            # quitar sufijos de sesión (M / 1S / 2S)
+            for suf in (' M', ' 1S', ' 2S', ' - M', ' - 1S', ' - 2S'):
+                if title_no_prefix.endswith(suf):
+                    cand = title_no_prefix[:-len(suf)].strip()
+                    if cand in sim_by_name:
+                        sim = sim_by_name[cand]
+                        break
+        if sim is None:
+            # Simulacro no registrado (huérfano) — usamos placeholder
+            sim = {'nombre': title_no_prefix, 'tipo': '', 'fecha': ''}
+
+        if True:
+            try:
+                ws = spreadsheet.worksheet(res_sheet)
+            except Exception:
+                continue
+            try:
+                rows = ws.get_all_values()
+            except Exception:
+                continue
+            if not rows or len(rows) < 2:
+                continue
+
+            # Buscar fila del estudiante por ID (columna A, índice 0)
+            student_row = None
+            for row in rows[1:]:
+                if not row: continue
+                rid = (row[0] or '').strip() if len(row) > 0 else ''
+                if rid == student_id:
+                    student_row = row
+                    break
+            if student_row is None:
+                continue
+
+            # Parsear puntajes (cols: A=ID, B=Nombre, C=Curso, D=Mat,
+            # E=Lect, F=Soc, G=Nat, H=Ing, I=General, J=Quim, K=Fis)
+            def _num(v):
+                try: return int(round(float((v or '').strip())))
+                except: return None
+            nombre = (student_row[1] or '').strip() if len(student_row) > 1 else ''
+            curso  = (student_row[2] or '').strip() if len(student_row) > 2 else ''
+            puntajes = {
+                'mat':  _num(student_row[3]) if len(student_row) > 3 else None,
+                'lect': _num(student_row[4]) if len(student_row) > 4 else None,
+                'soc':  _num(student_row[5]) if len(student_row) > 5 else None,
+                'nat':  _num(student_row[6]) if len(student_row) > 6 else None,
+                'ing':  _num(student_row[7]) if len(student_row) > 7 else None,
+                'gen':  _num(student_row[8]) if len(student_row) > 8 else None,
+                'quim': _num(student_row[9])  if len(student_row) > 9  else None,
+                'fis':  _num(student_row[10]) if len(student_row) > 10 else None,
+            }
+
+            # Calcular promedios del curso y del grado (anónimos)
+            avg_curso = {k: None for k in puntajes}
+            avg_grado = {k: None for k in puntajes}
+            cnt_curso = 0
+            cnt_grado = 0
+            grado_stu = _grade_from_course_name(curso)
+
+            def _accum(target, source_row):
+                for i, key in enumerate(
+                        ['mat','lect','soc','nat','ing','gen','quim','fis']):
+                    col_idx = 3 + i  # mat=col D
+                    if col_idx < len(source_row):
+                        v = _num(source_row[col_idx])
+                        if v is not None:
+                            if target.get(key) is None:
+                                target[key] = [0, 0]   # [suma, count]
+                            target[key][0] += v
+                            target[key][1] += 1
+
+            # Acumuladores temporales (luego divide). NO descartar filas sin
+            # ID — son estudiantes válidos en hojas anteriores al QR.
+            acc_curso = {}
+            acc_grado = {}
+            for r in rows[1:]:
+                if not r or len(r) < 3: continue
+                if (r[1] or '').strip() == 'PROMEDIO': continue
+                # Aceptar la fila si tiene al menos nombre o ID
+                if not ((r[0] or '').strip() or (r[1] or '').strip()):
+                    continue
+                r_curso = (r[2] or '').strip()
+                r_grado = _grade_from_course_name(r_curso)
+                if r_curso == curso:
+                    _accum(acc_curso, r)
+                    cnt_curso += 1
+                if grado_stu and r_grado == grado_stu:
+                    _accum(acc_grado, r)
+                    cnt_grado += 1
+            for k, v in acc_curso.items():
+                if v and v[1] > 0:
+                    avg_curso[k] = int(round(v[0] / v[1]))
+            for k, v in acc_grado.items():
+                if v and v[1] > 0:
+                    avg_grado[k] = int(round(v[0] / v[1]))
+
+            # Posición en el curso (1-based, mayor puntaje general = pos 1).
+            # Identificamos al estudiante por su fila exacta (objeto) ya que
+            # podría no haber ID en otras filas del curso.
+            pos_curso = None
+            tot_curso = 0
+            try:
+                curso_scores = []  # (row_obj, gen)
+                for r in rows[1:]:
+                    if not r or len(r) < 9: continue
+                    if (r[1] or '').strip() == 'PROMEDIO': continue
+                    if (r[2] or '').strip() != curso: continue
+                    g = _num(r[8])
+                    if g is not None:
+                        curso_scores.append((r, g))
+                tot_curso = len(curso_scores)
+                curso_scores.sort(key=lambda x: x[1], reverse=True)
+                for i, (r, _g) in enumerate(curso_scores):
+                    if r is student_row:
+                        pos_curso = i + 1
+                        break
+            except Exception:
+                pass
+
+            out.append({
+                'simulacro':  sim.get('nombre', ''),
+                'tipo':       sim.get('tipo', ''),
+                'fecha':      sim.get('fecha', ''),
+                'sheet':      res_sheet,
+                'nombre':     nombre,
+                'curso':      curso,
+                'grado':      grado_stu,
+                'puntajes':   puntajes,
+                'avg_curso':  avg_curso,
+                'avg_grado':  avg_grado,
+                'pos_curso':  pos_curso,
+                'tot_curso':  tot_curso,
+                'n_curso':    cnt_curso,
+                'n_grado':    cnt_grado,
+            })
+
+    # Orden: más reciente primero
+    out.sort(key=lambda r: r.get('fecha', ''), reverse=True)
+    return out

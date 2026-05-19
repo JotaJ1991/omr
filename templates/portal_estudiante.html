@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a8a">
+<title>Consulta de resultados · IETAGRO</title>
+<style>
+  :root {
+    --primary:        #1e3a8a;
+    --primary-dark:   #101e54;
+    --primary-light:  #3b63bf;
+    --gold:           #facc15;
+    --gold-dark:      #ca8a04;
+    --bg:             #0f172a;
+    --bg-soft:        #1e293b;
+    --card:           rgba(255,255,255,.04);
+    --card-border:    rgba(255,255,255,.08);
+    --text:           #e2e8f0;
+    --muted:          #94a3b8;
+    --success:        #22c55e;
+    --warning:        #fbbf24;
+    --danger:         #ef4444;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                 Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: radial-gradient(ellipse at top, #1e3a8a 0%, #0f172a 60%);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .container {
+    max-width: 720px; margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+  /* ── Header ── */
+  .brand {
+    text-align: center; margin-bottom: 24px; padding-top: 8px;
+  }
+  .brand-emoji { font-size: 2.4rem; line-height: 1; }
+  .brand-title {
+    font-size: 1.35rem; font-weight: 800; margin: 6px 0 2px;
+    letter-spacing: -0.01em;
+  }
+  .brand-sub { font-size: .82rem; color: var(--muted); }
+
+  /* ── Card de login ── */
+  .login-card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 22px 20px 24px;
+    backdrop-filter: blur(8px);
+  }
+  .login-card h2 {
+    font-size: 1.05rem; font-weight: 700; margin: 0 0 4px;
+    color: var(--text);
+  }
+  .login-card .hint {
+    font-size: .78rem; color: var(--muted); margin-bottom: 18px;
+  }
+  .input-group { margin-bottom: 14px; }
+  .input-group label {
+    display: block; font-size: .76rem; color: var(--muted);
+    margin-bottom: 4px; font-weight: 600; letter-spacing: .3px;
+    text-transform: uppercase;
+  }
+  .input-group input {
+    width: 100%; padding: 11px 14px; font-size: 1rem;
+    background: rgba(0,0,0,.25);
+    color: var(--text);
+    border: 1.5px solid var(--card-border);
+    border-radius: 10px;
+    font-family: inherit;
+    transition: border-color .15s;
+  }
+  .input-group input:focus {
+    outline: none;
+    border-color: var(--primary-light);
+    background: rgba(0,0,0,.35);
+  }
+  .btn-primary {
+    width: 100%; padding: 13px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    color: white; border: none; border-radius: 10px;
+    font-size: .95rem; font-weight: 700; cursor: pointer;
+    margin-top: 6px;
+    transition: transform .1s, box-shadow .15s;
+    box-shadow: 0 4px 14px rgba(30,58,138,.4);
+  }
+  .btn-primary:hover { box-shadow: 0 6px 20px rgba(30,58,138,.5); }
+  .btn-primary:active { transform: translateY(1px); }
+  .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* ── Mensaje de error/info ── */
+  .msg {
+    margin-top: 14px; padding: 10px 12px;
+    border-radius: 8px; font-size: .82rem;
+    display: none;
+  }
+  .msg.error {
+    background: rgba(239,68,68,.12);
+    border: 1px solid rgba(239,68,68,.4);
+    color: #fca5a5;
+  }
+
+  /* ── Dashboard ── */
+  .dash { display: none; }
+  .dash-header {
+    background: linear-gradient(135deg, var(--primary), var(--primary-light));
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 8px 24px rgba(30,58,138,.35);
+    position: relative;
+    overflow: hidden;
+  }
+  .dash-header::after {
+    content: ''; position: absolute; right: -30px; top: -30px;
+    width: 140px; height: 140px;
+    background: rgba(250,204,21,.18); border-radius: 50%;
+  }
+  .dash-greet {
+    font-size: .85rem; color: rgba(255,255,255,.85);
+    position: relative; z-index: 1;
+  }
+  .dash-name {
+    font-size: 1.4rem; font-weight: 800; margin: 4px 0 8px;
+    line-height: 1.15; position: relative; z-index: 1;
+  }
+  .dash-meta {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    font-size: .8rem; color: rgba(255,255,255,.85);
+    position: relative; z-index: 1;
+  }
+  .dash-meta strong { color: var(--gold); font-weight: 700; }
+
+  /* ── Sección de simulacro ── */
+  .sim-section {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+    margin-bottom: 14px;
+  }
+  .sim-title {
+    font-size: 1rem; font-weight: 700; margin: 0 0 2px;
+    color: var(--gold);
+  }
+  .sim-meta {
+    font-size: .76rem; color: var(--muted); margin-bottom: 14px;
+  }
+
+  /* ── Puntaje general (hero) ── */
+  .hero-score {
+    text-align: center; padding: 14px 0 10px;
+    background: linear-gradient(180deg, rgba(250,204,21,.08), transparent);
+    border-radius: 10px; margin-bottom: 14px;
+  }
+  .hero-label { font-size: .72rem; color: var(--muted); letter-spacing: .8px;
+    text-transform: uppercase; margin-bottom: 4px; }
+  .hero-val {
+    font-size: 2.6rem; font-weight: 800; color: var(--gold);
+    line-height: 1; letter-spacing: -0.02em;
+  }
+  .hero-pos {
+    font-size: .82rem; color: var(--muted); margin-top: 6px;
+  }
+
+  /* ── Filas por asignatura ── */
+  .subject-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+  }
+  .subject-row:last-child { border-bottom: none; }
+  .subject-name {
+    flex-shrink: 0; width: 110px;
+    font-size: .85rem; font-weight: 600;
+  }
+  .subject-bar {
+    flex: 1; height: 9px;
+    background: rgba(255,255,255,.07);
+    border-radius: 5px; overflow: hidden;
+    position: relative;
+  }
+  .subject-fill {
+    height: 100%; border-radius: 5px;
+    transition: width .8s ease-out;
+  }
+  .subject-val {
+    flex-shrink: 0; width: 50px; text-align: right;
+    font-weight: 700; font-size: .9rem;
+  }
+  .subject-cmp {
+    flex-shrink: 0; width: 56px; text-align: right;
+    font-size: .68rem; font-weight: 600;
+  }
+  .cmp-up   { color: var(--success); }
+  .cmp-down { color: var(--danger); }
+  .cmp-eq   { color: var(--muted); }
+
+  /* Notas adicionales (Naturales 10°) */
+  .sub-subject {
+    padding-left: 14px;
+    background: rgba(250,204,21,.04);
+    border-left: 3px solid rgba(250,204,21,.4);
+    border-radius: 0 6px 6px 0;
+    margin: 4px 0;
+  }
+  .sub-subject .subject-name { font-size: .78rem; color: var(--muted); }
+
+  .footer-bar {
+    margin-top: 20px; padding-top: 14px;
+    border-top: 1px solid var(--card-border);
+    display: flex; justify-content: space-between;
+    align-items: center; flex-wrap: wrap; gap: 10px;
+  }
+  .footer-text { font-size: .72rem; color: var(--muted); }
+  .btn-logout {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--card-border);
+    border-radius: 8px; padding: 7px 14px;
+    font-size: .8rem; cursor: pointer;
+  }
+  .btn-logout:hover { color: var(--text); border-color: var(--text); }
+
+  /* Loader */
+  .spin {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: white;
+    border-radius: 50%; animation: spin .8s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 420px) {
+    .subject-name { width: 90px; font-size: .8rem; }
+    .subject-cmp { width: 48px; }
+    .hero-val { font-size: 2.2rem; }
+    .dash-name { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ══ HEADER MARCA ══ -->
+  <div class="brand">
+    <div class="brand-emoji">🎓</div>
+    <div class="brand-title">Consulta de resultados</div>
+    <div class="brand-sub">Pruebas Saber 11° · Simulacros</div>
+  </div>
+
+  <!-- ══ LOGIN ══ -->
+  <div class="login-card" id="login-card">
+    <h2>Ingresa a tu cuenta</h2>
+    <p class="hint">Usuario y contraseña son tu <strong>número de documento</strong>.</p>
+
+    <form id="login-form" autocomplete="off">
+      <div class="input-group">
+        <label for="usuario">Usuario (documento)</label>
+        <input type="text" id="usuario" inputmode="numeric"
+               autocomplete="username" placeholder="Ej: 1098765432"
+               required>
+      </div>
+      <div class="input-group">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password"
+               autocomplete="current-password" placeholder="Ingresa tu documento"
+               required>
+      </div>
+      <button type="submit" class="btn-primary" id="btn-login">
+        Ingresar →
+      </button>
+    </form>
+    <div class="msg error" id="login-msg"></div>
+  </div>
+
+  <!-- ══ DASHBOARD (oculto inicialmente) ══ -->
+  <div class="dash" id="dash">
+    <div class="dash-header">
+      <div class="dash-greet">👋 Hola,</div>
+      <div class="dash-name" id="dash-name">—</div>
+      <div class="dash-meta">
+        <span>📚 Curso <strong id="dash-curso">—</strong></span>
+        <span>🎓 Grado <strong id="dash-grado">—</strong></span>
+        <span>🆔 ID <strong id="dash-id">—</strong></span>
+      </div>
+    </div>
+
+    <div id="dash-sims"></div>
+
+    <div class="footer-bar">
+      <div class="footer-text" id="footer-info">—</div>
+      <button class="btn-logout" onclick="logout()">Cerrar sesión</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SUBJECT_LABELS = {
+  mat:  'Matemáticas',
+  lect: 'Lectura Crítica',
+  soc:  'Sociales',
+  nat:  'Ciencias Naturales',
+  ing:  'Inglés',
+  quim: 'Química',
+  fis:  'Física',
+};
+const SUBJECT_COLORS = {
+  mat:  '#f59e0b',
+  lect: '#06b6d4',
+  soc:  '#10b981',
+  nat:  '#a78bfa',
+  ing:  '#ec4899',
+  quim: '#facc15',
+  fis:  '#fb923c',
+};
+
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  await doLogin();
+});
+
+async function doLogin() {
+  const user = document.getElementById('usuario').value.trim();
+  const pwd  = document.getElementById('password').value.trim();
+  const btn  = document.getElementById('btn-login');
+  const msg  = document.getElementById('login-msg');
+
+  if (!user || !pwd) {
+    msg.textContent = 'Completa ambos campos.';
+    msg.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Verificando...';
+  msg.style.display = 'none';
+  try {
+    const resp = await fetch('/resultados/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({usuario: user, password: pwd})
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      msg.textContent = data.error || 'No fue posible ingresar.';
+      msg.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Ingresar →';
+      return;
+    }
+    renderDashboard(data);
+  } catch(e) {
+    msg.textContent = 'Error de conexión. Inténtalo de nuevo.';
+    msg.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Ingresar →';
+  }
+}
+
+function renderDashboard(data) {
+  document.getElementById('login-card').style.display = 'none';
+  const dash = document.getElementById('dash');
+  dash.style.display = 'block';
+
+  // Header
+  const s = data.student || {};
+  document.getElementById('dash-name').textContent = s.nombre || '—';
+  document.getElementById('dash-curso').textContent = s.curso || '—';
+  document.getElementById('dash-grado').textContent = s.grado ? (s.grado+'°') : '—';
+  document.getElementById('dash-id').textContent = s.id || '—';
+
+  // Simulacros
+  const container = document.getElementById('dash-sims');
+  const results = data.results || [];
+  if (!results.length) {
+    container.innerHTML = `<div class="sim-section">
+      <p style="color:var(--muted);text-align:center;">
+        Aún no tienes resultados registrados.</p></div>`;
+  } else {
+    container.innerHTML = results.map(renderSimSection).join('');
+  }
+
+  document.getElementById('footer-info').textContent =
+    `${results.length} simulacro(s) · Tus datos están protegidos.`;
+}
+
+function renderSimSection(r) {
+  const p = r.puntajes || {};
+  const avgC = r.avg_curso || {};
+  const isG10 = String(r.grado) === '10';
+
+  // Posición
+  let posTxt = '';
+  if (r.pos_curso && r.tot_curso) {
+    posTxt = `Posición ${r.pos_curso} de ${r.tot_curso} en tu curso ${r.curso}`;
+  }
+
+  // Filas por asignatura
+  const subjects = isG10
+    ? ['mat','lect','soc','quim','fis','ing']  // 10° → mostrar Quím/Fís en lugar de Nat
+    : ['mat','lect','soc','nat','ing'];
+
+  const rows = subjects.map(k => {
+    const v = p[k];
+    if (v == null) return '';
+    const cmpVal = avgC[k];
+    let cmpHtml = '<span class="subject-cmp cmp-eq">—</span>';
+    if (cmpVal != null) {
+      const diff = v - cmpVal;
+      if (diff > 0)      cmpHtml = `<span class="subject-cmp cmp-up">+${diff} vs curso</span>`;
+      else if (diff < 0) cmpHtml = `<span class="subject-cmp cmp-down">${diff} vs curso</span>`;
+      else               cmpHtml = `<span class="subject-cmp cmp-eq">igual al curso</span>`;
+    }
+    const color = SUBJECT_COLORS[k] || '#6366f1';
+    return `
+      <div class="subject-row">
+        <div class="subject-name">${SUBJECT_LABELS[k] || k}</div>
+        <div class="subject-bar">
+          <div class="subject-fill"
+               style="width:${Math.max(0, Math.min(100, v))}%;
+                      background:${color};"></div>
+        </div>
+        <div class="subject-val">${v}</div>
+        ${cmpHtml}
+      </div>`;
+  }).join('');
+
+  // Mostrar Naturales (promedio) para 10° debajo de Quím+Fís
+  let natRow = '';
+  if (isG10 && p.nat != null) {
+    natRow = `
+      <div class="subject-row sub-subject">
+        <div class="subject-name">Naturales (prom.)</div>
+        <div class="subject-bar">
+          <div class="subject-fill"
+               style="width:${p.nat}%;background:rgba(167,139,250,.6);"></div>
+        </div>
+        <div class="subject-val">${p.nat}</div>
+        <span class="subject-cmp cmp-eq">${(p.quim ?? '—')}/${(p.fis ?? '—')}</span>
+      </div>`;
+  }
+
+  return `
+    <div class="sim-section">
+      <div class="sim-title">${r.simulacro}</div>
+      <div class="sim-meta">
+        ${r.fecha ? `📅 ${r.fecha} · ` : ''}${r.tipo === 'completo' ? '2 sesiones' : 'Media jornada'}
+      </div>
+
+      ${p.gen != null ? `
+      <div class="hero-score">
+        <div class="hero-label">Puntaje general</div>
+        <div class="hero-val">${p.gen}</div>
+        ${posTxt ? `<div class="hero-pos">${posTxt}</div>` : ''}
+      </div>` : ''}
+
+      <div style="margin-top:6px;">${rows}${natRow}</div>
+    </div>`;
+}
+
+async function logout() {
+  try { await fetch('/resultados/logout', {method:'POST'}); } catch(e) {}
+  location.reload();
+}
+
+// Autofocus en usuario
+document.getElementById('usuario').focus();
+</script>
+
+</body>
+</html>
