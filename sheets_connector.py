@@ -2464,3 +2464,190 @@ def get_student_results_all_simulacros(student_id: str) -> list:
     # Orden: más reciente primero
     out.sort(key=lambda r: r.get('fecha', ''), reverse=True)
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MIGRACIÓN DE IDs: vincular documentos a estudiantes existentes en una hoja
+# de resultados. Útil para simulacros calificados antes del sistema QR.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _normalize_name(name: str) -> str:
+    """Minúsculas, sin acentos, espacios normalizados."""
+    import unicodedata
+    n = (name or '').strip().lower()
+    n = unicodedata.normalize('NFD', n)
+    n = ''.join(c for c in n if unicodedata.category(c) != 'Mn')
+    n = ' '.join(n.split())
+    return n
+
+
+def _name_words(name: str) -> set:
+    """Conjunto de palabras del nombre normalizado (independiente del orden)."""
+    return set(_normalize_name(name).split())
+
+
+def match_xlsx_to_results_sheet(xlsx_students: list, sheet_name: str) -> dict:
+    """
+    Cruza una lista de estudiantes (de XLSX con cols Curso/Documento/Nombre)
+    contra las filas de una hoja de resultados existente.
+
+    xlsx_students:  [{'curso','id','nombre'}, ...]
+    sheet_name:     'Resultados Mayo 2026 IETECI M' (existente)
+
+    Devuelve dict con 4 listas:
+      - matched: matches de alta confianza (mismas palabras del nombre)
+      - ambiguous: posibles matches que requieren confirmación
+      - not_found: estudiantes del XLSX que no encontramos en la hoja
+      - already_has_id: estudiantes cuya fila YA tenía un ID
+                        (no se sobrescribe sin confirmación explícita)
+    Cada item tiene la estructura:
+      {'xlsx_curso','xlsx_id','xlsx_nombre',
+       'sheet_row','sheet_curso','sheet_nombre','sheet_id_existing'}
+    """
+    if not xlsx_students:
+        return {'matched': [], 'ambiguous': [], 'not_found': [],
+                'already_has_id': []}
+    try:
+        ws = _open_spreadsheet().worksheet(sheet_name)
+        rows = ws.get_all_values()
+    except Exception as e:
+        return {'success': False, 'error': f'No se pudo abrir "{sheet_name}": {e}'}
+
+    if len(rows) < 2:
+        return {'matched': [], 'ambiguous': [], 'not_found': xlsx_students,
+                'already_has_id': []}
+
+    # Indexar filas del sheet (saltando header). Guarda fila 1-based.
+    sheet_rows = []   # [(row_num, id, nombre, curso, word_set)]
+    for i, r in enumerate(rows[1:], start=2):  # i = 1-based row number
+        if not r or len(r) < 3: continue
+        if (r[1] or '').strip() == 'PROMEDIO': continue
+        nombre = (r[1] or '').strip()
+        if not nombre: continue
+        ident = (r[0] or '').strip()
+        curso = (r[2] or '').strip()
+        sheet_rows.append({
+            'row_num': i,
+            'id': ident,
+            'nombre': nombre,
+            'curso': curso,
+            'words': _name_words(nombre),
+        })
+
+    matched = []
+    ambiguous = []
+    not_found = []
+    already_has_id = []
+
+    for stu in xlsx_students:
+        xn  = stu.get('nombre', '')
+        xid = stu.get('id', '')
+        xc  = stu.get('curso', '')
+        xw  = _name_words(xn)
+        if not xw or not xid:
+            continue
+        # Buscar matches exactos (mismas palabras)
+        candidates = []
+        for sr in sheet_rows:
+            if sr['words'] == xw:
+                candidates.append(('exact', sr))
+        # Si no hay exactos, buscar parciales (>= 70% overlap)
+        if not candidates:
+            for sr in sheet_rows:
+                if not sr['words']: continue
+                overlap = len(xw & sr['words'])
+                union   = len(xw | sr['words'])
+                if union == 0: continue
+                jac = overlap / union
+                if jac >= 0.70:
+                    candidates.append(('partial', sr, jac))
+
+        if not candidates:
+            not_found.append({
+                'xlsx_curso': xc, 'xlsx_id': xid, 'xlsx_nombre': xn,
+                'sheet_row': None, 'sheet_curso': '', 'sheet_nombre': '',
+                'sheet_id_existing': '',
+            })
+            continue
+
+        # Filtrar candidatos por curso si hay varios
+        if len(candidates) > 1 and xc:
+            same_curso = [c for c in candidates if c[1]['curso'] == xc]
+            if same_curso:
+                candidates = same_curso
+
+        # Si solo hay 1 candidato y es exact → matched
+        # Si hay 1 candidato pero es partial → ambiguous
+        # Si hay varios → ambiguous (reportar todos)
+        if len(candidates) == 1 and candidates[0][0] == 'exact':
+            sr = candidates[0][1]
+            item = {
+                'xlsx_curso': xc, 'xlsx_id': xid, 'xlsx_nombre': xn,
+                'sheet_row': sr['row_num'],
+                'sheet_curso': sr['curso'],
+                'sheet_nombre': sr['nombre'],
+                'sheet_id_existing': sr['id'],
+            }
+            if sr['id'] and sr['id'] != xid:
+                already_has_id.append(item)
+            else:
+                matched.append(item)
+        else:
+            # Devolver todos los candidatos (top 3) para que el usuario elija
+            cands_data = []
+            for c in candidates[:3]:
+                sr = c[1]
+                cands_data.append({
+                    'row': sr['row_num'],
+                    'nombre': sr['nombre'],
+                    'curso': sr['curso'],
+                    'id_existing': sr['id'],
+                    'type': c[0],
+                })
+            ambiguous.append({
+                'xlsx_curso': xc, 'xlsx_id': xid, 'xlsx_nombre': xn,
+                'candidates': cands_data,
+            })
+
+    return {
+        'success':         True,
+        'matched':         matched,
+        'ambiguous':       ambiguous,
+        'not_found':       not_found,
+        'already_has_id':  already_has_id,
+        'sheet':           sheet_name,
+        'sheet_total':     len(sheet_rows),
+        'xlsx_total':      len(xlsx_students),
+    }
+
+
+def apply_id_matches_to_sheet(sheet_name: str, matches: list) -> dict:
+    """
+    Aplica una lista de matches confirmados, escribiendo el ID en la
+    columna A de la fila correspondiente.
+
+    matches: lista de {'sheet_row': int, 'xlsx_id': str}
+    """
+    if not matches:
+        return {'success': True, 'updated': 0}
+    try:
+        ws = _open_spreadsheet().worksheet(sheet_name)
+    except Exception as e:
+        return {'success': False, 'error': f'No se pudo abrir "{sheet_name}": {e}'}
+    # Hacer updates batch para ahorrar llamadas a la API
+    updates = []
+    for m in matches:
+        rn = m.get('sheet_row')
+        nid = (m.get('xlsx_id') or '').strip()
+        if not rn or not nid: continue
+        updates.append({
+            'range':  f'A{rn}',
+            'values': [[nid]],
+        })
+    if not updates:
+        return {'success': True, 'updated': 0}
+    try:
+        ws.batch_update(updates, value_input_option='RAW')
+        return {'success': True, 'updated': len(updates)}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}

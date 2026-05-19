@@ -1159,6 +1159,49 @@
       <div id="personalize-result" style="margin-top:12px;"></div>
     </div>
 
+    <!-- ── Vincular IDs a estudiantes existentes ── -->
+    <div class="card">
+      <h2>🔗 Vincular IDs a estudiantes existentes</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+        Para que los estudiantes puedan consultar sus resultados en el
+        <a href="/resultados" target="_blank" style="color:var(--primary-light);">portal</a>,
+        necesitan tener su documento de identidad en la fila correspondiente.
+        Sube un Excel con <code>Curso, Documento, Nombres</code> y el sistema
+        encontrará a cada estudiante por nombre y le agregará el ID.
+      </p>
+
+      <!-- Paso 1: subir Excel -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:14px;margin-bottom:12px;">
+        <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
+                    margin-bottom:8px;">
+          1️⃣ Selecciona la hoja de resultados destino
+        </div>
+        <select id="mid-sheet" style="width:100%;margin-bottom:10px;">
+          <option value="">— elige una hoja —</option>
+        </select>
+
+        <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
+                    margin-bottom:8px;">
+          2️⃣ Carga el Excel con la lista de estudiantes (ID + nombres)
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="mid-xlsx" accept=".xlsx,.xls"
+                 style="display:none;" onchange="onMidFileChange(this)">
+          <button class="btn-secondary" type="button"
+                  onclick="document.getElementById('mid-xlsx').click()"
+                  id="mid-xlsx-btn">
+            📂 Seleccionar Excel
+          </button>
+          <span id="mid-file-name" style="font-size:.82rem;color:var(--muted);">
+            Ningún archivo seleccionado
+          </span>
+        </div>
+      </div>
+
+      <div id="mid-result" style="margin-top:8px;"></div>
+    </div>
+
     <!-- ── Diagnóstico ── -->
     <div class="card">
       <h2>🔬 Diagnóstico OMR</h2>
@@ -1344,6 +1387,7 @@ let state = {
   await loadCourses();
   await loadSimulacros();
   await loadDistribuciones();
+  await _midLoadSheets();
 })();
 
 // ══ DISTRIBUCIÓN DE PREGUNTAS POR GRADO ════════════════════════════════════
@@ -1619,6 +1663,238 @@ async function loadSimulacros() {
     _populatePersonalizeSimSelect();
     _refreshAnuList();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
+}
+
+// ══ VINCULAR IDs A ESTUDIANTES EXISTENTES (migración) ══════════════════════
+let _midPreview = null;
+
+async function _midLoadSheets() {
+  try {
+    const resp = await fetch('/migrate_ids/result_sheets');
+    const data = await resp.json();
+    const sel = document.getElementById('mid-sheet');
+    if (!sel) return;
+    const sheets = data.sheets || [];
+    sel.innerHTML = '<option value="">— elige una hoja —</option>' +
+      sheets.map(s => `<option value="${s}">${s}</option>`).join('');
+  } catch(e) { console.warn('No se cargaron hojas de resultados:', e); }
+}
+
+async function onMidFileChange(input) {
+  const f = input.files[0];
+  const nameEl = document.getElementById('mid-file-name');
+  if (!f) { nameEl.textContent = 'Ningún archivo seleccionado'; return; }
+  nameEl.innerHTML = `📄 <strong>${f.name}</strong>
+    <span style="opacity:.6;">(${(f.size/1024).toFixed(1)} KB)</span>`;
+
+  const sheet = document.getElementById('mid-sheet').value;
+  if (!sheet) {
+    alert('Primero selecciona la hoja destino.');
+    return;
+  }
+  const resultEl = document.getElementById('mid-result');
+  resultEl.innerHTML = '<p style="color:var(--muted);padding:10px;">⏳ Procesando…</p>';
+
+  const fd = new FormData();
+  fd.append('roster', f);
+  fd.append('sheet_name', sheet);
+  try {
+    const resp = await fetch('/migrate_ids/preview', {method: 'POST', body: fd});
+    const data = await resp.json();
+    if (!data.success) {
+      resultEl.innerHTML = `<p style="color:var(--danger);padding:10px;">
+        ❌ ${data.error || 'Error desconocido'}</p>`;
+      return;
+    }
+    _midPreview = data;
+    _renderMidPreview(data);
+  } catch(e) {
+    resultEl.innerHTML = `<p style="color:var(--danger);padding:10px;">
+      ❌ Error de conexión: ${e.message}</p>`;
+  }
+}
+
+function _renderMidPreview(data) {
+  const resultEl = document.getElementById('mid-result');
+  const matched   = data.matched   || [];
+  const ambiguous = data.ambiguous || [];
+  const notFound  = data.not_found || [];
+  const hasId     = data.already_has_id || [];
+
+  let html = `
+    <div style="background:rgba(99,102,241,.06);border:1px solid var(--card-border);
+                border-radius:10px;padding:14px;margin-top:10px;">
+      <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
+                  margin-bottom:10px;">
+        Resumen del cruce (XLSX ${data.xlsx_total} vs hoja ${data.sheet_total})
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+                  gap:8px;margin-bottom:14px;">
+        <div style="background:rgba(34,197,94,.12);border-radius:8px;padding:10px;
+                    text-align:center;">
+          <div style="font-size:1.5rem;font-weight:800;color:#22c55e;">${matched.length}</div>
+          <div style="font-size:.7rem;color:var(--muted);">Coinciden exacto</div>
+        </div>
+        <div style="background:rgba(245,158,11,.12);border-radius:8px;padding:10px;
+                    text-align:center;">
+          <div style="font-size:1.5rem;font-weight:800;color:#fbbf24;">${ambiguous.length}</div>
+          <div style="font-size:.7rem;color:var(--muted);">Ambiguos</div>
+        </div>
+        <div style="background:rgba(239,68,68,.12);border-radius:8px;padding:10px;
+                    text-align:center;">
+          <div style="font-size:1.5rem;font-weight:800;color:#fca5a5;">${notFound.length}</div>
+          <div style="font-size:.7rem;color:var(--muted);">No encontrados</div>
+        </div>
+        <div style="background:rgba(120,120,120,.12);border-radius:8px;padding:10px;
+                    text-align:center;">
+          <div style="font-size:1.5rem;font-weight:800;color:var(--muted);">${hasId.length}</div>
+          <div style="font-size:.7rem;color:var(--muted);">Ya tienen ID</div>
+        </div>
+      </div>`;
+
+  // Tabla de matches confirmados
+  if (matched.length) {
+    html += `<details open style="margin-bottom:10px;">
+      <summary style="cursor:pointer;font-weight:600;color:#22c55e;
+                margin-bottom:6px;">✅ ${matched.length} coincidencias exactas
+        <span style="font-weight:400;color:var(--muted);font-size:.78rem;">
+        (se aplicarán automáticamente)</span></summary>
+      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--card-border);
+                  border-radius:6px;margin-top:6px;">
+        <table style="width:100%;font-size:.76rem;border-collapse:collapse;">
+          <thead style="background:rgba(255,255,255,.05);position:sticky;top:0;">
+            <tr>
+              <th style="text-align:left;padding:6px;">Nombre (XLSX)</th>
+              <th style="text-align:left;padding:6px;">→ Fila</th>
+              <th style="text-align:left;padding:6px;">ID a agregar</th>
+              <th style="text-align:left;padding:6px;">Curso</th>
+            </tr></thead>
+          <tbody>`;
+    matched.forEach(m => {
+      html += `<tr style="border-top:1px solid var(--card-border);">
+        <td style="padding:5px 6px;">${m.xlsx_nombre}</td>
+        <td style="padding:5px 6px;color:var(--muted);">F${m.sheet_row}</td>
+        <td style="padding:5px 6px;color:#22c55e;font-weight:600;">${m.xlsx_id}</td>
+        <td style="padding:5px 6px;color:var(--muted);">${m.xlsx_curso}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div></details>';
+  }
+
+  // Ambigüos
+  if (ambiguous.length) {
+    html += `<details style="margin-bottom:10px;">
+      <summary style="cursor:pointer;font-weight:600;color:#fbbf24;
+                margin-bottom:6px;">⚠️ ${ambiguous.length} ambiguos
+        <span style="font-weight:400;color:var(--muted);font-size:.78rem;">
+        (requieren confirmación manual — NO se aplicarán)</span></summary>
+      <div style="font-size:.78rem;color:var(--muted);padding:8px;">`;
+    ambiguous.slice(0, 30).forEach(a => {
+      html += `<div style="margin-bottom:8px;padding:6px;background:rgba(255,255,255,.03);
+        border-radius:4px;">
+        <strong>${a.xlsx_nombre}</strong> (curso ${a.xlsx_curso}, ID ${a.xlsx_id})<br>`;
+      a.candidates.forEach((c, i) => {
+        html += `<small>→ Candidato ${i+1}: ${c.nombre} (curso ${c.curso}, fila ${c.row}) ${c.type === 'exact' ? '[exacto]' : '[parcial]'}</small><br>`;
+      });
+      html += `</div>`;
+    });
+    html += '</div></details>';
+  }
+
+  // Ya tienen ID
+  if (hasId.length) {
+    html += `<details style="margin-bottom:10px;">
+      <summary style="cursor:pointer;font-weight:600;color:var(--muted);
+                margin-bottom:6px;">📌 ${hasId.length} ya tienen un ID distinto
+        <span style="font-weight:400;font-size:.78rem;">
+        (NO se sobrescriben)</span></summary>
+      <div style="font-size:.78rem;color:var(--muted);padding:8px;
+                  max-height:200px;overflow-y:auto;">`;
+    hasId.forEach(h => {
+      html += `<div>• ${h.xlsx_nombre} → fila ${h.sheet_row} ya tiene
+        ID <code>${h.sheet_id_existing}</code> (XLSX dice <code>${h.xlsx_id}</code>)</div>`;
+    });
+    html += '</div></details>';
+  }
+
+  // No encontrados
+  if (notFound.length) {
+    html += `<details style="margin-bottom:10px;">
+      <summary style="cursor:pointer;font-weight:600;color:#fca5a5;
+                margin-bottom:6px;">🔍 ${notFound.length} no encontrados en la hoja
+        <span style="font-weight:400;color:var(--muted);font-size:.78rem;">
+        (no aparecen en este simulacro)</span></summary>
+      <div style="font-size:.78rem;color:var(--muted);padding:8px;
+                  max-height:200px;overflow-y:auto;">`;
+    notFound.slice(0, 50).forEach(n => {
+      html += `<div>• ${n.xlsx_nombre} (curso ${n.xlsx_curso})</div>`;
+    });
+    html += '</div></details>';
+  }
+
+  // Botón aplicar
+  if (matched.length) {
+    html += `<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn-success" onclick="applyMidMatches()"
+              id="mid-apply-btn"
+              style="padding:10px 18px;font-size:.88rem;">
+        ✅ Aplicar ${matched.length} matches exactos
+      </button>
+      <button class="btn-secondary" onclick="_midReset()">
+        Cancelar
+      </button>
+    </div>
+    <div id="mid-apply-status" style="margin-top:10px;font-size:.85rem;"></div>`;
+  } else {
+    html += `<p style="font-size:.85rem;color:var(--muted);margin-top:14px;">
+      No hay matches exactos para aplicar automáticamente.</p>`;
+  }
+  html += '</div>';
+  resultEl.innerHTML = html;
+}
+
+async function applyMidMatches() {
+  if (!_midPreview) return;
+  const btn = document.getElementById('mid-apply-btn');
+  const statusEl = document.getElementById('mid-apply-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Aplicando…';
+  try {
+    const resp = await fetch('/migrate_ids/apply', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        sheet_name: _midPreview.sheet,
+        matches:    _midPreview.matched,
+      })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      statusEl.innerHTML = `<span style="color:#22c55e;font-weight:600;">
+        ✅ ${data.updated} IDs guardados en la hoja.
+        Los estudiantes ya pueden consultar sus resultados en
+        <a href="/resultados" target="_blank" style="color:var(--primary-light);">/resultados</a>.</span>`;
+      btn.disabled = false;
+      btn.textContent = '✓ Aplicado';
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--danger);">
+        ❌ ${data.error || 'Error'}</span>`;
+      btn.disabled = false;
+      btn.textContent = `✅ Aplicar ${_midPreview.matched.length} matches`;
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:var(--danger);">
+      ❌ Error de conexión: ${e.message}</span>`;
+    btn.disabled = false;
+    btn.textContent = `✅ Aplicar ${_midPreview.matched.length} matches`;
+  }
+}
+
+function _midReset() {
+  _midPreview = null;
+  document.getElementById('mid-result').innerHTML = '';
+  document.getElementById('mid-xlsx').value = '';
+  document.getElementById('mid-file-name').textContent = 'Ningún archivo seleccionado';
 }
 
 // ══ HOJAS PERSONALIZADAS CON QR (config tab) ═══════════════════════════════

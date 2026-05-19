@@ -22,6 +22,8 @@ from sheets_connector import (
     get_anuladas_for_grade, save_anuladas_for_grade, list_anuladas,
     get_student_from_roster, list_roster,
     get_student_results_all_simulacros,
+    match_xlsx_to_results_sheet, apply_id_matches_to_sheet,
+    _open_spreadsheet,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
@@ -625,6 +627,65 @@ def debug_image():
         'answers':     result.get('answers', []),
         'debug_image': img_b64
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MIGRACIÓN DE IDs — vincular documentos a estudiantes de hojas existentes
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.route('/migrate_ids/result_sheets', methods=['GET'])
+def migrate_ids_result_sheets():
+    """Lista TODAS las hojas que empiezan con 'Resultados '."""
+    try:
+        ss = _open_spreadsheet()
+        out = []
+        for ws in ss.worksheets():
+            t = ws.title or ''
+            if t.lower().startswith('resultados '):
+                out.append(t)
+        out.sort()
+        return jsonify({'success': True, 'sheets': out})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/migrate_ids/preview', methods=['POST'])
+def migrate_ids_preview():
+    """Recibe XLSX + sheet_name, devuelve matches a confirmar."""
+    try:
+        from pdf_personalizer import parse_roster_xlsx
+        f = request.files.get('roster')
+        sheet_name = (request.form.get('sheet_name') or '').strip()
+        if not f or not sheet_name:
+            return jsonify({'success': False,
+                            'error': 'Falta archivo o hoja destino.'}), 400
+        parsed = parse_roster_xlsx(f.read())
+        if not parsed.get('success'):
+            return jsonify(parsed), 400
+        result = match_xlsx_to_results_sheet(parsed['students'], sheet_name)
+        if not result.get('success', True):
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/migrate_ids/apply', methods=['POST'])
+def migrate_ids_apply():
+    """Aplica los matches confirmados a la hoja."""
+    try:
+        data = request.get_json(silent=True) or {}
+        sheet_name = (data.get('sheet_name') or '').strip()
+        matches    = data.get('matches') or []
+        if not sheet_name or not matches:
+            return jsonify({'success': False,
+                            'error': 'Faltan datos para aplicar.'}), 400
+        return jsonify(apply_id_matches_to_sheet(sheet_name, matches))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════════════
