@@ -212,9 +212,10 @@ M_SIPAGRE = {
 
 # ---------------------------------------------------------------------------
 # Registro central
+# (JMR-125 desactivado a pedido del usuario; sigue como referencia histórica
+# en este archivo pero no se expone en PROFILES ni en PROFILE_LIST.)
 # ---------------------------------------------------------------------------
 PROFILES = {
-    JMR_125['id']:    JMR_125,
     SIPAGRE_1S['id']: SIPAGRE_1S,
     SIPAGRE_2S['id']: SIPAGRE_2S,
     M_SIPAGRE['id']:  M_SIPAGRE,
@@ -225,7 +226,6 @@ PROFILE_LIST = [
     {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
-    {'id': JMR_125['id'],    'name': JMR_125['name']},
 ]
 
 DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
