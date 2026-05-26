@@ -32,6 +32,21 @@ app = Flask(__name__)
 app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER']      = 'uploads'
+# Auto-recargar templates al modificarlos (sin esto Flask cachea el HTML)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.jinja_env.auto_reload = True
+
+# Forzar no-cache en respuestas HTML para evitar caché del navegador
+@app.after_request
+def _no_cache_html(resp):
+    """Evita que el navegador cachee las páginas HTML — así los cambios
+    en index.html / portal_estudiante.html se reflejan al instante."""
+    ctype = resp.headers.get('Content-Type', '')
+    if ctype.startswith('text/html'):
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma']        = 'no-cache'
+        resp.headers['Expires']       = '0'
+    return resp
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 DEFAULT_SHEET      = 'Respuestas'
