@@ -270,7 +270,6 @@ PROFILES = {
     SIPAGRE_1S['id']: SIPAGRE_1S,
     SIPAGRE_2S['id']: SIPAGRE_2S,
     M_SIPAGRE['id']:  M_SIPAGRE,
-    IETECI_6['id']:   IETECI_6,
 }
 
 # Lista ordenada para la UI
@@ -278,7 +277,6 @@ PROFILE_LIST = [
     {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
-    {'id': IETECI_6['id'],   'name': IETECI_6['name']},
 ]
 
 DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
