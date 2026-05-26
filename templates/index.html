@@ -633,6 +633,34 @@
         </div>
       </div>
 
+      <!-- Selector de FORMATO según grado del estudiante (Media con
+           grados 6/7/8 + 9/10 puede usar 1S SIPAGRE o M SIPAGRE) -->
+      <div id="format-picker" style="display:none;">
+        <label>Formato de la hoja según grado del estudiante</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:6px;
+                        padding:10px;border:1.5px solid var(--card-border);
+                        border-radius:10px;cursor:pointer;background:rgba(255,255,255,.04);">
+            <input type="radio" name="formato" value="MSIPAGRE"
+                   onchange="selectFormato(this.value)" checked>
+            <div>
+              <div style="font-size:.85rem;font-weight:600;">M SIPAGRE</div>
+              <div style="font-size:.7rem;color:var(--muted);">Grados 9° y 10° (125 preg)</div>
+            </div>
+          </label>
+          <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:6px;
+                        padding:10px;border:1.5px solid var(--card-border);
+                        border-radius:10px;cursor:pointer;background:rgba(255,255,255,.04);">
+            <input type="radio" name="formato" value="1SSIPAGRE"
+                   onchange="selectFormato(this.value)">
+            <div>
+              <div style="font-size:.85rem;font-weight:600;">1S SIPAGRE</div>
+              <div style="font-size:.7rem;color:var(--muted);">Grados 6°, 7° y 8° (140 preg)</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
       <!-- Aviso al combinar simulacro + curso -->
       <div id="curso-sim-mismatch" style="display:none;margin-top:10px;
            padding:8px 12px;border-radius:8px;font-size:.8rem;
@@ -5593,8 +5621,10 @@ async function selectSimulacroSession() {
   const sel = document.getElementById('simulacro-select');
   const nombre = sel ? sel.value : '';
   const sessionPicker = document.getElementById('session-picker');
+  const formatPicker  = document.getElementById('format-picker');
   if (!nombre) {
     sessionPicker.style.display = 'none';
+    if (formatPicker) formatPicker.style.display = 'none';
     _checkCursoSimMismatch();
     return;
   }
@@ -5604,17 +5634,51 @@ async function selectSimulacroSession() {
   // Mostrar selector de sesión solo si es Completo
   if (sim.tipo === 'completo') {
     sessionPicker.style.display = 'block';
+    if (formatPicker) formatPicker.style.display = 'none';
     const session = document.querySelector('input[name="session"]:checked');
     if (!session) { _checkCursoSimMismatch(); return; }  // todavia no eligio sesion
     const targetSheet = session.value === '1S' ? sim.sheets[0] : sim.sheets[1];
     const targetProfile = session.value === '1S' ? '1SSIPAGRE' : '2SSIPAGRE';
     await _activateSimulacroSheet(targetSheet, targetProfile);
   } else {
+    // Media: si el simulacro incluye grados 6/7/8 Y también 9/10, mostrar
+    // selector de formato (M SIPAGRE para 9/10 vs 1S SIPAGRE para 6/7/8).
     sessionPicker.style.display = 'none';
     const targetSheet = sim.sheets[0];   // unica hoja M
-    await _activateSimulacroSheet(targetSheet, 'MSIPAGRE');
+    const grados = sim.grados || [];
+    const tieneChicos  = grados.some(g => ['6','7','8'].includes(g));
+    const tieneGrandes = grados.some(g => ['9','10'].includes(g));
+    if (tieneChicos && tieneGrandes && formatPicker) {
+      formatPicker.style.display = 'block';
+      // Default: el formato actualmente seleccionado (o M SIPAGRE)
+      const checked = document.querySelector('input[name="formato"]:checked');
+      const profile = checked ? checked.value : 'MSIPAGRE';
+      await _activateSimulacroSheet(targetSheet, profile);
+    } else {
+      if (formatPicker) formatPicker.style.display = 'none';
+      // Sin grados pequeños/mixto: usar M SIPAGRE por defecto
+      await _activateSimulacroSheet(targetSheet, 'MSIPAGRE');
+    }
   }
   _checkCursoSimMismatch();
+}
+
+// Al cambiar el formato dentro de un simulacro Media (botones radio)
+async function selectFormato(profileId) {
+  if (!profileId) return;
+  try {
+    await selectProfile(profileId);
+    // Feedback visual: pequeño toast (opcional)
+    const fmt = document.getElementById('format-picker');
+    if (fmt) {
+      const tag = profileId === '1SSIPAGRE'
+        ? '🟦 1S SIPAGRE (6°/7°/8°)' : '🟧 M SIPAGRE (9°/10°)';
+      // Highlight breve sobre el contenedor
+      fmt.style.transition = 'background-color .3s';
+      fmt.style.backgroundColor = 'rgba(34,197,94,.08)';
+      setTimeout(() => fmt.style.backgroundColor = '', 600);
+    }
+  } catch(e) { console.warn('No se pudo cambiar perfil:', e); }
 }
 
 // Cuando cambia el curso del estudiante: validar coincidencia con grados del simulacro
