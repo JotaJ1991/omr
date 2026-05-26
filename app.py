@@ -23,6 +23,7 @@ from sheets_connector import (
     get_student_from_roster, list_roster,
     get_student_results_all_simulacros,
     match_xlsx_to_results_sheet, apply_id_matches_to_sheet,
+    save_estudiantes, get_student_global, count_estudiantes,
     _open_spreadsheet,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
@@ -627,6 +628,59 @@ def debug_image():
         'answers':     result.get('answers', []),
         'debug_image': img_b64
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ROSTER GENERAL DE ESTUDIANTES — autocompletar nombre al teclear ID
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.route('/estudiantes/lookup', methods=['GET'])
+def estudiantes_lookup():
+    """Búsqueda rápida por ID. Devuelve {success, id, nombre, curso} o 404."""
+    sid = (request.args.get('id') or '').strip()
+    if not sid:
+        return jsonify({'success': False, 'error': 'id requerido'}), 400
+    try:
+        s = get_student_global(sid)
+        if not s:
+            return jsonify({'success': False, 'found': False}), 200
+        return jsonify({'success': True, 'found': True, **s})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/estudiantes/count', methods=['GET'])
+def estudiantes_count():
+    """Cuántos estudiantes hay en el roster general."""
+    try:
+        return jsonify({'success': True, 'count': count_estudiantes()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/estudiantes/upload', methods=['POST'])
+def estudiantes_upload():
+    """Sube XLSX (Curso, Documento, Nombres). Modo upsert por defecto;
+    si form['replace']='1' borra todo y reemplaza."""
+    try:
+        from pdf_personalizer import parse_roster_xlsx
+        f = request.files.get('roster')
+        if not f:
+            return jsonify({'success': False,
+                            'error': 'No se recibió archivo.'}), 400
+        replace = (request.form.get('replace') or '0') == '1'
+        parsed = parse_roster_xlsx(f.read())
+        if not parsed.get('success'):
+            return jsonify(parsed), 400
+        result = save_estudiantes(parsed['students'], replace=replace)
+        if not result.get('success'):
+            return jsonify(result), 500
+        result['xlsx_total'] = parsed.get('count', 0)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════════════

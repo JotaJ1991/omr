@@ -35,6 +35,7 @@ DISTRIBUCION_SHEET = 'Distribucion'
 KEYS_GRADE_SHEET   = 'ClavesGrado'
 ANULADAS_SHEET     = 'PreguntasAnuladas'
 ROSTER_SHEET       = 'RosterPersonalizado'
+ESTUDIANTES_SHEET  = 'Estudiantes'   # roster GENERAL (no atado a simulacro)
 
 # Tipos de simulacro
 SIM_COMPLETO = 'completo'   # 2 sesiones (1S + 2S)
@@ -2664,3 +2665,129 @@ def apply_id_matches_to_sheet(sheet_name: str, matches: list) -> dict:
         return {'success': True, 'updated': len(updates)}
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ROSTER GENERAL DE ESTUDIANTES — auto-completar nombre al teclear ID
+# Independiente de simulacros. Una sola fila por estudiante (dedup por ID).
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _ensure_estudiantes_sheet():
+    """Crea la hoja Estudiantes si no existe. Cols: ID, Nombre, Curso."""
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(ESTUDIANTES_SHEET)
+        header = ws.row_values(1) or []
+        if len(header) < 3 or header[0].strip().lower() != 'id':
+            ws.update('A1:C1', [['ID', 'Nombre', 'Curso']],
+                      value_input_option='RAW')
+    except Exception:
+        ws = ss.add_worksheet(title=ESTUDIANTES_SHEET, rows=3000, cols=3)
+        ws.update('A1:C1', [['ID', 'Nombre', 'Curso']], value_input_option='RAW')
+        try:
+            ws.format('A1:C1', {
+                'backgroundColor': {'red': 0.12, 'green': 0.23, 'blue': 0.54},
+                'textFormat': {'bold': True,
+                               'foregroundColor': {'red':1,'green':1,'blue':1}},
+            })
+        except Exception:
+            pass
+    return ws
+
+
+def save_estudiantes(students: list, replace: bool = False) -> dict:
+    """
+    Guarda/actualiza el roster general.
+      - students: lista de {'id','nombre','curso'}
+      - replace: si True, borra TODAS las filas existentes y reescribe.
+                 si False, hace upsert (existentes se actualizan por ID,
+                 nuevos se añaden).
+    Devuelve {'success':True, 'count': N, 'inserted':, 'updated':}.
+    """
+    if not isinstance(students, list):
+        return {'success': False, 'error': 'students debe ser lista'}
+    try:
+        ws = _ensure_estudiantes_sheet()
+        rows_existing = ws.get_all_values()
+        # Indexar existentes por ID
+        existing_idx = {}   # id -> row_num (1-based)
+        for i, r in enumerate(rows_existing[1:], start=2):
+            if r and len(r) > 0 and r[0].strip():
+                existing_idx[r[0].strip()] = i
+
+        # Limpiar incoming
+        clean = []
+        seen_ids = set()
+        for s in students:
+            sid = str(s.get('id') or '').strip()
+            nombre = str(s.get('nombre') or '').strip().upper()
+            curso = str(s.get('curso') or '').strip()
+            if not sid or sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            clean.append({'id': sid, 'nombre': nombre, 'curso': curso})
+
+        if replace:
+            # Borrar todo (excepto header)
+            n_rows = len(rows_existing)
+            if n_rows > 1:
+                ws.batch_clear([f'A2:C{n_rows}'])
+            if clean:
+                payload = [[s['id'], s['nombre'], s['curso']] for s in clean]
+                ws.update(f'A2:C{1 + len(payload)}', payload, value_input_option='RAW')
+            return {'success': True, 'count': len(clean),
+                    'replaced': True}
+        else:
+            # Upsert: updates a existentes + appends a nuevos
+            updates = []
+            new_rows = []
+            inserted = 0
+            updated = 0
+            for s in clean:
+                if s['id'] in existing_idx:
+                    rn = existing_idx[s['id']]
+                    updates.append({
+                        'range':  f'A{rn}:C{rn}',
+                        'values': [[s['id'], s['nombre'], s['curso']]],
+                    })
+                    updated += 1
+                else:
+                    new_rows.append([s['id'], s['nombre'], s['curso']])
+                    inserted += 1
+            if updates:
+                ws.batch_update(updates, value_input_option='RAW')
+            if new_rows:
+                ws.append_rows(new_rows, value_input_option='RAW')
+            return {'success': True, 'count': inserted + updated,
+                    'inserted': inserted, 'updated': updated}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def get_student_global(student_id: str) -> dict:
+    """Busca un estudiante por ID en el roster general. Devuelve dict o None."""
+    sid = str(student_id or '').strip()
+    if not sid:
+        return None
+    try:
+        ws = _ensure_estudiantes_sheet()
+        for r in ws.get_all_values()[1:]:
+            if len(r) >= 1 and (r[0] or '').strip() == sid:
+                return {
+                    'id':     sid,
+                    'nombre': (r[1] or '').strip() if len(r) > 1 else '',
+                    'curso':  (r[2] or '').strip() if len(r) > 2 else '',
+                }
+    except Exception:
+        pass
+    return None
+
+
+def count_estudiantes() -> int:
+    """Cuenta los estudiantes registrados en el roster general."""
+    try:
+        ws = _ensure_estudiantes_sheet()
+        rows = ws.get_all_values()
+        return sum(1 for r in rows[1:] if r and r[0].strip())
+    except Exception:
+        return 0

@@ -663,9 +663,11 @@
              oninput="this.classList.remove('required-empty')">
       <label for="student-id">ID / Cédula</label>
       <input type="text" id="student-id" placeholder="Ej: 1234567890"
-             oninput="this.classList.remove('required-empty')">
-      <p style="font-size:.78rem;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
-        💡 Ingresa al menos nombre o ID
+             autocomplete="off"
+             oninput="this.classList.remove('required-empty'); _onStudentIdInput(this);">
+      <p id="student-roster-hint"
+         style="font-size:.78rem;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
+        💡 Si subiste el roster en Configuración, el nombre se autocompleta al teclear el documento.
       </p>
     </div>
 
@@ -1159,6 +1161,54 @@
       <div id="personalize-result" style="margin-top:12px;"></div>
     </div>
 
+    <!-- ── Roster general de estudiantes (autocompletar nombre al teclear ID) ── -->
+    <div class="card">
+      <h2>👥 Roster general de estudiantes</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+        Carga la lista completa de estudiantes del colegio.
+        Al escanear una hoja, escribiendo solo el documento se
+        completará automáticamente el nombre y el curso.
+        Columnas esperadas: <code>Curso, Documento, Nombres</code>.
+      </p>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+                    margin-bottom:10px;">
+          <div style="background:rgba(99,102,241,.12);border-radius:8px;
+                      padding:8px 14px;text-align:center;min-width:120px;">
+            <div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);"
+                 id="est-count">—</div>
+            <div style="font-size:.7rem;color:var(--muted);">Registrados</div>
+          </div>
+          <div style="flex:1;min-width:180px;font-size:.78rem;color:var(--muted);">
+            El roster se usa al escanear hojas para precargar nombre y curso
+            al teclear el documento.
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+                    margin-bottom:8px;">
+          <input type="file" id="est-xlsx" accept=".xlsx,.xls"
+                 style="display:none;" onchange="onEstFileChange(this)">
+          <button class="btn-secondary" type="button"
+                  onclick="document.getElementById('est-xlsx').click()">
+            📂 Subir Excel
+          </button>
+          <label style="font-size:.78rem;color:var(--muted);
+                  display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="est-replace"
+                   style="cursor:pointer;">
+            Reemplazar todo (en vez de actualizar)
+          </label>
+          <span id="est-file-name" style="font-size:.78rem;color:var(--muted);">
+            Ningún archivo seleccionado
+          </span>
+        </div>
+        <div id="est-status" style="margin-top:8px;font-size:.85rem;"></div>
+      </div>
+    </div>
+
     <!-- ── Vincular IDs a estudiantes existentes ── -->
     <div class="card">
       <h2>🔗 Vincular IDs a estudiantes existentes</h2>
@@ -1388,6 +1438,7 @@ let state = {
   await loadSimulacros();
   await loadDistribuciones();
   await _midLoadSheets();
+  await _estLoadCount();
 })();
 
 // ══ DISTRIBUCIÓN DE PREGUNTAS POR GRADO ════════════════════════════════════
@@ -1663,6 +1714,132 @@ async function loadSimulacros() {
     _populatePersonalizeSimSelect();
     _refreshAnuList();
   } catch(e) { console.warn('No se pudo cargar simulacros:', e); }
+}
+
+// ══ ROSTER GENERAL — autocompletar nombre al teclear ID ═══════════════════
+async function _estLoadCount() {
+  try {
+    const r = await (await fetch('/estudiantes/count')).json();
+    const el = document.getElementById('est-count');
+    if (el) el.textContent = r.count != null ? r.count : '—';
+  } catch (e) { /* ignorar */ }
+}
+
+async function onEstFileChange(input) {
+  const f = input.files[0];
+  const nameEl = document.getElementById('est-file-name');
+  const statusEl = document.getElementById('est-status');
+  if (!f) { nameEl.textContent = 'Ningún archivo seleccionado'; return; }
+  nameEl.innerHTML = `📄 <strong>${f.name}</strong>
+    <span style="opacity:.6;">(${(f.size/1024).toFixed(1)} KB)</span>`;
+  statusEl.innerHTML = '<span style="color:var(--muted);">⏳ Subiendo…</span>';
+
+  const replace = document.getElementById('est-replace').checked ? '1' : '0';
+  const fd = new FormData();
+  fd.append('roster', f);
+  fd.append('replace', replace);
+  try {
+    const resp = await fetch('/estudiantes/upload', {method:'POST', body: fd});
+    const data = await resp.json();
+    if (!data.success) {
+      statusEl.innerHTML = `<span style="color:var(--danger);">
+        ❌ ${data.error || 'Error desconocido'}</span>`;
+      return;
+    }
+    const det = data.replaced
+      ? `Reemplazo total: ${data.count} estudiantes guardados.`
+      : `Insertados ${data.inserted ?? 0} · Actualizados ${data.updated ?? 0}.`;
+    statusEl.innerHTML = `<span style="color:var(--success);font-weight:600;">
+      ✅ ${det}</span>
+      <span style="color:var(--muted);font-size:.78rem;">
+       (Archivo: ${data.xlsx_total ?? '?'} filas leídas)</span>`;
+    await _estLoadCount();
+    // Invalida la caché local de lookups
+    _rosterCache = {};
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:var(--danger);">
+      ❌ Error de conexión: ${e.message}</span>`;
+  }
+}
+
+// Cache local de lookups para no bombardear el endpoint en cada keystroke
+let _rosterCache = {};       // { id: {nombre, curso} | null }
+let _rosterTimer = null;
+const _ROSTER_DEBOUNCE_MS = 350;
+
+function _onStudentIdInput(input) {
+  const id = (input.value || '').trim();
+  // Limpiar timer anterior
+  if (_rosterTimer) clearTimeout(_rosterTimer);
+  if (!id) {
+    _resetRosterHint();
+    return;
+  }
+  // Si está en cache, aplicar inmediatamente
+  if (Object.prototype.hasOwnProperty.call(_rosterCache, id)) {
+    _applyRosterMatch(id, _rosterCache[id]);
+    return;
+  }
+  _rosterTimer = setTimeout(async () => {
+    try {
+      const resp = await fetch(`/estudiantes/lookup?id=${encodeURIComponent(id)}`);
+      const data = await resp.json();
+      const match = (data && data.found) ? {nombre: data.nombre, curso: data.curso} : null;
+      _rosterCache[id] = match;
+      _applyRosterMatch(id, match);
+    } catch (e) { /* ignorar */ }
+  }, _ROSTER_DEBOUNCE_MS);
+}
+
+function _applyRosterMatch(id, match) {
+  const idInput = document.getElementById('student-id');
+  const nameInput = document.getElementById('student-name');
+  const hint = document.getElementById('student-roster-hint');
+  if (!idInput || (idInput.value || '').trim() !== id) return;   // cambió mientras esperaba
+  if (match) {
+    // Solo autocompletar si el campo nombre está vacío o tiene el valor
+    // anterior del roster (para no sobrescribir ediciones manuales)
+    if (!nameInput.value.trim() || nameInput.dataset.rosterFilled === '1') {
+      nameInput.value = match.nombre || '';
+      nameInput.dataset.rosterFilled = '1';
+      nameInput.classList.remove('required-empty');
+    }
+    if (hint) {
+      hint.innerHTML = `✅ <strong style="color:var(--success);">${match.nombre}</strong>` +
+        (match.curso ? ` <span style="opacity:.7;">· Curso ${match.curso}</span>` : '') +
+        ' <span style="opacity:.6;font-size:.72rem;">(autocompletado del roster)</span>';
+      hint.style.color = 'var(--muted)';
+    }
+    idInput.style.borderColor = 'rgba(34,197,94,.6)';
+  } else {
+    if (hint) {
+      hint.innerHTML = `<span style="color:var(--warning);">
+        ⚠️ ID no encontrado en el roster.</span>
+        <span style="color:var(--muted);font-size:.72rem;">
+        Ingresa el nombre manualmente o súbelo a Configuración → Roster.</span>`;
+    }
+    idInput.style.borderColor = 'rgba(245,158,11,.5)';
+    // Si el nombre venía del roster, limpiarlo
+    if (nameInput.dataset.rosterFilled === '1') {
+      nameInput.value = '';
+      nameInput.dataset.rosterFilled = '';
+    }
+  }
+}
+
+function _resetRosterHint() {
+  const idInput = document.getElementById('student-id');
+  const nameInput = document.getElementById('student-name');
+  const hint = document.getElementById('student-roster-hint');
+  if (idInput) idInput.style.borderColor = '';
+  if (hint) {
+    hint.innerHTML = `💡 Si subiste el roster en Configuración, el nombre se
+      autocompleta al teclear el documento.`;
+  }
+  if (nameInput && nameInput.dataset.rosterFilled === '1') {
+    nameInput.value = '';
+    nameInput.dataset.rosterFilled = '';
+  }
 }
 
 // ══ VINCULAR IDs A ESTUDIANTES EXISTENTES (migración) ══════════════════════
