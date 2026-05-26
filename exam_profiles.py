@@ -211,79 +211,36 @@ M_SIPAGRE = {
 
 
 # ---------------------------------------------------------------------------
-# IETECI 6°  —  Una jornada, 100 preguntas, 4 col × 25 (todas A-D)
-#   Mismo formato físico que 1S SIPAGRE pero solo 100 preguntas.
-#   Mat 1-25 | Lect 26-50 | Soc 51-75 | Nat 76-100  (todas A-D)
+# IETECI 6°  —  Hoja 1S SIPAGRE (120 burbujas), TODAS las opciones A-D
+#   Formato físico idéntico al 1S SIPAGRE excepto en la columna 4:
+#   en 1S original esa columna es A-H (P106-P120); aquí es A-D para que
+#   el OMR no espere las opciones E-H.
+#   Distribución de asignaturas (definida en hoja "Distribucion"):
+#     Mat 1-20 | Lect 21-40 | Soc 41-60 | Nat 61-80 | Ing 81-120
 # ---------------------------------------------------------------------------
 IETECI_6 = {
     'id':    'IETECI6',
-    'name':  'IETECI 6° — 100 preguntas (A-D)',
-    'total_q': 100,
+    'name':  'IETECI 6° — 120 preguntas (todas A-D)',
+    'total_q': 120,
     'work_w':  1275,
     'work_h':  1650,
 
-    'columns': [
-        {'q_start':   1, 'q_end':  25, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.068, 0.093, 0.117, 0.142],
-         'timing_fx': 0.020},
-        {'q_start':  26, 'q_end':  50, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.310, 0.335, 0.360, 0.385],
-         'timing_fx': 0.262},
-        {'q_start':  51, 'q_end':  75, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.550, 0.574, 0.599, 0.624],
-         'timing_fx': 0.503},
-        # Col 4: en el espacio físico que el 1S SIPAGRE usaba para A-H,
-        # aquí solo leemos A-D (primeras 4 opciones). Si la hoja se
-        # imprime con 4 burbujas por fila en esta columna, calibra mejor;
-        # si se reusa la hoja 1S SIPAGRE con A-H, las E-H se ignoran.
-        {'q_start':  76, 'q_end': 100, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.790, 0.815, 0.840, 0.865],
-         'timing_fx': 0.746},
-    ],
-
-    'answers_top_f':    0.175,
-    'answers_bottom_f': 0.977,
-    'bubble_radius':     9,
-    'snap_range':        3,
-    'fill_threshold':   0.10,
-    'min_contrast':     0.06,
-    'binarize_block':   25,
-    'binarize_c':        6,
-    'clahe_clip':        2.5,
-    'clahe_grid':       (8, 8),
-    'mask_inner_ratio':  0.75,
-}
-
-
-# ---------------------------------------------------------------------------
-# IETECI 7° / 8°  —  Una jornada, 125 preguntas, todas A-D
-#   Misma geometría física que 1S SIPAGRE / M SIPAGRE (4 columnas) pero
-#   manteniendo la "forma de respuesta" A-D en todas las posiciones.
-#   Mat 1-25 | Lect 26-50 | Soc 51-75 | Nat 76-100 | Ing 101-125
-# ---------------------------------------------------------------------------
-IETECI_78 = {
-    'id':    'IETECI78',
-    'name':  'IETECI 7° y 8° — 125 preguntas (A-D)',
-    'total_q': 125,
-    'work_w':  1275,
-    'work_h':  1650,
-
+    # Geometría IDÉNTICA al 1S SIPAGRE original (las 4 columnas en las
+    # mismas posiciones x) — solo cambia que la col 4 lee A-D en lugar de A-H.
     'columns': [
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.069, 0.094, 0.119, 0.144],
+         'bubble_fx': [0.068, 0.093, 0.117, 0.142],
          'timing_fx': 0.020},
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.309, 0.333, 0.359, 0.383],
+         'bubble_fx': [0.310, 0.335, 0.360, 0.385],
          'timing_fx': 0.262},
-        # Col 3: en M SIPAGRE original esta col era A-H. Para 7°/8° leemos
-        # solo A-D (las E-H, si la hoja reutilizada las tiene, se ignoran).
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.551, 0.575, 0.599, 0.624],
+         'bubble_fx': [0.550, 0.574, 0.599, 0.624],
          'timing_fx': 0.503},
-        # Col 4: 20 preguntas (P106-P125), A-D
-        {'q_start': 106, 'q_end': 125, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.870, 0.896, 0.919, 0.943],
-         'timing_fx': 0.823},
+        # Col 4: P106-P120, A-D solamente (las E-H del 1S original se ignoran)
+        {'q_start': 106, 'q_end': 120, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.790, 0.815, 0.840, 0.865],
+         'timing_fx': 0.789},
     ],
 
     'answers_top_f':    0.175,
@@ -298,6 +255,10 @@ IETECI_78 = {
     'clahe_grid':       (8, 8),
     'mask_inner_ratio':  0.75,
 }
+
+# 7° y 8°: usan el perfil 1S SIPAGRE original (120 preguntas con col 4 A-H
+# para las posiciones de Inglés 106-120). No requiere perfil aparte —
+# basta con seleccionar "1S SIPAGRE" al escanear.
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +271,6 @@ PROFILES = {
     SIPAGRE_2S['id']: SIPAGRE_2S,
     M_SIPAGRE['id']:  M_SIPAGRE,
     IETECI_6['id']:   IETECI_6,
-    IETECI_78['id']:  IETECI_78,
 }
 
 # Lista ordenada para la UI
@@ -319,7 +279,6 @@ PROFILE_LIST = [
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
     {'id': IETECI_6['id'],   'name': IETECI_6['name']},
-    {'id': IETECI_78['id'],  'name': IETECI_78['name']},
 ]
 
 DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
