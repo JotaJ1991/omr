@@ -1832,8 +1832,13 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         soc  = int(round(scores['Sociales']))
         nat  = int(round(scores['Naturales']))
         ing  = int(round(scores['Ingles']))
-        # Pesos: Mat, Lect, Soc, Nat = 3 cada una; Ing = 1.  Suma = 13
-        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
+        # Sistema simple: cada asignatura aporta 0-100. Puntaje general =
+        # suma directa = max 500. Equivale a que cada pregunta correcta
+        # vale 100/(preg por asig) puntos integralmente hacia el general:
+        #   6° (20 preg/asig):    5 puntos por pregunta correcta
+        #   7°/8°/9° (25 preg):   4 puntos por pregunta correcta
+        #   10° Nat (40 preg):    2.5 puntos por pregunta correcta
+        general = int(round(mat + lect + soc + nat + ing))
 
         results.append({
             'id':       sid,
@@ -2027,8 +2032,13 @@ def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
         soc  = int(round(scores['Sociales']))
         nat  = int(round(scores['Naturales']))
         ing  = int(round(scores['Ingles']))
-        # Pesos: Mat, Lect, Soc, Nat = 3 cada una; Ing = 1.  Suma = 13
-        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
+        # Sistema simple: cada asignatura aporta 0-100. Puntaje general =
+        # suma directa = max 500. Equivale a que cada pregunta correcta
+        # vale 100/(preg por asig) puntos integralmente hacia el general:
+        #   6° (20 preg/asig):    5 puntos por pregunta correcta
+        #   7°/8°/9° (25 preg):   4 puntos por pregunta correcta
+        #   10° Nat (40 preg):    2.5 puntos por pregunta correcta
+        general = int(round(mat + lect + soc + nat + ing))
 
         # Solo grado 10°: descomponer Naturales en Química (P61-P80) y
         # Física (P81-P100). Para otros grados se queda vacío.
