@@ -83,13 +83,15 @@ JMR_125 = {
 # ---------------------------------------------------------------------------
 SIPAGRE_1S = {
     'id':    '1SSIPAGRE',
-    'name':  '1S SIPAGRE — 120 preguntas',
-    'total_q': 120,
+    'name':  '1S SIPAGRE — 140 preguntas',
+    'total_q': 140,
     'work_w':  1275,
     'work_h':  1650,
 
-    # Posiciones calibradas (paso=0.025, gap timing→A=0.046)
-    # Col 1-2: A B C D  |  Col 3-4: A B C D E F G H
+    # Hoja física 4 columnas × 35 filas = 140 burbujas.
+    # Col 1-3: A-D  |  Col 4: A-H
+    # (Cuántas se evalúan por grado lo define la distribución en Sheets:
+    #  ej. 6° usa 1-120, 7°/8° usan 1-125, simulacro Completo usa 1-140.)
     'columns': [
         # Col 1: P1-P35  — A B C D
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
@@ -103,8 +105,8 @@ SIPAGRE_1S = {
         {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
          'bubble_fx': [0.550, 0.574, 0.599, 0.624],
          'timing_fx': 0.503},
-        # Col 4: P106-P120 — A B C D E F G H
-        {'q_start': 106, 'q_end': 120, 'options': ['A','B','C','D','E','F','G','H'],
+        # Col 4: P106-P140 — A B C D E F G H (35 filas, igual al LaTeX original)
+        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
          'bubble_fx': [0.790, 0.815, 0.840, 0.865, 0.890, 0.914, 0.940, 0.963],
          'timing_fx': 0.746},
     ],
@@ -119,7 +121,7 @@ SIPAGRE_1S = {
     'binarize_c':        6,
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
-    'mask_inner_ratio':  0.75,   # mide solo el 60% interior, ignora el borde impreso
+    'mask_inner_ratio':  0.75,
 }
 
 
@@ -256,50 +258,13 @@ IETECI_6 = {
     'mask_inner_ratio':  0.75,
 }
 
-# ---------------------------------------------------------------------------
-# IETECI 7° / 8°  —  125 preguntas, estilo 1S SIPAGRE
-#   Mismo aspecto físico que 1S SIPAGRE: 4 columnas con la col 4 en A-H,
-#   pero extendida a 20 filas (en vez de 15) para llegar a 125.
-#   Mat 1-25 | Lect 26-50 | Soc 51-75 | Nat 76-100 | Ing 101-125
-#   (Las 25 preguntas de Inglés caen así: 101-105 en col 3, 106-125 en col 4 A-H)
-# ---------------------------------------------------------------------------
-IETECI_78 = {
-    'id':    'IETECI78',
-    'name':  'IETECI 7° y 8° — 125 preguntas (col 4 A-H)',
-    'total_q': 125,
-    'work_w':  1275,
-    'work_h':  1650,
-
-    'columns': [
-        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.068, 0.093, 0.117, 0.142],
-         'timing_fx': 0.020},
-        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.310, 0.335, 0.360, 0.385],
-         'timing_fx': 0.262},
-        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.550, 0.574, 0.599, 0.624],
-         'timing_fx': 0.503},
-        # Col 4: P106-P125 (20 filas A-H, vs las 15 del 1S original)
-        {'q_start': 106, 'q_end': 125,
-         'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.790, 0.815, 0.840, 0.865,
-                       0.890, 0.914, 0.940, 0.963],
-         'timing_fx': 0.789},
-    ],
-
-    'answers_top_f':    0.175,
-    'answers_bottom_f': 0.977,
-    'bubble_radius':     9,
-    'snap_range':        3,
-    'fill_threshold':   0.10,
-    'min_contrast':     0.06,
-    'binarize_block':   25,
-    'binarize_c':        6,
-    'clahe_clip':        2.5,
-    'clahe_grid':       (8, 8),
-    'mask_inner_ratio':  0.75,
-}
+# IETECI 7°/8° ya no requiere perfil aparte: la hoja física 1S SIPAGRE
+# tiene 140 burbujas (4 col × 35 filas). Cualquier grado puede usar el
+# perfil 1S SIPAGRE y la distribución (en hoja "Distribucion") define
+# cuántas preguntas se evalúan realmente:
+#   - 6°:     1-120 (Ing 81-120, A-D)
+#   - 7°/8°:  1-125 (Ing 101-125, A-D hasta 105 + A-H 106-125)
+#   - Comp.:  1-140 (Completo SIPAGRE original)
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +276,6 @@ PROFILES = {
     SIPAGRE_1S['id']: SIPAGRE_1S,
     SIPAGRE_2S['id']: SIPAGRE_2S,
     M_SIPAGRE['id']:  M_SIPAGRE,
-    IETECI_78['id']:  IETECI_78,
 }
 
 # Lista ordenada para la UI
@@ -319,7 +283,6 @@ PROFILE_LIST = [
     {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
-    {'id': IETECI_78['id'],  'name': IETECI_78['name']},
 ]
 
 DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
