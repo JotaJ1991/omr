@@ -157,6 +157,34 @@ def process():
     profile     = get_profile(pid)
     total_q     = profile['total_q']
 
+    # ── Determinar el total efectivo según el grado del estudiante ──
+    # Si el cliente envía el curso, calculamos cuántas preguntas se evalúan
+    # realmente para ese grado (suma del fin de la distribución). Las
+    # respuestas más allá de esa posición se descartan y NO aparecen en el
+    # debug visual.
+    curso_req = (request.form.get('curso') or '').strip()
+    effective_total_q = None
+    if curso_req:
+        try:
+            from sheets_connector import (
+                _grade_from_course_name, list_distribuciones,
+                DEFAULT_DISTRIBUCIONES,
+            )
+            grado_stu = _grade_from_course_name(curso_req)
+            if grado_stu:
+                # El tipo de simulacro lo derivamos del perfil:
+                # 1S/2S = completo, M/IETECI = media
+                tipo = 'completo' if pid in ('1SSIPAGRE', '2SSIPAGRE') else 'media'
+                dists = list_distribuciones()
+                dist  = dists.get((tipo, grado_stu)) or \
+                        DEFAULT_DISTRIBUCIONES.get((tipo, grado_stu))
+                if dist:
+                    effective_total_q = max((int(e.get('fin', 0)) for e in dist),
+                                            default=0) or None
+        except Exception:
+            traceback.print_exc()
+            effective_total_q = None
+
     current_raw = request.form.get('current_answers', '')
     try:
         current = json.loads(current_raw) if current_raw else []
@@ -168,7 +196,8 @@ def process():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        result = process_exam_image(filepath, profile_id=pid, debug=True)
+        result = process_exam_image(filepath, profile_id=pid, debug=True,
+                                    effective_total_q=effective_total_q)
 
         # Leer imagen anotada y eliminar archivos temporales
         debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
@@ -184,6 +213,8 @@ def process():
             return jsonify({'success': False, 'error': result['error']}), 422
 
         new_answers = result['answers']
+        # Si se truncó por effective_total_q, usar ese como total real
+        total_q = result.get('total_q', total_q)
 
         if current and len(current) == total_q:
             merged = current[:]

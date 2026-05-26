@@ -18,7 +18,21 @@ from exam_profiles import get_profile, DEFAULT_PROFILE_ID
 
 def process_exam_image(image_path: str,
                        profile_id: str = DEFAULT_PROFILE_ID,
-                       debug: bool = False) -> dict:
+                       debug: bool = False,
+                       effective_total_q: int = None) -> dict:
+    """
+    Procesa una hoja OMR.
+
+    effective_total_q (opcional):
+        Si se pasa, las respuestas más allá de esta posición se descartan
+        (se ponen como '?') y el debug visual solo muestra hasta esta
+        cantidad. Útil cuando la hoja física tiene más burbujas que las
+        evaluadas para el grado en cuestión. Por ejemplo:
+          - Grado 6° (100 preguntas) sobre hoja 1S SIPAGRE (140 burbujas):
+            effective_total_q=100 → las posiciones 101-140 se ignoran
+          - Grado 7°/8° (125 preguntas) sobre la misma hoja:
+            effective_total_q=125 → las 126-140 se ignoran
+    """
     profile = get_profile(profile_id)
 
     img = cv2.imread(image_path)
@@ -30,8 +44,6 @@ def process_exam_image(image_path: str,
     warped, p_ok = _correct_perspective(gray, profile)
 
     # ── DETECCIÓN DEL QR (hojas personalizadas IETAGRO) ──
-    # Se busca ANTES del CLAHE/binarize porque el QR funciona mejor con
-    # niveles de gris originales. No bloquea el flujo si no se encuentra.
     qr_info = _detect_student_qr(warped)
 
     # CLAHE opcional según el perfil
@@ -46,21 +58,36 @@ def process_exam_image(image_path: str,
     y_rows, n_rows = _detect_rows(binary, profile)
     answers, confs = _read_answers(binary, warped, y_rows, profile)
 
-    if debug:
-        _save_debug(warped, binary, answers, y_rows, profile, image_path)
+    # ── Truncar respuestas según effective_total_q ──
+    total_q_profile = profile['total_q']
+    if effective_total_q is not None and 0 < effective_total_q < len(answers):
+        # Las posiciones después del límite se descartan (se marcan como ?)
+        # Esto previene que respuestas en la zona "no evaluada" se guarden.
+        for i in range(effective_total_q, len(answers)):
+            answers[i] = '?'
+        # Confs igual: ponerlos a 0 para que no afecten el promedio
+        if len(confs) > effective_total_q:
+            confs = confs[:effective_total_q]
+        effective_q = effective_total_q
+    else:
+        effective_q = total_q_profile
 
-    total_q  = profile['total_q']
-    detected = len([a for a in answers if a != '?'])
+    if debug:
+        # Pasar el límite efectivo al debug para que solo dibuje hasta ahí
+        _save_debug(warped, binary, answers, y_rows, profile, image_path,
+                    effective_total_q=effective_q)
+
+    detected = len([a for a in answers[:effective_q] if a != '?'])
 
     return {
         'success':               True,
-        'answers':               answers,       # lista de total_q elementos
+        'answers':               answers[:effective_q] if effective_total_q else answers,
         'confidence':            round(float(np.mean(confs)) if confs else 0, 1),
         'rows_detected':         n_rows,
         'perspective_corrected': p_ok,
-        'total_q':               total_q,
+        'total_q':               effective_q,
         'profile_id':            profile_id,
-        'qr':                    qr_info,        # None si no se detectó
+        'qr':                    qr_info,
     }
 
 
@@ -531,7 +558,8 @@ def _pick_answer(fills, darks, options, threshold, min_contrast):
 # DEBUG
 # ===========================================================================
 
-def _save_debug(warped, binary, answers, y_rows, profile, original_path):
+def _save_debug(warped, binary, answers, y_rows, profile, original_path,
+                effective_total_q=None):
     h, w  = warped.shape
     debug = cv2.cvtColor(warped, cv2.COLOR_GRAY2BGR)
 
@@ -541,9 +569,14 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path):
     ]
     radius = profile['bubble_radius']
 
-    # ── Dibujar las posiciones de burbuja hasta total_q ─────────────────────
-    # Si total_q < total geometrico, no dibuja las burbujas excedentes
-    total_q   = profile.get('total_q', sum(c['q_end'] - c['q_start'] + 1 for c in profile['columns']))
+    # ── Dibujar las posiciones de burbuja hasta total_q efectivo ────────────
+    # effective_total_q (si se pasa) limita la zona evaluada al grado real
+    # del estudiante. Las burbujas fuera de esa zona NO se dibujan, así el
+    # docente ve claramente qué se evaluó y qué se ignoró.
+    geom_total = sum(c['q_end'] - c['q_start'] + 1 for c in profile['columns'])
+    total_q   = profile.get('total_q', geom_total)
+    if effective_total_q is not None and 0 < effective_total_q < total_q:
+        total_q = effective_total_q
     q_idx     = 0
     for col in profile['columns']:
         if q_idx >= total_q:
