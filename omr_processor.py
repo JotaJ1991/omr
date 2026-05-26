@@ -625,12 +625,38 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path,
     info_lines = [
         f"Perfil: {profile.get('id','?')}",
         f"Filas detectadas: {len(y_rows)}",
+        f"Preguntas evaluadas: {total_q} de {geom_total}",
         f"top_f={profile['answers_top_f']}  bot_f={profile['answers_bottom_f']}",
         f"fill_thr={profile['fill_threshold']}  contrast={profile['min_contrast']}",
     ]
     for i, txt in enumerate(info_lines):
+        # Resaltar en amarillo la línea de "preguntas evaluadas" si hubo truncado
+        color = (0, 200, 255) if (i == 2 and effective_total_q is not None
+                                  and effective_total_q < geom_total) \
+                              else (0, 120, 255)
         cv2.putText(debug, txt, (10, 22 + i * 22),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 120, 255), 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1, cv2.LINE_AA)
+
+    # ── Banda inferior si las preguntas extra NO se evalúan ──
+    if effective_total_q is not None and effective_total_q < geom_total:
+        # Sombrear ligeramente la zona NO evaluada para que sea evidente
+        # qué burbujas físicas se ignoraron. Calculamos qué columnas/filas
+        # caen fuera del rango evaluado.
+        q_idx_skip = 0
+        for col in profile['columns']:
+            n_rows = col['q_end'] - col['q_start'] + 1
+            for row_idx in range(n_rows):
+                q_idx_skip += 1
+                if q_idx_skip <= effective_total_q: continue
+                # Esta posición física NO se evalúa
+                y = y_rows[row_idx] if row_idx < len(y_rows) else 0
+                xs = [int(fx * w) for fx in col['bubble_fx']]
+                for x in xs:
+                    # Tachón rojo claro indicando "ignorada"
+                    cv2.line(debug, (x - radius, y - radius),
+                             (x + radius, y + radius), (60, 60, 220), 1)
+                    cv2.line(debug, (x - radius, y + radius),
+                             (x + radius, y - radius), (60, 60, 220), 1)
 
     base, _ = os.path.splitext(original_path)
     cv2.imwrite(base + '_debug.jpg', debug)
