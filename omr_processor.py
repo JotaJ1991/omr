@@ -604,20 +604,51 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path,
 
             q_idx += 1
 
+    # ── Calcular cuántas burbujas de cada columna se evalúan ──
+    # Esto define qué columnas se dibujan COMPLETAS, parciales o se omiten.
+    col_evaluated = []     # lista paralela a profile['columns']: n_filas evaluadas
+    cum = 0
+    for col in profile['columns']:
+        n_rows_col = col['q_end'] - col['q_start'] + 1
+        eval_in_col = max(0, min(n_rows_col, total_q - cum))
+        col_evaluated.append(eval_in_col)
+        cum += n_rows_col
+
     # ── Zona de respuestas (top/bottom) — se dibuja primero como referencia ──
     y_top    = int(profile['answers_top_f']    * h)
     y_bottom = int(profile['answers_bottom_f'] * h)
     cv2.line(debug, (0, y_top),    (w, y_top),    (0, 120, 255), 2)
     cv2.line(debug, (0, y_bottom), (w, y_bottom), (0, 120, 255), 2)
 
-    # Líneas horizontales de cada fila — solo dentro del rango visible
+    # Líneas horizontales de cada fila — solo se extienden hasta la última
+    # columna que evalúa esa fila. Si una fila tiene burbujas solo en
+    # cols 1-2 (porque la 3 ya no evalúa), la línea termina al final de col 2.
+    max_rows_drawn = max(col_evaluated) if col_evaluated else 0
     margin = profile.get('bubble_radius', 10) + 2
-    for y in y_rows:
+
+    def _x_fin_de_columna(col):
+        """X (px) al final de la zona de respuestas de esa columna."""
+        if not col.get('bubble_fx'): return 0
+        return int(col['bubble_fx'][-1] * w) + radius + 4
+
+    for row_idx, y in enumerate(y_rows):
+        if row_idx >= max_rows_drawn:
+            break
+        # Encontrar la última columna que evalúa esta fila
+        x_fin = 0
+        for i, col in enumerate(profile['columns']):
+            if col_evaluated[i] > row_idx:
+                x_fin = max(x_fin, _x_fin_de_columna(col))
+        if x_fin <= 0:
+            continue
         if y_top + margin <= y <= y_bottom - margin:
-            cv2.line(debug, (0, y), (w, y), (0, 200, 200), 1)
+            cv2.line(debug, (0, y), (x_fin, y), (0, 200, 200), 1)
 
     # ── Líneas verticales de timing marks ────────────────────────────────────
-    for col in profile['columns']:
+    # Solo dibujar la línea de las columnas que TIENEN preguntas evaluadas.
+    for i, col in enumerate(profile['columns']):
+        if col_evaluated[i] <= 0:
+            continue   # columna no evaluada → no dibujar línea
         x_tm = int(col['timing_fx'] * w)
         cv2.line(debug, (x_tm, y_top), (x_tm, y_bottom), (0, 200, 200), 1)
 
@@ -637,26 +668,10 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path,
         cv2.putText(debug, txt, (10, 22 + i * 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1, cv2.LINE_AA)
 
-    # ── Banda inferior si las preguntas extra NO se evalúan ──
-    if effective_total_q is not None and effective_total_q < geom_total:
-        # Sombrear ligeramente la zona NO evaluada para que sea evidente
-        # qué burbujas físicas se ignoraron. Calculamos qué columnas/filas
-        # caen fuera del rango evaluado.
-        q_idx_skip = 0
-        for col in profile['columns']:
-            n_rows = col['q_end'] - col['q_start'] + 1
-            for row_idx in range(n_rows):
-                q_idx_skip += 1
-                if q_idx_skip <= effective_total_q: continue
-                # Esta posición física NO se evalúa
-                y = y_rows[row_idx] if row_idx < len(y_rows) else 0
-                xs = [int(fx * w) for fx in col['bubble_fx']]
-                for x in xs:
-                    # Tachón rojo claro indicando "ignorada"
-                    cv2.line(debug, (x - radius, y - radius),
-                             (x + radius, y + radius), (60, 60, 220), 1)
-                    cv2.line(debug, (x - radius, y + radius),
-                             (x + radius, y - radius), (60, 60, 220), 1)
+    # (Antes había X rojas para marcar burbujas ignoradas, pero ahora
+    #  directamente no se dibujan los círculos en zonas no evaluadas,
+    #  ni las líneas verticales de timing marks, ni las filas horizontales
+    #  más allá de la última fila evaluada.)
 
     base, _ = os.path.splitext(original_path)
     cv2.imwrite(base + '_debug.jpg', debug)
