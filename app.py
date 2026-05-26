@@ -164,6 +164,7 @@ def process():
     # debug visual.
     curso_req = (request.form.get('curso') or '').strip()
     effective_total_q = None
+    print(f'[/process] perfil={pid} curso_recibido={curso_req!r}', flush=True)
     if curso_req:
         try:
             from sheets_connector import (
@@ -181,6 +182,11 @@ def process():
                 if dist:
                     effective_total_q = max((int(e.get('fin', 0)) for e in dist),
                                             default=0) or None
+                    print(f'[/process] grado={grado_stu} tipo={tipo} '
+                          f'effective_total_q={effective_total_q}', flush=True)
+                else:
+                    print(f'[/process] grado={grado_stu} tipo={tipo} '
+                          f'SIN DISTRIBUCIÓN configurada', flush=True)
         except Exception:
             traceback.print_exc()
             effective_total_q = None

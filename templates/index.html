@@ -6546,7 +6546,15 @@ async function processPhoto() {
   // marcadas fuera de la zona evaluada).
   const cursoSel = document.getElementById('student-curso');
   const curso = (cursoSel && cursoSel.value) ? cursoSel.value.trim() : '';
-  if (curso) fd.append('curso', curso);
+  if (curso) {
+    fd.append('curso', curso);
+    console.log('[OMR] Enviando curso=' + curso + ' profile=' + state.profileId
+                + ' → el backend truncará las preguntas al grado correspondiente');
+  } else {
+    console.warn('[OMR] ⚠️ No hay curso seleccionado — se procesarán TODAS '
+                 + 'las preguntas del perfil. Selecciona el curso del '
+                 + 'estudiante para limitar al grado correcto.');
+  }
   // Enviar respuestas acumuladas (vacío en primera foto)
   if (!isFirstPhoto) {
     fd.append('current_answers', JSON.stringify(state.answers));
