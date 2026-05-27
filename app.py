@@ -188,20 +188,30 @@ def process():
             )
             grado_stu = _grade_from_course_name(curso_req)
             if grado_stu:
-                # El tipo de simulacro lo derivamos del perfil:
-                # 1S/2S = completo, M/IETECI = media
-                tipo = 'completo' if pid in ('1SSIPAGRE', '2SSIPAGRE') else 'media'
+                # Buscar la distribucion del grado en ambos tipos.
+                # No siempre el perfil OMR coincide con el tipo del simulacro:
+                # ej. IETECI Mañana es tipo='media' pero 6°/7°/8° usan perfil
+                # 1S SIPAGRE (formato fisico de "completo"). Por eso probamos
+                # media PRIMERO (mas comun) y completo como fallback.
                 dists = list_distribuciones()
-                dist  = dists.get((tipo, grado_stu)) or \
+                dist = None
+                tipo_used = None
+                for tipo in ('media', 'completo'):
+                    d = dists.get((tipo, grado_stu)) or \
                         DEFAULT_DISTRIBUCIONES.get((tipo, grado_stu))
+                    if d:
+                        dist = d
+                        tipo_used = tipo
+                        break
                 if dist:
                     effective_total_q = max((int(e.get('fin', 0)) for e in dist),
                                             default=0) or None
-                    print(f'[/process] grado={grado_stu} tipo={tipo} '
+                    print(f'[/process] grado={grado_stu} tipo_usado={tipo_used} '
                           f'effective_total_q={effective_total_q}', flush=True)
                 else:
-                    print(f'[/process] grado={grado_stu} tipo={tipo} '
-                          f'SIN DISTRIBUCIÓN configurada', flush=True)
+                    print(f'[/process] grado={grado_stu} '
+                          f'SIN DISTRIBUCIÓN configurada (ni media ni completo)',
+                          flush=True)
         except Exception:
             traceback.print_exc()
             effective_total_q = None
