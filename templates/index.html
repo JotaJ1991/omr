@@ -685,14 +685,16 @@
     <!-- 2. Datos estudiante -->
     <div class="card">
       <h2>👤 Datos del estudiante</h2>
+      <label for="student-id">ID / Cédula</label>
+      <input type="text" id="student-id" placeholder="Ej: 1234567890"
+             inputmode="numeric" pattern="[0-9]*"
+             autocomplete="off"
+             oninput="this.classList.remove('required-empty'); _onStudentIdInput(this);">
       <label for="student-name">Nombre completo</label>
       <input type="text" id="student-name"
              placeholder="Apellidos y nombres"
-             oninput="this.classList.remove('required-empty')">
-      <label for="student-id">ID / Cédula</label>
-      <input type="text" id="student-id" placeholder="Ej: 1234567890"
              autocomplete="off"
-             oninput="this.classList.remove('required-empty'); _onStudentIdInput(this);">
+             oninput="this.classList.remove('required-empty')">
       <p id="student-roster-hint"
          style="font-size:.78rem;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
         💡 Si subiste el roster en Configuración, el nombre se autocompleta al teclear el documento.
