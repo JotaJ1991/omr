@@ -111,6 +111,33 @@ def _get_sheets_client():
 
 _SPREADSHEET_CACHE = {'ss': None, 'ts': 0}
 
+# Cache de lectura por TTL (Time To Live) para reducir llamadas a Sheets
+# y mejorar la capacidad de concurrencia del portal estudiantil.
+_READ_CACHE = {}   # key → (timestamp, value)
+_READ_CACHE_TTL = 60   # segundos. Conservador: cambios se reflejan en <1 min.
+
+
+def _cached_read(key, fn, ttl=None):
+    """Memoriza el resultado de fn() durante ttl segundos."""
+    import time
+    if ttl is None: ttl = _READ_CACHE_TTL
+    now = time.time()
+    cached = _READ_CACHE.get(key)
+    if cached and (now - cached[0]) < ttl:
+        return cached[1]
+    val = fn()
+    _READ_CACHE[key] = (now, val)
+    return val
+
+
+def invalidate_read_cache(prefix=''):
+    """Limpia el cache. Si prefix se pasa, solo borra claves con ese prefijo."""
+    if not prefix:
+        _READ_CACHE.clear()
+    else:
+        for k in [k for k in _READ_CACHE if k.startswith(prefix)]:
+            del _READ_CACHE[k]
+
 def _open_spreadsheet(force_fresh: bool = False):
     """
     Abre el Sheets. Cachea el objeto durante 30 s para reducir llamadas a
@@ -1358,6 +1385,9 @@ def save_to_sheets(student_name: str, exam_id: str,
     Guarda una fila de respuestas, calcula correctas vs clave,
     y mantiene UNA SOLA fila de totales al final.
     El nombre del estudiante se almacena siempre en MAYÚSCULAS.
+
+    Nota: invalida el cache de lectura de hojas Resultados/respuestas
+    para que el portal y los reportes vean los datos frescos.
     """
     student_name = (student_name or '').upper()
     spreadsheet  = _open_spreadsheet()
@@ -2282,20 +2312,20 @@ def get_student_results_all_simulacros(student_id: str) -> list:
     # Indexar simulacros por nombre para mapear hojas (incluso huérfanas)
     sim_by_name = {(s.get('nombre') or '').strip(): s for s in (sims or [])}
 
-    # Buscar TODAS las hojas que empiezan con "Resultados " (cubre incluso
-    # las que quedaron huérfanas tras renombrar el simulacro).
-    candidate_sheets = []
-    try:
-        for ws in spreadsheet.worksheets():
-            title = ws.title or ''
-            if title.lower().startswith('resultados '):
-                candidate_sheets.append(title)
-    except Exception:
-        # fallback a las asociadas
-        for s in (sims or []):
-            rs = s.get('results') or []
-            if isinstance(rs, str): rs = [rs]
-            candidate_sheets.extend(rs)
+    # Cache de la lista de hojas Resultados (cambia raramente, TTL 5min)
+    def _list_result_sheets():
+        try:
+            return [ws.title for ws in spreadsheet.worksheets()
+                    if (ws.title or '').lower().startswith('resultados ')]
+        except Exception:
+            sheets = []
+            for s in (sims or []):
+                rs = s.get('results') or []
+                if isinstance(rs, str): rs = [rs]
+                sheets.extend(rs)
+            return sheets
+    candidate_sheets = _cached_read('result_sheets:list', _list_result_sheets,
+                                     ttl=300)
 
     out = []
 
@@ -2316,14 +2346,14 @@ def get_student_results_all_simulacros(student_id: str) -> list:
             sim = {'nombre': title_no_prefix, 'tipo': '', 'fecha': ''}
 
         if True:
-            try:
-                ws = spreadsheet.worksheet(res_sheet)
-            except Exception:
-                continue
-            try:
-                rows = ws.get_all_values()
-            except Exception:
-                continue
+            # Cache de las filas de cada hoja Resultados (TTL 60s)
+            def _read_sheet_rows(sheet_name=res_sheet):
+                try:
+                    return spreadsheet.worksheet(sheet_name).get_all_values()
+                except Exception:
+                    return []
+            rows = _cached_read(f'result_sheet:rows:{res_sheet}',
+                                _read_sheet_rows, ttl=60)
             if not rows or len(rows) < 2:
                 continue
 
@@ -2768,11 +2798,42 @@ def save_estudiantes(students: list, replace: bool = False) -> dict:
         return {'success': False, 'error': str(e)}
 
 
+def _get_estudiantes_indexed():
+    """Carga el roster general y lo indexa por ID. Cacheado 60s."""
+    def _load():
+        try:
+            ws = _ensure_estudiantes_sheet()
+            idx = {}
+            for r in ws.get_all_values()[1:]:
+                if r and (r[0] or '').strip():
+                    sid = (r[0] or '').strip()
+                    idx[sid] = {
+                        'id':     sid,
+                        'nombre': (r[1] or '').strip() if len(r) > 1 else '',
+                        'curso':  (r[2] or '').strip() if len(r) > 2 else '',
+                    }
+            return idx
+        except Exception:
+            return {}
+    return _cached_read('estudiantes:idx', _load, ttl=60)
+
+
 def get_student_global(student_id: str) -> dict:
-    """Busca un estudiante por ID en el roster general. Devuelve dict o None."""
+    """Busca un estudiante por ID en el roster general. Devuelve dict o None.
+
+    Optimizado con cache (1 lectura cada 60s para todo el roster, después
+    lookup en memoria O(1) — soporta cientos de consultas/min sin tocar
+    Sheets API).
+    """
     sid = str(student_id or '').strip()
     if not sid:
         return None
+    try:
+        idx = _get_estudiantes_indexed()
+        return idx.get(sid)
+    except Exception:
+        pass
+    # Fallback: lectura directa (solo si el cache falla)
     try:
         ws = _ensure_estudiantes_sheet()
         for r in ws.get_all_values()[1:]:
