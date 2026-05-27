@@ -1631,6 +1631,8 @@ async function saveDistrib() {
       _distribCache = data.distribuciones;
       renderDistribucionesList();
       hideDistribModal();
+      // Invalidar cache del analisis: la distribucion afecta los puntajes
+      try { invalidateAnalysisCache(true); } catch (e) {}
     } else {
       errEl.textContent = data.error || 'Error.';
       errEl.style.display = 'block';
@@ -2944,6 +2946,17 @@ function onResultsFilterChange() {
   // Repoblar curso para que dependa del grado actual
   _populateUnifiedCourseFilter();
   _renderCurrentView();
+}
+
+// Invalidador GLOBAL del caché de análisis. Se llama cuando cambias
+// distribuciones, claves o anuladas — así el siguiente análisis siempre
+// usa datos frescos. También se ejecuta al abrir la pestaña Resultados.
+function invalidateAnalysisCache(silent) {
+  try {
+    if (typeof _questionAnalysisCache === 'object') _questionAnalysisCache = {};
+    if (typeof _resultsCache === 'object') _resultsCache = {};
+  } catch (e) {}
+  if (!silent) console.log('[cache] análisis y resultados invalidados');
 }
 
 function _renderCurrentView() {
