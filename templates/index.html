@@ -4406,10 +4406,12 @@ function _drawReportHeader(doc, title, subtitle) {
   // Acento dorado horizontal abajo
   doc.setFillColor(...SIPAGRE_GOLD);
   doc.rect(10, 10 + titleH - 2, pw, 2, 'F');
-  // Logo SIPAGRE arriba derecha
-  if (_sipagreLogoDataUrl) {
+  // Logo del colegio arriba derecha (SIPAGRE/IETECI o IETAGRO según elección)
+  const _rh_logo = _headerLogoForResults(
+    (typeof unifiedSimulacro !== 'undefined' && unifiedSimulacro) ? unifiedSimulacro.nombre : '');
+  if (_rh_logo) {
     const sz = 38;
-    try { doc.addImage(_sipagreLogoDataUrl, 'PNG', 10 + pw - sz - 1, 10 + (titleH - sz)/2, sz, sz); } catch(e){}
+    try { doc.addImage(_rh_logo, 'PNG', 10 + pw - sz - 1, 10 + (titleH - sz)/2, sz, sz); } catch(e){}
   }
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.setTextColor(255, 255, 255);
