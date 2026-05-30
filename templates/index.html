@@ -1022,6 +1022,17 @@
            border:1px solid var(--card-border);border-radius:10px;
            padding:10px 14px;margin-bottom:12px;font-size:.82rem;"></div>
 
+      <!-- Selector de logo del colegio para los reportes -->
+      <div style="margin-bottom:10px;">
+        <label style="font-size:.78rem;color:var(--muted);">Logo del colegio (reportes y PDF)</label>
+        <select id="r-logo-select" onchange="onResultsLogoChange()">
+          <option value="auto">Automático (según el simulacro)</option>
+          <option value="sipagre">IETECI / SIPAGRE</option>
+          <option value="ietagro">IETAGRO Puerto Giraldo</option>
+        </select>
+        <div id="r-logo-hint" style="font-size:.72rem;color:var(--muted);margin-top:4px;"></div>
+      </div>
+
       <!-- Botones generar / descargar todos -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <button class="btn-success" onclick="generateUnifiedResults()" id="btn-r-gen"
@@ -2901,6 +2912,7 @@ function onResultsSimChange() {
                           ? unifiedSimulacro.grados.map(g => g+'°').join(', ')
                           : '—'}`;
   info.style.display = 'block';
+  _updateLogoHint();   // refresca qué logo se usará para este simulacro
 
   if (gradeSel) {
     let gradeHtml = '<option value="">— todos —</option>';
@@ -7092,6 +7104,46 @@ function _newCanvas(w, h) {
 // Carga los logos una vez y los cachea como dataURL para insertarlos en el PDF
 let _logoDataUrl = null;
 let _sipagreLogoDataUrl = null;
+let _ietagroLogoDataUrl = null;
+
+// Logo del colegio elegido para los reportes: 'auto' | 'sipagre' | 'ietagro'.
+// 'auto' decide según el nombre del simulacro (si contiene IETAGRO → IETAGRO).
+let _resultsLogoChoice = 'auto';
+
+// Devuelve el dataURL del logo de encabezado correcto según la elección y,
+// en modo automático, según el nombre del simulacro.
+function _headerLogoForResults(simulacroLabel) {
+  let choice = _resultsLogoChoice;
+  if (choice === 'auto') {
+    const name = (simulacroLabel || '').toUpperCase();
+    choice = name.includes('IETAGRO') ? 'ietagro' : 'sipagre';
+  }
+  if (choice === 'ietagro' && _ietagroLogoDataUrl) return _ietagroLogoDataUrl;
+  return _sipagreLogoDataUrl;
+}
+
+// Actualiza la pista que indica qué logo se usará para el simulacro actual.
+function _updateLogoHint() {
+  const hint = document.getElementById('r-logo-hint');
+  if (!hint) return;
+  const label = (typeof unifiedSimulacro !== 'undefined' && unifiedSimulacro)
+                ? unifiedSimulacro.nombre : '';
+  let resolved = _resultsLogoChoice;
+  if (resolved === 'auto') {
+    resolved = (label || '').toUpperCase().includes('IETAGRO') ? 'ietagro' : 'sipagre';
+  }
+  const nice = resolved === 'ietagro' ? 'IETAGRO Puerto Giraldo' : 'IETECI / SIPAGRE';
+  hint.textContent = _resultsLogoChoice === 'auto'
+    ? `Se usará automáticamente: ${nice}`
+    : `Logo fijado manualmente: ${nice}`;
+}
+
+// onchange del selector de logo
+function onResultsLogoChange() {
+  const sel = document.getElementById('r-logo-select');
+  _resultsLogoChoice = (sel && sel.value) ? sel.value : 'auto';
+  _updateLogoHint();
+}
 
 function _loadImageAsDataUrl(url) {
   return new Promise(resolve => {
@@ -7111,6 +7163,7 @@ function _loadImageAsDataUrl(url) {
 async function _loadLogo() {
   if (_logoDataUrl === null)        _logoDataUrl        = await _loadImageAsDataUrl('/static/logo.png');
   if (_sipagreLogoDataUrl === null) _sipagreLogoDataUrl = await _loadImageAsDataUrl('/static/sipagre_logo.png');
+  if (_ietagroLogoDataUrl === null) _ietagroLogoDataUrl = await _loadImageAsDataUrl('/static/ietagro_logo.png');
   return _logoDataUrl;
 }
 
@@ -7430,12 +7483,14 @@ function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
   // Acento blanco lateral
   doc.setFillColor(255,255,255);
   doc.rect(13, 14, 3, titleH - 8, 'F');
-  // Logo SIPAGRE en la esquina superior derecha (puede desbordar la caja del header)
-  if (_sipagreLogoDataUrl) {
+  // Logo del colegio en la esquina superior derecha (SIPAGRE/IETECI o IETAGRO
+  // según la elección del usuario o el nombre del simulacro)
+  const _headerLogo = _headerLogoForResults(subTitle);
+  if (_headerLogo) {
     const logoSize = 46;
     const logoX = 10 + pw - logoSize + 2;
     const logoY = 10 + (titleH - logoSize) / 2;
-    try { doc.addImage(_sipagreLogoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
+    try { doc.addImage(_headerLogo, 'PNG', logoX, logoY, logoSize, logoSize); }
     catch(e) { /* opcional */ }
   }
   // Texto título

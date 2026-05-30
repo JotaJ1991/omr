@@ -68,6 +68,15 @@
 
   let _logoDataUrl = null;
   let _sipagreLogoDataUrl = null;
+  let _ietagroLogoDataUrl = null;
+
+  // En el portal no hay selector: el logo de encabezado se decide según el
+  // nombre del simulacro (si contiene IETAGRO → logo IETAGRO; si no, SIPAGRE).
+  function _headerLogoForSim(simulacroLabel) {
+    const name = (simulacroLabel || '').toUpperCase();
+    if (name.includes('IETAGRO') && _ietagroLogoDataUrl) return _ietagroLogoDataUrl;
+    return _sipagreLogoDataUrl;
+  }
 
   function _loadImageAsDataUrl(url) {
     return new Promise(resolve => {
@@ -87,6 +96,7 @@
   async function _loadLogo() {
     if (_logoDataUrl === null)        _logoDataUrl        = await _loadImageAsDataUrl('/static/logo.png');
     if (_sipagreLogoDataUrl === null) _sipagreLogoDataUrl = await _loadImageAsDataUrl('/static/sipagre_logo.png');
+    if (_ietagroLogoDataUrl === null) _ietagroLogoDataUrl = await _loadImageAsDataUrl('/static/ietagro_logo.png');
     return _logoDataUrl;
   }
 
@@ -351,11 +361,12 @@
     }
     doc.setFillColor(255,255,255);
     doc.rect(13, 14, 3, titleH - 8, 'F');
-    if (_sipagreLogoDataUrl) {
+    const _headerLogo = _headerLogoForSim(subTitle);
+    if (_headerLogo) {
       const logoSize = 46;
       const logoX = 10 + pw - logoSize + 2;
       const logoY = 10 + (titleH - logoSize) / 2;
-      try { doc.addImage(_sipagreLogoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize); }
+      try { doc.addImage(_headerLogo, 'PNG', logoX, logoY, logoSize, logoSize); }
       catch(e) {}
     }
     doc.setFont('helvetica','bold'); doc.setFontSize(15);
