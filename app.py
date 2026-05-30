@@ -5,6 +5,7 @@ import os
 import json
 import traceback
 import base64
+import threading
 from flask import Flask, request, jsonify, render_template, session, Response
 from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image, _parse_qr_payload
@@ -38,6 +39,19 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Auto-recargar templates al modificarlos (sin esto Flask cachea el HTML)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
+
+# ── Salvaguarda de memoria ──────────────────────────────────────────────────
+# Limita cuántos escaneos PESADOS (OpenCV) se procesan a la vez dentro del
+# worker. Aunque entren 5 docentes simultáneamente, solo N se procesan al
+# mismo tiempo y el resto ESPERA EN COLA unos segundos (no se pierde nada).
+# Esto evita el OutOfMemory en la instancia de 512 MB. Las peticiones livianas
+# (cargar páginas, guardar en Sheets, portal) NO pasan por aquí, así que no se
+# bloquean. Ajustable con la variable de entorno MAX_CONCURRENT_SCANS.
+_MAX_CONCURRENT_SCANS = int(os.environ.get('MAX_CONCURRENT_SCANS', '2'))
+_SCAN_SEMAPHORE = threading.BoundedSemaphore(_MAX_CONCURRENT_SCANS)
+# Tiempo máximo que un escaneo espera en cola antes de rendirse (segundos).
+# Evita que una petición quede colgada indefinidamente si hay saturación.
+_SCAN_QUEUE_TIMEOUT = int(os.environ.get('SCAN_QUEUE_TIMEOUT', '90'))
 
 # Forzar no-cache en respuestas HTML para evitar caché del navegador
 @app.after_request
@@ -230,8 +244,20 @@ def process():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        result = process_exam_image(filepath, profile_id=pid, debug=True,
-                                    effective_total_q=effective_total_q)
+        # Cola de procesamiento: espera turno si ya hay N escaneos pesados en
+        # curso. Protege la RAM de 512 MB sin perder la petición.
+        if not _SCAN_SEMAPHORE.acquire(timeout=_SCAN_QUEUE_TIMEOUT):
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'success': False,
+                            'error': 'El servidor está procesando muchas hojas '
+                                     'en este momento. Espera unos segundos y '
+                                     'vuelve a escanear.'}), 503
+        try:
+            result = process_exam_image(filepath, profile_id=pid, debug=True,
+                                        effective_total_q=effective_total_q)
+        finally:
+            _SCAN_SEMAPHORE.release()
 
         # Leer imagen anotada y eliminar archivos temporales
         debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
@@ -697,7 +723,17 @@ def debug_image():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'debug_' + filename)
     file.save(filepath)
 
-    result     = process_exam_image(filepath, profile_id=pid, debug=True)
+    # Misma cola de procesamiento que /process (protege la RAM).
+    if not _SCAN_SEMAPHORE.acquire(timeout=_SCAN_QUEUE_TIMEOUT):
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({'success': False,
+                        'error': 'Servidor ocupado, intenta de nuevo en unos '
+                                 'segundos.'}), 503
+    try:
+        result = process_exam_image(filepath, profile_id=pid, debug=True)
+    finally:
+        _SCAN_SEMAPHORE.release()
     debug_path = filepath.rsplit('.', 1)[0] + '_debug.jpg'
     img_b64    = None
 
