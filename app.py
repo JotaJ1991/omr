@@ -87,13 +87,6 @@ def index():
                            default_profile=DEFAULT_PROFILE_ID)
 
 
-@app.route('/design-preview')
-def design_preview():
-    return render_template('design_preview.html',
-                           profiles=PROFILE_LIST,
-                           default_profile=DEFAULT_PROFILE_ID)
-
-
 # ── Hojas ─────────────────────────────────────────────────────────────────────
 
 @app.route('/active_sheet', methods=['GET'])

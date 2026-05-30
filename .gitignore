@@ -5,3 +5,17 @@ uploads/
 *.env
 .env
 venv/
+
+# Salidas de prueba / generadas
+out_test/
+*_debug.jpg
+
+# Backups / mockups / artefactos de calibración
+*_backup.py
+mockup_*.html
+sipagre_calibracion_*.jpg
+sipagre_params_*.txt
+
+# Sistema
+.DS_Store
+Thumbs.db
