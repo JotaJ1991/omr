@@ -8002,8 +8002,12 @@ async function startCameraStream() {
   stopCameraStream();
   videoReady = false;
   try {
+    // Pedimos la máxima resolución posible (4K). El detector en vivo igual
+    // procesa a 480px (ver detectFrame), así que subir la resolución NO
+    // ralentiza la guía, pero SÍ mejora la nitidez de la captura y la
+    // lectura del QR. El dispositivo hace fallback al máximo que soporte.
     camStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: camFacing, width: {ideal: 1920}, height: {ideal: 1080} },
+      video: { facingMode: camFacing, width: {ideal: 3840}, height: {ideal: 2160} },
       audio: false
     });
     const v = document.getElementById('cam-video');
@@ -8013,6 +8017,8 @@ async function startCameraStream() {
       const cv2 = document.getElementById('cam-canvas');
       cv2.width  = v.videoWidth;
       cv2.height = v.videoHeight;
+      const mp = (v.videoWidth * v.videoHeight / 1e6).toFixed(1);
+      console.log(`[OMR] Cámara guiada: ${v.videoWidth}×${v.videoHeight} (${mp} MP)`);
     };
   } catch (e) {
     const err = document.getElementById('cam-error');
