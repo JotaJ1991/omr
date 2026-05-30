@@ -32,6 +32,9 @@ app = Flask(__name__)
 app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER']      = 'uploads'
+# Crear la carpeta de subidas a nivel de módulo (bajo gunicorn no se ejecuta
+# el bloque __main__, así que debe garantizarse aquí).
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Auto-recargar templates al modificarlos (sin esto Flask cachea el HTML)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.jinja_env.auto_reload = True
@@ -913,4 +916,11 @@ def resultados_logout():
 
 if __name__ == '__main__':
     os.makedirs('uploads', exist_ok=True)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # PORT y debug se leen del entorno para que el MISMO archivo funcione:
+    #   - Local:  python app.py            -> puerto 5000, debug ON
+    #   - Render: gunicorn app:app ...     -> no usa este bloque (debug OFF)
+    # Para activar debug local sin riesgo en producción, deja FLASK_DEBUG sin
+    # definir en Render (allí se sirve con gunicorn, que ignora este bloque).
+    port  = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', '1') == '1'
+    app.run(debug=debug, host='0.0.0.0', port=port)
