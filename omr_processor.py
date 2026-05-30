@@ -12,6 +12,29 @@ from scipy.signal import find_peaks
 from exam_profiles import get_profile, DEFAULT_PROFILE_ID
 
 
+# Dimensión máxima (lado mayor) a la que se reduce la imagen ANTES de
+# procesarla. Las fotos de cámara nativa/4K llegan a 8-12 MP; procesarlas a
+# resolución completa dispara la RAM (adaptiveThreshold + findContours sobre
+# decenas de MB) y provoca OutOfMemory en instancias de 512 MB.
+# Todo el pipeline endereza a work_w×work_h (~1275×1650), así que una entrada
+# de ~2400 px conserva detalle de sobra para fiduciales y QR sin gastar RAM.
+_MAX_PROCESS_DIM = 2400
+
+
+def _downscale_for_processing(img, max_dim: int = _MAX_PROCESS_DIM):
+    """Reduce la imagen si su lado mayor excede max_dim (preserva proporción)."""
+    if img is None:
+        return img
+    h, w = img.shape[:2]
+    longest = max(h, w)
+    if longest <= max_dim:
+        return img
+    scale = max_dim / float(longest)
+    new_w = int(round(w * scale))
+    new_h = int(round(h * scale))
+    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+
 # ===========================================================================
 # API PUBLICA
 # ===========================================================================
@@ -39,7 +62,12 @@ def process_exam_image(image_path: str,
     if img is None:
         return {'success': False, 'error': 'No se pudo abrir la imagen.'}
 
+    # Reducir resolución antes de procesar (evita OutOfMemory en 512 MB con
+    # fotos de 8-12 MP). El pipeline endereza a work_w×work_h de todos modos.
+    img = _downscale_for_processing(img)
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    del img  # liberar la copia BGR cuanto antes
 
     warped, p_ok = _correct_perspective(gray, profile)
 
