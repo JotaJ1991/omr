@@ -2235,7 +2235,7 @@ def get_student_from_roster(simulacro_safe: str, student_id: str) -> dict:
     Busca un estudiante por ID dentro del roster de un simulacro.
     Devuelve {'curso', 'id', 'nombre'} o None.
     """
-    simulacro_safe = (simulacro_safe or '').strip()
+    simulacro_safe = (simulacro_safe or '').strip().upper()
     student_id = (student_id or '').strip()
     if not simulacro_safe or not student_id:
         return None
@@ -2243,7 +2243,7 @@ def get_student_from_roster(simulacro_safe: str, student_id: str) -> dict:
         ws = _ensure_roster_sheet()
         for r in ws.get_all_values()[1:]:
             if (len(r) >= 4
-                and (r[0] or '').strip() == simulacro_safe
+                and (r[0] or '').strip().upper() == simulacro_safe
                 and (r[2] or '').strip() == student_id):
                 return {
                     'curso':  (r[1] or '').strip(),

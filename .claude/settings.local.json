@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(winget search:*)",
+      "Bash(winget install:*)",
+      "Bash(pdflatex --version)",
+      "Read(//c//**)",
+      "Read(//c/Program Files/**)",
+      "Bash(reg query:*)",
+      "Bash(cmd /c \"where pdflatex 2>nul || echo not found\")",
+      "Bash(cmd /c \"where latex 2>nul || echo not found\")",
+      "Bash(cmd /c \"where /r \\\\\"C:\\\\\\\\Program Files\\\\\" pdflatex.exe 2>nul & where /r \\\\\"C:\\\\\\\\texlive\\\\\" pdflatex.exe 2>nul & where /r \\\\\"C:\\\\\\\\Users\\\\\\\\Estudiante\\\\\\\\AppData\\\\\" pdflatex.exe 2>nul\")",
+      "WebFetch(domain:miktex.org)"
+    ]
+  }
+}

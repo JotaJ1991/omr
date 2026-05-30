@@ -269,6 +269,15 @@ def process():
                 roster_match = get_student_from_roster(
                     qr_info.get('simulacro', ''),
                     qr_info.get('student_id', ''))
+                # Fallback: si no está en el roster del simulacro, buscar en el
+                # roster general (Estudiantes) por ID, para autocompletar el nombre.
+                if not roster_match:
+                    g = get_student_global(qr_info.get('student_id', ''))
+                    if g:
+                        roster_match = {
+                            'nombre': g.get('nombre', ''),
+                            'curso':  g.get('curso', ''),
+                        }
                 if roster_match:
                     qr_info = dict(qr_info)
                     qr_info['nombre'] = roster_match.get('nombre', '')

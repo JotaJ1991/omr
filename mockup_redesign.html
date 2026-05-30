@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calificador JMR — Rediseño Propuesto</title>
+<style>
+  /* ══ DISEÑO PROPUESTO ═══════════════════════════════════════════════════════
+     Cambios principales vs actual:
+     1. Sidebar lateral en desktop (tabs pasan a menú lateral)
+     2. Paleta oscura/moderna con gradientes sutiles
+     3. Cards con glassmorphism
+     4. Mejor jerarquía visual con tipografía más grande
+     5. Zona de captura más prominente con drag-and-drop visual
+     6. Resultados en tabla limpia
+     7. Responsive: en móvil vuelve a tabs inferiores
+  ══════════════════════════════════════════════════════════════════════════════ */
+
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  :root {
+    --primary: #6366f1;
+    --primary-light: #818cf8;
+    --primary-dark: #4f46e5;
+    --accent: #06b6d4;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --bg: #0f172a;
+    --bg-secondary: #1e293b;
+    --card: rgba(30, 41, 59, 0.7);
+    --card-border: rgba(99, 102, 241, 0.15);
+    --text: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --muted: #64748b;
+    --glass: rgba(255,255,255,0.03);
+    --radius: 16px;
+    --sidebar-w: 72px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── LAYOUT ── */
+  .app-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── SIDEBAR (desktop) ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--card-border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 0;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 50;
+  }
+  .sidebar-logo {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 800;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+  }
+  .sidebar-nav {
+    display: flex; flex-direction: column;
+    gap: 8px; flex: 1;
+  }
+  .nav-item {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all .2s;
+    position: relative;
+  }
+  .nav-item:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: var(--primary-light);
+  }
+  .nav-item.active {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--primary-light);
+  }
+  .nav-item.active::before {
+    content: '';
+    position: absolute; left: -8px;
+    width: 3px; height: 20px;
+    background: var(--primary);
+    border-radius: 0 3px 3px 0;
+  }
+  .nav-item .tooltip {
+    display: none; position: absolute;
+    left: 56px; top: 50%; transform: translateY(-50%);
+    background: var(--bg-secondary); border: 1px solid var(--card-border);
+    padding: 6px 12px; border-radius: 8px;
+    font-size: .75rem; white-space: nowrap;
+    color: var(--text); z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  }
+  .nav-item:hover .tooltip { display: block; }
+
+  /* ── MAIN CONTENT ── */
+  .main-content {
+    flex: 1;
+    margin-left: var(--sidebar-w);
+    min-height: 100vh;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--card-border);
+    backdrop-filter: blur(20px);
+    background: rgba(15, 23, 42, 0.8);
+    position: sticky; top: 0; z-index: 40;
+  }
+  .topbar-left h1 {
+    font-size: 1.25rem; font-weight: 700;
+    background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .topbar-left p {
+    font-size: .8rem; color: var(--muted); margin-top: 2px;
+  }
+  .topbar-right {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .profile-badge {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 99px; padding: 6px 14px;
+    font-size: .78rem; font-weight: 600;
+    color: var(--primary-light);
+  }
+  .profile-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .sheet-pill {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(6, 182, 212, 0.1);
+    border: 1px solid rgba(6, 182, 212, 0.2);
+    border-radius: 99px; padding: 6px 14px;
+    font-size: .78rem; font-weight: 500;
+    color: var(--accent);
+  }
+
+  /* ── PAGE CONTENT ── */
+  .page-content {
+    padding: 28px 32px;
+    max-width: 960px;
+  }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--card);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+    transition: border-color .2s;
+  }
+  .card:hover {
+    border-color: rgba(99, 102, 241, 0.3);
+  }
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .card-header h2 {
+    font-size: 1rem; font-weight: 700;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card-header h2 .icon {
+    width: 32px; height: 32px;
+    background: rgba(99, 102, 241, 0.15);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+  }
+  .card-header .tag {
+    font-size: .7rem; font-weight: 600;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    color: var(--success);
+    padding: 3px 10px; border-radius: 99px;
+  }
+
+  /* ── CAPTURE ZONE ── */
+  .capture-zone {
+    border: 2px dashed rgba(99, 102, 241, 0.3);
+    border-radius: 14px;
+    min-height: 280px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    background: rgba(99, 102, 241, 0.04);
+    transition: all .3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .capture-zone:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.08);
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.1);
+  }
+  .capture-zone .upload-icon {
+    width: 64px; height: 64px;
+    border-radius: 16px;
+    background: rgba(99, 102, 241, 0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.8rem;
+    margin-bottom: 16px;
+  }
+  .capture-zone p {
+    font-size: .95rem; font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .capture-zone small {
+    font-size: .78rem; color: var(--muted);
+    margin-top: 6px;
+  }
+  .capture-zone .shortcuts {
+    display: flex; gap: 8px; margin-top: 16px;
+  }
+  .capture-zone .shortcut-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--text-secondary);
+    font-size: .82rem; font-weight: 500;
+    cursor: pointer;
+    transition: all .2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .capture-zone .shortcut-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+    color: var(--primary-light);
+  }
+
+  /* ── STUDENT FORM ── */
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .form-group label {
+    font-size: .78rem; font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px; display: block;
+  }
+  .form-group input {
+    width: 100%; padding: 10px 14px;
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    font-size: .9rem;
+    transition: border-color .2s;
+  }
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  }
+  .form-group input::placeholder { color: var(--muted); }
+
+  /* ── BUTTONS ── */
+  .btn-group { display: flex; gap: 10px; }
+  .btn {
+    padding: 12px 20px; border: none; border-radius: 10px;
+    font-size: .88rem; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: all .15s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: white;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  }
+  .btn-primary:hover { box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4); }
+  .btn-secondary {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+  .btn-success {
+    background: linear-gradient(135deg, var(--success), #059669);
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+  .btn-accent {
+    background: linear-gradient(135deg, var(--accent), #0891b2);
+    color: white;
+    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+  }
+
+  /* ── STATS ── */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-bottom: 20px;
+  }
+  .stat-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--card-border);
+    border-radius: 12px; padding: 16px;
+    text-align: center;
+  }
+  .stat-card .value {
+    font-size: 1.8rem; font-weight: 800;
+    background: linear-gradient(135deg, var(--primary-light), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .stat-card .label {
+    font-size: .72rem; color: var(--muted);
+    margin-top: 4px; text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+
+  /* ── PROGRESS ── */
+  .progress-bar {
+    height: 6px; border-radius: 99px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden; margin: 8px 0;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+    transition: width .5s ease;
+  }
+
+  /* ── ANSWERS GRID ── */
+  .answers-section h3 {
+    font-size: .85rem; font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .answers-section h3 .legend {
+    font-size: .72rem; font-weight: 400; color: var(--muted);
+  }
+  .answers-grid {
+    display: flex; flex-wrap: wrap; gap: 5px;
+  }
+  .answer-chip {
+    display: flex; align-items: center; gap: 4px;
+    background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.08);
+    border-radius: 8px; padding: 4px 8px;
+    font-size: .78rem; font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    min-width: 54px;
+  }
+  .answer-chip:hover {
+    transform: scale(1.06);
+    box-shadow: 0 2px 10px rgba(0,0,0,.3);
+  }
+  .answer-chip .qnum { color: var(--muted); font-weight: 400; font-size: .72rem; }
+  .answer-chip.A { border-color: #3b82f6; color: #60a5fa; background: rgba(59,130,246,.1); }
+  .answer-chip.B { border-color: #10b981; color: #34d399; background: rgba(16,185,129,.1); }
+  .answer-chip.C { border-color: #f59e0b; color: #fbbf24; background: rgba(245,158,11,.1); }
+  .answer-chip.D { border-color: #ef4444; color: #f87171; background: rgba(239,68,68,.1); }
+  .answer-chip.unknown { border-color: rgba(255,255,255,.08); color: var(--muted); }
+
+  /* ── SCAN IMAGE ── */
+  .scan-preview {
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--card-border);
+    margin-bottom: 16px;
+  }
+  .scan-preview img { width: 100%; display: block; }
+  .scan-legend {
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.03);
+    font-size: .72rem; color: var(--muted);
+    display: flex; gap: 12px; flex-wrap: wrap;
+  }
+
+  /* ── SIPAGRE RESULTS ── */
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .82rem;
+  }
+  .results-table thead th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--card-border);
+  }
+  .results-table tbody td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .results-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.04);
+  }
+  .results-table .score {
+    font-weight: 700;
+    color: var(--primary-light);
+  }
+  .results-table .general-score {
+    font-weight: 800; font-size: 1rem;
+    background: linear-gradient(135deg, var(--primary-light), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .results-table .avg-row {
+    background: rgba(99, 102, 241, 0.06);
+    font-weight: 700;
+  }
+  .results-table .pdf-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--primary-light);
+    font-size: .72rem; font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .results-table .pdf-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+  }
+
+  /* ── PROFILE CARDS ── */
+  .profile-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .profile-card {
+    border: 1.5px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all .2s;
+    text-align: center;
+  }
+  .profile-card:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.06);
+  }
+  .profile-card.active {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.1);
+  }
+  .profile-card .profile-icon {
+    width: 48px; height: 48px;
+    margin: 0 auto 10px;
+    background: rgba(99, 102, 241, 0.1);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+  }
+  .profile-card .profile-name {
+    font-weight: 700; font-size: .88rem;
+  }
+  .profile-card .profile-desc {
+    font-size: .72rem; color: var(--muted); margin-top: 4px;
+  }
+  .profile-card .profile-check {
+    margin-top: 10px;
+    width: 22px; height: 22px; margin: 10px auto 0;
+    border-radius: 50%;
+    border: 2px solid var(--card-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem;
+  }
+  .profile-card.active .profile-check {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: .85rem; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 16px;
+  }
+  .status-bar.loading {
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    color: var(--primary-light);
+  }
+  .status-bar.success {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    color: var(--success);
+  }
+  .status-bar.error {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    color: var(--danger);
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main-content { margin-left: 0; }
+    .page-content { padding: 16px; }
+    .topbar { padding: 14px 16px; }
+
+    .mobile-nav {
+      display: flex !important;
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--card-border);
+      padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+      z-index: 50;
+    }
+    .mobile-nav .nav-item {
+      flex: 1;
+      width: auto; height: auto;
+      padding: 8px 0;
+      flex-direction: column;
+      font-size: .7rem; gap: 2px;
+    }
+    .mobile-nav .nav-item::before { display: none; }
+    .mobile-nav .nav-item .nav-label { display: block !important; }
+    .mobile-nav .nav-item .tooltip { display: none !important; }
+
+    .form-row { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(3, 1fr); }
+    .profile-grid { grid-template-columns: 1fr 1fr; }
+
+    body { padding-bottom: 72px; }
+  }
+  @media (min-width: 769px) {
+    .mobile-nav { display: none !important; }
+    .nav-item .nav-label { display: none; }
+  }
+
+  /* ── SECTION TITLE ── */
+  .section-title {
+    font-size: .72rem; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted);
+    margin-bottom: 16px; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+  <!-- ══ SIDEBAR (desktop) ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">J</div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" onclick="switchTab('scan')">
+        📷
+        <span class="tooltip">Escanear</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('key')">
+        🔑
+        <span class="tooltip">Clave</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('results')">
+        📊
+        <span class="tooltip">Resultados</span>
+      </div>
+      <div class="nav-item" onclick="switchTab('config')">
+        ⚙️
+        <span class="tooltip">Configuración</span>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <div class="main-content">
+
+    <!-- ── Top bar ── -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <h1>Calificador JMR</h1>
+        <p>120 preguntas · 1S SIPAGRE</p>
+      </div>
+      <div class="topbar-right">
+        <div class="profile-badge">
+          <span class="dot"></span>
+          1S SIPAGRE
+        </div>
+        <div class="sheet-pill">
+          📄 1S SIPAGRE
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         TAB: ESCANEAR
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div class="page-content" id="tab-scan">
+
+      <p class="section-title">Escanear hoja de respuestas</p>
+
+      <!-- Datos del estudiante -->
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nombre del estudiante *</label>
+            <input type="text" placeholder="Apellidos y nombres">
+          </div>
+          <div class="form-group">
+            <label>ID / Documento</label>
+            <input type="text" placeholder="Número de identificación">
+          </div>
+        </div>
+      </div>
+
+      <!-- Zona de captura -->
+      <div class="card">
+        <div class="capture-zone">
+          <div class="upload-icon">📄</div>
+          <p>Toca aquí para tomar foto o seleccionar imagen</p>
+          <small>JPG, PNG o WEBP · Máx. 16MB</small>
+          <div class="shortcuts">
+            <div class="shortcut-btn">📷 Cámara</div>
+            <div class="shortcut-btn">📁 Galería</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resultado del escaneo (ejemplo con datos) -->
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">✅</span> Respuestas detectadas</h2>
+          <span class="tag">Foto 1</span>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="value">118</div>
+            <div class="label">Detectadas</div>
+          </div>
+          <div class="stat-card">
+            <div class="value">2</div>
+            <div class="label">Faltantes</div>
+          </div>
+          <div class="stat-card">
+            <div class="value">98%</div>
+            <div class="label">Confianza</div>
+          </div>
+        </div>
+
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:98%"></div>
+        </div>
+
+        <!-- Imagen anotada -->
+        <div class="scan-preview" style="margin-top:16px;">
+          <div style="height:180px;background:rgba(99,102,241,.05);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.85rem;">
+            Imagen anotada del escaneo aparece aquí
+          </div>
+          <div class="scan-legend">
+            <span>🟢 A</span> <span>🔵 B</span> <span>🟡 C</span>
+            <span>🔴 D</span> <span>⚪ No detectada</span>
+          </div>
+        </div>
+
+        <!-- Grid de respuestas -->
+        <div class="answers-section" style="margin-top:16px;">
+          <h3>
+            Respuestas
+            <span class="legend">Toca para editar · <span style="border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:0 4px;">?</span> = no detectada</span>
+          </h3>
+          <div class="answers-grid">
+            <div class="answer-chip A"><span class="qnum">1</span> A</div>
+            <div class="answer-chip B"><span class="qnum">2</span> B</div>
+            <div class="answer-chip C"><span class="qnum">3</span> C</div>
+            <div class="answer-chip A"><span class="qnum">4</span> A</div>
+            <div class="answer-chip D"><span class="qnum">5</span> D</div>
+            <div class="answer-chip B"><span class="qnum">6</span> B</div>
+            <div class="answer-chip A"><span class="qnum">7</span> A</div>
+            <div class="answer-chip C"><span class="qnum">8</span> C</div>
+            <div class="answer-chip D"><span class="qnum">9</span> D</div>
+            <div class="answer-chip unknown"><span class="qnum">10</span> ?</div>
+            <div class="answer-chip B"><span class="qnum">11</span> B</div>
+            <div class="answer-chip A"><span class="qnum">12</span> A</div>
+            <div class="answer-chip C"><span class="qnum">13</span> C</div>
+            <div class="answer-chip D"><span class="qnum">14</span> D</div>
+            <div class="answer-chip A"><span class="qnum">15</span> A</div>
+            <div class="answer-chip B"><span class="qnum">16</span> B</div>
+            <div class="answer-chip unknown"><span class="qnum">17</span> ?</div>
+            <div class="answer-chip C"><span class="qnum">18</span> C</div>
+            <div class="answer-chip A"><span class="qnum">19</span> A</div>
+            <div class="answer-chip D"><span class="qnum">20</span> D</div>
+          </div>
+        </div>
+
+        <!-- Botones -->
+        <div class="btn-group" style="margin-top:20px;">
+          <button class="btn btn-success" style="flex:2;">📷 Siguiente estudiante</button>
+          <button class="btn btn-primary" style="flex:1;">💾 Guardar</button>
+          <button class="btn btn-secondary" style="flex:1;">📊 Sheets</button>
+        </div>
+
+        <div class="status-bar success" style="margin-top:12px;">
+          ✅ Guardado exitosamente | 🎯 95/120 correctas (79%)
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         TAB: RESULTADOS SIPAGRE (ejemplo)
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div class="page-content" id="tab-results" style="display:none;">
+
+      <p class="section-title">Resultados SIPAGRE</p>
+
+      <div class="card">
+        <div class="card-header">
+          <h2><span class="icon">📊</span> Puntajes por estudiante</h2>
+          <button class="btn btn-accent" style="flex:none;padding:8px 16px;font-size:.78rem;">
+            📥 Descargar Todo PDF
+          </button>
+        </div>
+
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Estudiante</th>
+              <th>Mat</th>
+              <th>Lect</th>
+              <th>Soc</th>
+              <th>Nat</th>
+              <th>Ing</th>
+              <th>General</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div style="font-weight:600;">García Lopez, Maria</div>
+                <div style="font-size:.7rem;color:var(--muted);">ID: 1098765432</div>
+              </td>
+              <td class="score">72</td>
+              <td class="score">85</td>
+              <td class="score">68</td>
+              <td class="score">79</td>
+              <td class="score">91</td>
+              <td class="general-score">298</td>
+              <td><button class="pdf-btn">PDF</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div style="font-weight:600;">Martinez Ruiz, Carlos</div>
+                <div style="font-size:.7rem;color:var(--muted);">ID: 1087654321</div>
+              </td>
+              <td class="score">88</td>
+              <td class="score">76</td>
+              <td class="score">82</td>
+              <td class="score">71</td>
+              <td class="score">65</td>
+              <td class="general-score">285</td>
+              <td><button class="pdf-btn">PDF</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div style="font-weight:600;">Rodriguez Perez, Ana</div>
+                <div style="font-size:.7rem;color:var(--muted);">ID: 1076543210</div>
+              </td>
+              <td class="score">65</td>
+              <td class="score">92</td>
+              <td class="score">71</td>
+              <td class="score">84</td>
+              <td class="score">78</td>
+              <td class="general-score">292</td>
+              <td><button class="pdf-btn">PDF</button></td>
+            </tr>
+            <tr class="avg-row">
+              <td style="font-weight:700;color:var(--text-secondary);">PROMEDIO</td>
+              <td class="score">75</td>
+              <td class="score">84</td>
+              <td class="score">74</td>
+              <td class="score">78</td>
+              <td class="score">78</td>
+              <td class="general-score">292</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+         TAB: CONFIGURACIÓN (ejemplo)
+    ══════════════════════════════════════════════════════════════════════ -->
+    <div class="page-content" id="tab-config" style="display:none;">
+
+      <p class="section-title">Tipo de evaluación</p>
+
+      <div class="card">
+        <div class="profile-grid">
+          <div class="profile-card">
+            <div class="profile-icon">📋</div>
+            <div class="profile-name">JMR 125</div>
+            <div class="profile-desc">125 preguntas · 5 columnas</div>
+            <div class="profile-check"></div>
+          </div>
+          <div class="profile-card active">
+            <div class="profile-icon">📝</div>
+            <div class="profile-name">1S SIPAGRE</div>
+            <div class="profile-desc">120 preguntas · 4 columnas</div>
+            <div class="profile-check">✓</div>
+          </div>
+          <div class="profile-card">
+            <div class="profile-icon">📝</div>
+            <div class="profile-name">2S SIPAGRE</div>
+            <div class="profile-desc">134 preguntas · 4 columnas</div>
+            <div class="profile-check"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /app-layout -->
+
+<!-- ── MOBILE NAV ── -->
+<div class="mobile-nav" style="display:none;">
+  <div class="nav-item active" onclick="switchTab('scan')">
+    📷
+    <span class="nav-label" style="display:none;">Escanear</span>
+  </div>
+  <div class="nav-item" onclick="switchTab('key')">
+    🔑
+    <span class="nav-label" style="display:none;">Clave</span>
+  </div>
+  <div class="nav-item" onclick="switchTab('results')">
+    📊
+    <span class="nav-label" style="display:none;">Resultados</span>
+  </div>
+  <div class="nav-item" onclick="switchTab('config')">
+    ⚙️
+    <span class="nav-label" style="display:none;">Config</span>
+  </div>
+</div>
+
+<script>
+function switchTab(tabId) {
+  // Hide all tabs
+  document.querySelectorAll('.page-content').forEach(el => el.style.display = 'none');
+  // Show target
+  const target = document.getElementById('tab-' + tabId);
+  if (target) target.style.display = 'block';
+  // Update sidebar
+  document.querySelectorAll('.sidebar .nav-item, .mobile-nav .nav-item').forEach((el, i) => {
+    const tabs = ['scan','key','results','config'];
+    el.classList.toggle('active', tabs[i % 4] === tabId);
+  });
+}
+</script>
+
+</body>
+</html>

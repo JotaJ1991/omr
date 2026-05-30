@@ -6386,7 +6386,9 @@ let _lastQrData = null;
 // Resuelve qué hoja de un simulacro corresponde a una sesión dada.
 function _resolveSheetFromQr(qr) {
   if (!qr || !qr.simulacro || !qr.sesion) return null;
-  const safe = s => (s || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  // El QR codifica el nombre del simulacro en MAYÚSCULAS (Python _safe_filename
+  // hace .upper()), así que comparamos sin distinguir mayúsculas/minúsculas.
+  const safe = s => (s || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   const target = safe(qr.simulacro);
   for (const s of (_simulacrosCache || [])) {
     if (safe(s.nombre) !== target) continue;
