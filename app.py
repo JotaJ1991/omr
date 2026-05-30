@@ -7,7 +7,7 @@ import traceback
 import base64
 from flask import Flask, request, jsonify, render_template, session, Response
 from werkzeug.utils import secure_filename
-from omr_processor import process_exam_image
+from omr_processor import process_exam_image, _parse_qr_payload
 from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
@@ -264,6 +264,17 @@ def process():
 
         # Enriquecer el QR con datos del roster (si el estudiante está registrado)
         qr_info = result.get('qr')
+        # Respaldo: si el servidor no detectó el QR (p.ej. la cámara guiada
+        # recortó el encabezado y dejó el QR fuera de la imagen), usar la pista
+        # decodificada en el cliente desde el frame completo.
+        if not qr_info:
+            qr_hint = (request.form.get('qr_hint', '') or '').strip()
+            if qr_hint:
+                hinted = _parse_qr_payload(qr_hint)
+                if hinted:
+                    qr_info = hinted
+                    print(f'[/process] QR no detectado en servidor; usando '
+                          f'pista del cliente: {qr_hint}', flush=True)
         if qr_info and qr_info.get('student_id'):
             try:
                 roster_match = get_student_from_roster(

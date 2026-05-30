@@ -6383,6 +6383,31 @@ document.getElementById('modal-overlay').addEventListener('click', function(e){
 // por el código QR de la hoja. Auto-rellena los campos del formulario.
 let _lastQrData = null;
 
+// Pista de QR decodificada en el cliente desde el frame COMPLETO (antes del
+// recorte de la cámara guiada). El recorte por perspectiva puede dejar el QR
+// del encabezado fuera de la imagen enviada, así que lo leemos aquí y lo
+// pasamos al servidor como respaldo.
+let _pendingQrHint = '';
+
+// Decodifica un QR desde un canvas usando la API nativa BarcodeDetector
+// (Chrome/Android). Devuelve el texto del QR o '' si no se detecta / no
+// está soportada la API.
+async function _decodeQrFromCanvas(canvas) {
+  try {
+    if (!('BarcodeDetector' in window)) return '';
+    const det = new BarcodeDetector({ formats: ['qr_code'] });
+    const codes = await det.detect(canvas);
+    if (codes && codes.length) {
+      for (const c of codes) {
+        const v = (c.rawValue || '').trim();
+        if (v.startsWith('OMR|')) return v;
+      }
+      return (codes[0].rawValue || '').trim();
+    }
+  } catch (e) { /* no soportado o sin QR */ }
+  return '';
+}
+
 // Resuelve qué hoja de un simulacro corresponde a una sesión dada.
 function _resolveSheetFromQr(qr) {
   if (!qr || !qr.simulacro || !qr.sesion) return null;
@@ -6576,6 +6601,13 @@ async function processPhoto() {
   if (!isFirstPhoto) {
     fd.append('current_answers', JSON.stringify(state.answers));
   }
+  // Pista de QR leída en el cliente (cámara guiada). Respaldo por si el
+  // recorte dejó el QR fuera de la imagen enviada al servidor.
+  if (_pendingQrHint) {
+    fd.append('qr_hint', _pendingQrHint);
+    console.log('[OMR] QR leído en cliente → enviando como pista:', _pendingQrHint);
+  }
+  _pendingQrHint = '';  // consumir
 
   try {
     const resp = await fetch('/process', { method:'POST', body:fd });
@@ -8140,7 +8172,7 @@ function orderQuadPoints(pts) {
 
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
-function captureFromCamera() {
+async function captureFromCamera() {
   const video = document.getElementById('cam-video');
   if (!video.videoWidth) { alert('La cámara aún no está lista.'); return; }
 
@@ -8149,6 +8181,11 @@ function captureFromCamera() {
   fullCanvas.width  = video.videoWidth;
   fullCanvas.height = video.videoHeight;
   fullCanvas.getContext('2d').drawImage(video, 0, 0);
+
+  // ── Leer el QR del FRAME COMPLETO antes de recortar ──
+  // El recorte por perspectiva (warpPerspective) puede dejar fuera el QR del
+  // encabezado, así que lo decodificamos aquí y lo enviamos como pista.
+  _pendingQrHint = await _decodeQrFromCanvas(fullCanvas);
 
   // Si tenemos detección, recortar y enderezar el documento
   if (cvLoaded && lastDetected && lastDetected.length === 4) {
