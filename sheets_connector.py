@@ -526,7 +526,7 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
         if g: return g
         return _grade_from_course_name(c)
 
-    distribuciones = list_distribuciones()
+    distribuciones = list_distribuciones(simulacro_nombre)
 
     # Cargar hojas y datos
     if sim['tipo'] == SIM_COMPLETO:
@@ -737,21 +737,29 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
 
 # ── Distribución de preguntas por (tipo, grado) ──────────────────────
 def _ensure_distribucion_sheet():
-    """Hoja 'Distribucion' con columnas: Tipo, Grado, Materia, Sesion, Inicio, Fin."""
+    """
+    Hoja 'Distribucion': Tipo, Grado, Materia, Sesion, Inicio, Fin, Simulacro.
+    La columna Simulacro (G) es opcional: vacía = distribución POR DEFECTO
+    (aplica a todos los simulacros); con nombre = específica de ese simulacro
+    y tiene prioridad sobre la default.
+    """
     ss = _open_spreadsheet()
     fresh = False
     try:
         ws = ss.worksheet(DISTRIBUCION_SHEET)
         header = ws.row_values(1) or []
-        if len(header) < 6 or header[0].strip().lower() != 'tipo':
-            ws.update('A1:F1', [['Tipo','Grado','Materia','Sesion','Inicio','Fin']],
+        if (len(header) < 7 or header[0].strip().lower() != 'tipo'
+                or (header[6] or '').strip().lower() != 'simulacro'):
+            ws.update('A1:G1',
+                      [['Tipo','Grado','Materia','Sesion','Inicio','Fin','Simulacro']],
                       value_input_option='RAW')
     except Exception:
         ws = ss.add_worksheet(title=DISTRIBUCION_SHEET, rows=200, cols=8)
-        ws.update('A1:F1', [['Tipo','Grado','Materia','Sesion','Inicio','Fin']],
+        ws.update('A1:G1',
+                  [['Tipo','Grado','Materia','Sesion','Inicio','Fin','Simulacro']],
                   value_input_option='RAW')
         try:
-            ws.format('A1:F1', {
+            ws.format('A1:G1', {
                 'backgroundColor': {'red':0.39, 'green':0.40, 'blue':0.95},
                 'textFormat': {'bold':True,
                                'foregroundColor':{'red':1,'green':1,'blue':1}},
@@ -780,47 +788,77 @@ def _ensure_distribucion_sheet():
     return ws
 
 
-def list_distribuciones() -> dict:
-    """Retorna {(tipo, grado): [{materia, sesion, inicio, fin}, ...]}."""
+def _read_distribucion_rows() -> list:
+    """Lee la hoja Distribucion. Devuelve [(simulacro, tipo, grado, entry)]."""
     try:
         ws = _ensure_distribucion_sheet()
         data = ws.get_all_values()[1:]
-        result = {}
+        out = []
         for r in data:
             if len(r) < 6: continue
             tipo  = (r[0] or '').strip().lower()
             grado = (r[1] or '').strip()
             mat   = (r[2] or '').strip()
             ses   = (r[3] or '').strip().upper()
+            sim   = (r[6] or '').strip() if len(r) >= 7 else ''
             try:
                 ini = int(r[4]); fin = int(r[5])
             except Exception:
                 continue
             if not tipo or not grado or not mat or ini < 1 or fin < ini:
                 continue
-            key = (tipo, grado)
-            result.setdefault(key, [])
-            result[key].append({'materia': mat, 'sesion': ses,
-                                 'inicio': ini, 'fin': fin})
-        return result
+            out.append((sim, tipo, grado,
+                        {'materia': mat, 'sesion': ses,
+                         'inicio': ini, 'fin': fin}))
+        return out
     except Exception:
-        return {}
+        return []
+
+
+def list_distribuciones(simulacro: str = '') -> dict:
+    """
+    Retorna el mapa EFECTIVO {(tipo, grado): [{materia, sesion, inicio, fin}]}
+    para un simulacro: sus distribuciones específicas tienen prioridad y,
+    donde no haya, se usan las por defecto (columna Simulacro vacía).
+    Sin argumento devuelve solo las por defecto (compatibilidad histórica).
+    """
+    simulacro = (simulacro or '').strip()
+    base = {}      # por defecto (sim == '')
+    specific = {}  # del simulacro pedido
+    for sim, tipo, grado, entry in _read_distribucion_rows():
+        key = (tipo, grado)
+        if not sim:
+            base.setdefault(key, []).append(entry)
+        elif simulacro and sim == simulacro:
+            specific.setdefault(key, []).append(entry)
+    result = dict(base)
+    result.update(specific)   # lo específico del simulacro pisa lo default
+    return result
 
 
 def list_distribuciones_json() -> list:
-    """Versión serializable: lista de {tipo, grado, materias: [...]}"""
-    d = list_distribuciones()
+    """Lista serializable: [{simulacro, tipo, grado, materias:[...]}]."""
+    grouped = {}
+    for sim, tipo, grado, entry in _read_distribucion_rows():
+        grouped.setdefault((sim, tipo, grado), []).append(entry)
     out = []
-    for (tipo, grado), entries in d.items():
-        out.append({'tipo': tipo, 'grado': grado, 'materias': entries})
-    out.sort(key=lambda x: (x['tipo'], int(x['grado']) if x['grado'].isdigit() else 99))
+    for (sim, tipo, grado), entries in grouped.items():
+        out.append({'simulacro': sim, 'tipo': tipo, 'grado': grado,
+                    'materias': entries})
+    out.sort(key=lambda x: (x['simulacro'], x['tipo'],
+                            int(x['grado']) if x['grado'].isdigit() else 99))
     return out
 
 
-def save_distribucion(tipo: str, grado: str, materias: list) -> dict:
-    """Reemplaza la distribución de (tipo, grado)."""
+def save_distribucion(tipo: str, grado: str, materias: list,
+                      simulacro: str = '') -> dict:
+    """
+    Reemplaza la distribución de (simulacro, tipo, grado).
+    simulacro vacío = la distribución POR DEFECTO de (tipo, grado).
+    """
     tipo  = (tipo or '').strip().lower()
     grado = str(grado or '').strip()
+    simulacro = (simulacro or '').strip()
     if tipo not in (SIM_COMPLETO, SIM_MEDIA):
         return {'success': False, 'error': 'Tipo inválido.'}
     if not grado:
@@ -837,16 +875,19 @@ def save_distribucion(tipo: str, grado: str, materias: list) -> dict:
             return {'success': False, 'error': 'Inicio/Fin inválidos.'}
         if not mat or ini < 1 or fin < ini:
             return {'success': False, 'error': 'Datos incompletos.'}
-        cleaned.append([tipo, grado, mat, ses, ini, fin])
+        cleaned.append([tipo, grado, mat, ses, ini, fin, simulacro])
 
     try:
+      with _WRITE_LOCK:
         ws = _ensure_distribucion_sheet()
         all_rows = ws.get_all_values()
         i = len(all_rows)
         while i >= 2:
             row = all_rows[i-1] if i-1 < len(all_rows) else []
+            row_sim = (row[6] or '').strip() if len(row) >= 7 else ''
             if (len(row) >= 2 and (row[0] or '').strip().lower() == tipo
-                and str(row[1] or '').strip() == grado):
+                and str(row[1] or '').strip() == grado
+                and row_sim == simulacro):
                 ws.delete_rows(i)
             i -= 1
         ws.append_rows(cleaned, value_input_option='RAW')
@@ -855,11 +896,41 @@ def save_distribucion(tipo: str, grado: str, materias: list) -> dict:
         return {'success': False, 'error': str(e)}
 
 
-def get_distribucion_for(tipo: str, grado: str) -> list:
-    """Distribución para (tipo, grado), con fallback al default."""
+def delete_distribucion(tipo: str, grado: str, simulacro: str) -> dict:
+    """Elimina la distribución específica de un simulacro (vuelve al default).
+    Solo aplica a filas con simulacro NO vacío."""
     tipo  = (tipo or '').strip().lower()
     grado = str(grado or '').strip()
-    d = list_distribuciones()
+    simulacro = (simulacro or '').strip()
+    if not simulacro:
+        return {'success': False,
+                'error': 'Solo se pueden eliminar distribuciones de un simulacro.'}
+    try:
+      with _WRITE_LOCK:
+        ws = _ensure_distribucion_sheet()
+        all_rows = ws.get_all_values()
+        i = len(all_rows)
+        removed = 0
+        while i >= 2:
+            row = all_rows[i-1] if i-1 < len(all_rows) else []
+            row_sim = (row[6] or '').strip() if len(row) >= 7 else ''
+            if (len(row) >= 2 and (row[0] or '').strip().lower() == tipo
+                and str(row[1] or '').strip() == grado
+                and row_sim == simulacro):
+                ws.delete_rows(i)
+                removed += 1
+            i -= 1
+        return {'success': True, 'removed': removed,
+                'distribuciones': list_distribuciones_json()}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def get_distribucion_for(tipo: str, grado: str, simulacro: str = '') -> list:
+    """Distribución efectiva para (simulacro, tipo, grado), con fallbacks."""
+    tipo  = (tipo or '').strip().lower()
+    grado = str(grado or '').strip()
+    d = list_distribuciones(simulacro)
     if (tipo, grado) in d:
         return d[(tipo, grado)]
     if (tipo, grado) in DEFAULT_DISTRIBUCIONES:
@@ -1818,7 +1889,7 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
         return {'success': False, 'error': 'No se encontraron estudiantes.'}
 
     courses_list = list_courses()
-    distribuciones = list_distribuciones()
+    distribuciones = list_distribuciones(sim_name)
 
     # Pre-cargar TODAS las claves por grado y anuladas en una sola lectura
     # de cada hoja (evita N llamadas a Sheets API que disparan 429 quota).

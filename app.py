@@ -20,7 +20,7 @@ from sheets_connector import (
     list_simulacros, add_simulacro, delete_simulacro,
     uppercase_all_student_names,
     analyze_simulacro_questions,
-    list_distribuciones_json, save_distribucion,
+    list_distribuciones_json, save_distribucion, delete_distribucion,
     get_key_for_grade, save_key_for_grade, list_keys_grade,
     get_anuladas_for_grade, save_anuladas_for_grade, list_anuladas,
     get_student_from_roster, list_roster,
@@ -200,8 +200,10 @@ def process():
     # respuestas más allá de esa posición se descartan y NO aparecen en el
     # debug visual.
     curso_req = (request.form.get('curso') or '').strip()
+    sim_req   = (request.form.get('simulacro') or '').strip()
     effective_total_q = None
-    print(f'[/process] perfil={pid} curso_recibido={curso_req!r}', flush=True)
+    print(f'[/process] perfil={pid} curso_recibido={curso_req!r} '
+          f'simulacro={sim_req!r}', flush=True)
     if curso_req:
         try:
             from sheets_connector import (
@@ -215,7 +217,9 @@ def process():
                 # ej. IETECI Mañana es tipo='media' pero 6°/7°/8° usan perfil
                 # 1S SIPAGRE (formato fisico de "completo"). Por eso probamos
                 # media PRIMERO (mas comun) y completo como fallback.
-                dists = list_distribuciones()
+                # Si el cliente envía el simulacro, la distribución específica
+                # de ese simulacro tiene prioridad sobre la default.
+                dists = list_distribuciones(sim_req)
                 dist = None
                 tipo_used = None
                 for tipo in ('media', 'completo'):
@@ -546,9 +550,25 @@ def distribuciones_save():
     data = request.get_json(silent=True) or {}
     tipo  = (data.get('tipo') or '').strip()
     grado = str(data.get('grado') or '').strip()
-    materias = data.get('materias') or []
+    materias  = data.get('materias') or []
+    simulacro = (data.get('simulacro') or '').strip()
     try:
-        return jsonify(save_distribucion(tipo, grado, materias))
+        return jsonify(save_distribucion(tipo, grado, materias,
+                                         simulacro=simulacro))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/distribuciones', methods=['DELETE'])
+def distribuciones_delete():
+    """Elimina la distribución ESPECÍFICA de un simulacro (vuelve al default)."""
+    data = request.get_json(silent=True) or {}
+    tipo  = (data.get('tipo') or '').strip()
+    grado = str(data.get('grado') or '').strip()
+    simulacro = (data.get('simulacro') or '').strip()
+    try:
+        return jsonify(delete_distribucion(tipo, grado, simulacro))
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500

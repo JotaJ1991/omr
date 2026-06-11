@@ -1332,6 +1332,15 @@
 <div class="modal-overlay" id="distrib-modal">
   <div class="modal" style="width:min(560px, calc(100vw - 32px));">
     <h3>📐 Distribución de preguntas</h3>
+    <div style="margin-bottom:10px;">
+      <label>Aplicar a</label>
+      <select id="distrib-sim" onchange="_distribLoadDefault()">
+        <option value="">🌐 Todos los simulacros (por defecto)</option>
+      </select>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">
+        La distribución de un simulacro tiene prioridad sobre la "por defecto".
+      </div>
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
       <div style="flex:1;min-width:120px;">
         <label>Tipo de simulacro</label>
@@ -1482,30 +1491,66 @@ function renderDistribucionesList() {
       Sin distribuciones configuradas. Toca "Configurar grado" para empezar.</p>`;
     return;
   }
-  cont.innerHTML = _distribCache.map(d => {
+  // Orden: primero las "por defecto", luego agrupadas por simulacro
+  const sorted = [..._distribCache].sort((a, b) =>
+    (a.simulacro || '').localeCompare(b.simulacro || '') ||
+    a.tipo.localeCompare(b.tipo) || (+a.grado) - (+b.grado));
+  cont.innerHTML = sorted.map(d => {
     const total = d.materias.reduce((s, m) => s + (m.fin - m.inicio + 1), 0);
+    const sim = d.simulacro || '';
+    const simEsc = sim.replace(/'/g, "\\'");
+    const badge = sim
+      ? `<span style="font-size:.66rem;padding:2px 8px;border-radius:99px;
+                      background:rgba(250,204,21,.12);border:1px solid rgba(250,204,21,.4);
+                      color:var(--gold,#facc15);">🎯 ${sim}</span>`
+      : `<span style="font-size:.66rem;padding:2px 8px;border-radius:99px;
+                      background:rgba(255,255,255,.06);border:1px solid var(--card-border);
+                      color:var(--muted);">🌐 Por defecto</span>`;
+    const delBtn = sim
+      ? `<button onclick="event.stopPropagation();deleteDistrib('${d.tipo}','${d.grado}','${simEsc}')"
+                title="Eliminar esta distribución específica (vuelve a la por defecto)"
+                style="border:1px solid rgba(239,68,68,.3);background:transparent;
+                       color:var(--danger);padding:5px 10px;border-radius:6px;
+                       cursor:pointer;font-size:.78rem;">🗑️</button>`
+      : '';
     return `<div style="border:1px solid var(--card-border);border-radius:10px;padding:10px 12px;
                    background:rgba(255,255,255,.02);">
-      <div style="display:flex;justify-content:space-between;align-items:center;
-                  cursor:pointer;" onclick="editDistrib('${d.tipo}', '${d.grado}')">
-        <div>
-          <div style="font-weight:700;">
-            ${d.tipo === 'completo' ? 'Completo' : 'Media'} · Grado ${d.grado}°
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;
+                  cursor:pointer;" onclick="editDistrib('${d.tipo}', '${d.grado}', '${simEsc}')">
+        <div style="min-width:0;">
+          <div style="font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${d.tipo === 'completo' ? 'Completo' : 'Media'} · Grado ${d.grado}° ${badge}
           </div>
           <div style="font-size:.72rem;color:var(--muted);">
             ${d.materias.length} bloques · ${total} preguntas en total
           </div>
         </div>
-        <button onclick="event.stopPropagation();editDistrib('${d.tipo}','${d.grado}')"
-                style="border:1px solid var(--card-border);background:transparent;
-                       color:var(--primary-light);padding:5px 10px;border-radius:6px;
-                       cursor:pointer;font-size:.78rem;">✏️ Editar</button>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button onclick="event.stopPropagation();editDistrib('${d.tipo}','${d.grado}','${simEsc}')"
+                  style="border:1px solid var(--card-border);background:transparent;
+                         color:var(--primary-light);padding:5px 10px;border-radius:6px;
+                         cursor:pointer;font-size:.78rem;">✏️ Editar</button>
+          ${delBtn}
+        </div>
       </div>
     </div>`;
   }).join('');
 }
 
+// Llena el selector "Aplicar a" del modal con los simulacros del catálogo
+function _distribFillSimSelect(selected = '') {
+  const sel = document.getElementById('distrib-sim');
+  if (!sel) return;
+  let html = '<option value="">🌐 Todos los simulacros (por defecto)</option>';
+  (_simulacrosCache || []).forEach(s => {
+    html += `<option value="${s.nombre}">${s.nombre}</option>`;
+  });
+  sel.innerHTML = html;
+  sel.value = selected || '';
+}
+
 function showDistribModal() {
+  _distribFillSimSelect('');
   document.getElementById('distrib-tipo').value = 'media';
   document.getElementById('distrib-grado').value = '10';
   document.getElementById('distrib-modal-error').style.display = 'none';
@@ -1513,14 +1558,35 @@ function showDistribModal() {
   document.getElementById('distrib-modal').classList.add('show');
 }
 
-function editDistrib(tipo, grado) {
+function editDistrib(tipo, grado, simulacro = '') {
+  _distribFillSimSelect(simulacro);
   document.getElementById('distrib-tipo').value = tipo;
   document.getElementById('distrib-grado').value = grado;
   document.getElementById('distrib-modal-error').style.display = 'none';
-  const d = _distribCache.find(x => x.tipo === tipo && x.grado === grado);
+  const d = _distribCache.find(x => x.tipo === tipo && x.grado === grado
+                                    && (x.simulacro || '') === (simulacro || ''));
   if (d) _distribRenderRows(d.materias);
   else _distribLoadDefault();
   document.getElementById('distrib-modal').classList.add('show');
+}
+
+async function deleteDistrib(tipo, grado, simulacro) {
+  if (!confirm(`¿Eliminar la distribución de ${grado}° específica de ` +
+               `"${simulacro}"?\nVolverá a usarse la distribución por defecto.`)) return;
+  try {
+    const resp = await fetch('/distribuciones', {
+      method: 'DELETE', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tipo, grado, simulacro})
+    });
+    const data = await resp.json();
+    if (data.success) {
+      _distribCache = data.distribuciones || [];
+      renderDistribucionesList();
+      try { invalidateAnalysisCache(true); } catch (e) {}
+    } else {
+      alert(data.error || 'No se pudo eliminar.');
+    }
+  } catch (e) { alert('Error de conexión.'); }
 }
 
 function hideDistribModal() {
@@ -1534,8 +1600,14 @@ function _onDistribTipoChange() {
 function _distribLoadDefault() {
   const tipo = document.getElementById('distrib-tipo').value;
   const grado = document.getElementById('distrib-grado').value;
-  // Si hay distribución guardada para (tipo, grado), úsala como base
-  const existing = _distribCache.find(x => x.tipo === tipo && x.grado === grado);
+  const simSel = document.getElementById('distrib-sim');
+  const sim = simSel ? simSel.value : '';
+  // Base: la específica del simulacro si existe; si no, la por defecto
+  const existing =
+    _distribCache.find(x => x.tipo === tipo && x.grado === grado
+                            && (x.simulacro || '') === sim) ||
+    _distribCache.find(x => x.tipo === tipo && x.grado === grado
+                            && !(x.simulacro || ''));
   if (existing) {
     _distribRenderRows(existing.materias);
     return;
@@ -1598,6 +1670,8 @@ function _distribAddRow(r) {
 async function saveDistrib() {
   const tipo = document.getElementById('distrib-tipo').value;
   const grado = document.getElementById('distrib-grado').value;
+  const simSel = document.getElementById('distrib-sim');
+  const simulacro = simSel ? simSel.value : '';
   const errEl = document.getElementById('distrib-modal-error');
   const rows = Array.from(document.querySelectorAll('#distrib-rows > div')).map(div => ({
     materia: div.querySelector('.distrib-mat').value,
@@ -1614,7 +1688,7 @@ async function saveDistrib() {
   try {
     const resp = await fetch('/distribuciones', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({tipo, grado, materias: rows})
+      body: JSON.stringify({tipo, grado, materias: rows, simulacro})
     });
     const data = await resp.json();
     if (data.success) {
@@ -6421,6 +6495,9 @@ async function processPhoto() {
   // marcadas fuera de la zona evaluada).
   const cursoSel = document.getElementById('student-curso');
   const curso = (cursoSel && cursoSel.value) ? cursoSel.value.trim() : '';
+  // Simulacro activo: permite usar su distribución específica (si existe)
+  const simSelEl = document.getElementById('simulacro-select');
+  if (simSelEl && simSelEl.value) fd.append('simulacro', simSelEl.value);
   if (curso) {
     fd.append('curso', curso);
     console.log('[OMR] Enviando curso=' + curso + ' profile=' + state.profileId

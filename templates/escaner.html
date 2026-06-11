@@ -411,6 +411,7 @@ async function processPhoto() {
   fd.append('image', f);
   fd.append('profile_id', state.profileId);
   fd.append('curso', state.curso);
+  if (SIM && SIM.nombre) fd.append('simulacro', SIM.nombre);
   if (state.photoCount > 0 && state.answers.length) {
     fd.append('current_answers', JSON.stringify(state.answers));
   }
