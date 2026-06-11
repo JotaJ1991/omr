@@ -967,38 +967,6 @@
       <div id="anu-list" style="margin-top:14px;font-size:.82rem;color:var(--muted);"></div>
     </div>
 
-    <!-- Card LEGACY: Clave por hoja activa (modo avanzado, fallback) -->
-    <details>
-      <summary style="cursor:pointer;font-size:.85rem;color:var(--muted);
-                       padding:8px 12px;background:rgba(255,255,255,.04);
-                       border:1px solid var(--card-border);border-radius:8px;">
-        ⚙️ Modo avanzado — Clave por hoja activa (legacy)
-      </summary>
-      <div class="card" style="margin-top:8px;">
-        <h2>🔑 Clave de respuestas (hoja activa)</h2>
-        <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
-          Define las respuestas correctas para la hoja activa.
-          Se guardan en la fila 2 del Sheets. Solo se usa si NO hay clave por
-          (simulacro, sesión, grado) configurada.
-        </p>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-          <label style="font-size:.85rem;font-weight:500;color:var(--muted);">Preguntas:</label>
-          <input type="number" id="key-num-q" value="125" min="1" max="125"
-            style="width:70px;padding:6px 8px;border:1.5px solid var(--border);
-                   border-radius:7px;font-size:.9rem;font-weight:600;text-align:center;"
-            oninput="buildKeyGrid(this.value)">
-          <span class="key-status" id="key-status">0 de 125 definidas</span>
-        </div>
-        <div class="key-grid" id="key-grid"></div>
-        <div class="btn-group" style="margin-top:14px;">
-          <button class="btn-key-clear" onclick="clearKeyGrid()">🗑️ Limpiar</button>
-          <button class="btn-key-save"  onclick="saveKey()">💾 Guardar clave</button>
-        </div>
-        <div class="score-note" id="key-saved-note">
-          ✅ Clave guardada correctamente en la hoja activa.
-        </div>
-      </div>
-    </details>
   </div><!-- /tab-key -->
 
   <!-- ══ TAB RESULTADOS (UNIFICADO + REPORTES) ═════════════════════════════ -->
@@ -1251,8 +1219,16 @@
       </div>
     </div>
 
+    <!-- ── Herramientas avanzadas (uso ocasional) ── -->
+    <details style="margin-bottom:14px;">
+      <summary style="cursor:pointer;font-size:.88rem;font-weight:600;color:var(--muted);
+                       padding:10px 14px;background:rgba(255,255,255,.04);
+                       border:1px solid var(--card-border);border-radius:10px;">
+        🔧 Herramientas avanzadas — vincular IDs y diagnóstico OMR
+      </summary>
+
     <!-- ── Vincular IDs a estudiantes existentes ── -->
-    <div class="card">
+    <div class="card" style="margin-top:10px;">
       <h2>🔗 Vincular IDs a estudiantes existentes</h2>
       <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
         Para que los estudiantes puedan consultar sus resultados en el
@@ -1306,6 +1282,7 @@
       </button>
       <div id="debug-result" style="margin-top:12px;"></div>
     </div>
+    </details><!-- /herramientas avanzadas -->
 
   </div><!-- /tab-config -->
 
@@ -6138,138 +6115,12 @@ async function selectProfile(pid) {
 }
 
 // ══ CLAVE DE RESPUESTAS ════════════════════════════════════════════════════
-
-let keyAnswers = new Array(125).fill('');   // clave en memoria
+// La clave se define por (simulacro, sesión, grado) en el panel "kg" de la
+// pestaña Clave. El sistema legacy por hoja activa se eliminó de la UI (el
+// backend conserva /get_key y /save_key como fallback de calificación).
 
 function initKeyPanel() {
-  const maxQ = state.profileTotalQ;
-  document.getElementById('key-num-q').max   = maxQ;
-  document.getElementById('key-num-q').value = maxQ;
-  // Asegurar que el array tiene el tamaño correcto
-  if (keyAnswers.length !== maxQ) {
-    keyAnswers = new Array(maxQ).fill('');
-  }
-  buildKeyGrid(maxQ);
-  // Cargar clave guardada desde la hoja activa
-  if (state.activeSheet) loadSavedKey();
-}
-
-async function loadSavedKey() {
-  try {
-    const resp = await fetch(`/get_key?sheet=${encodeURIComponent(state.activeSheet)}`);
-    const data = await resp.json();
-    if (data.success && data.answers && data.answers.length > 0) {
-      // Rellenar keyAnswers con los valores guardados
-      const maxQ = state.profileTotalQ;
-      keyAnswers  = new Array(maxQ).fill('');
-      data.answers.forEach((v, i) => {
-        if (i < maxQ) keyAnswers[i] = v || '';
-      });
-      const n = parseInt(document.getElementById('key-num-q').value) || maxQ;
-      buildKeyGrid(n);
-
-      // Mostrar indicador de que se cargó
-      const note = document.getElementById('key-saved-note');
-      note.textContent = `✅ Clave cargada desde "${state.activeSheet}" (${data.answers.filter(v=>v).length} respuestas)`;
-      note.classList.add('show');
-      setTimeout(() => note.classList.remove('show'), 3500);
-    }
-  } catch(e) {
-    console.warn('No se pudo cargar la clave:', e);
-  }
-}
-
-function buildKeyGrid(val) {
-  let n = parseInt(val, 10);
-  if (isNaN(n) || n < 1)  n = 1;
-  if (n > state.profileTotalQ) n = state.profileTotalQ;
-  document.getElementById('key-num-q').value = n;
-  document.getElementById('key-num-q').max   = state.profileTotalQ;
-
-  // Ajustar el array de clave
-  if (keyAnswers.length < n) {
-    keyAnswers = keyAnswers.concat(new Array(n - keyAnswers.length).fill(''));
-  }
-
-  const grid = document.getElementById('key-grid');
-  grid.innerHTML = Array.from({length: n}, (_, i) => {
-    const v       = keyAnswers[i] || '';
-    const filled  = v ? ' filled' : '';
-    // Opciones para esta pregunta según el perfil
-    const opts    = (state.optionsPerQ && state.optionsPerQ[i])
-                    ? state.optionsPerQ[i]
-                    : ['A','B','C','D'];
-    const options = opts.map(o =>
-      `<option value="${o}" ${v===o?'selected':''}>${o}</option>`
-    ).join('');
-    return `<div class="key-chip${filled}" id="kc-${i}">
-      <span class="qnum">${i+1}.</span>
-      <select onchange="setKeyAnswer(${i}, this.value)">
-        <option value="" ${v===''?'selected':''}>—</option>
-        ${options}
-      </select>
-    </div>`;
-  }).join('');
-
-  updateKeyStatus(n);
-}
-
-function setKeyAnswer(idx, val) {
-  keyAnswers[idx] = val;
-  const chip = document.getElementById(`kc-${idx}`);
-  if (chip) chip.className = 'key-chip' + (val ? ' filled' : '');
-  const n = parseInt(document.getElementById('key-num-q').value) || 125;
-  updateKeyStatus(n);
-}
-
-function updateKeyStatus(n) {
-  const defined = keyAnswers.slice(0, n).filter(v => v !== '').length;
-  const el = document.getElementById('key-status');
-  el.innerHTML = `<strong>${defined}</strong> de ${n} definidas`;
-}
-
-function clearKeyGrid() {
-  const maxQ = state.profileTotalQ;
-  const n    = parseInt(document.getElementById('key-num-q').value) || maxQ;
-  keyAnswers  = new Array(maxQ).fill('');
-  buildKeyGrid(n);
-  document.getElementById('key-saved-note').classList.remove('show');
-}
-
-async function saveKey() {
-  const n    = parseInt(document.getElementById('key-num-q').value) || 125;
-  const data = keyAnswers.slice(0, n);
-  const defined = data.filter(v => v !== '').length;
-
-  if (defined === 0) {
-    alert('Define al menos una respuesta correcta antes de guardar.');
-    return;
-  }
-
-  const sheetName = state.activeSheet;
-  if (!sheetName) {
-    alert('Selecciona una hoja primero (tab Escanear → Curso/Grupo).');
-    return;
-  }
-
-  try {
-    const resp = await fetch('/save_key', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ answers: data, sheet_name: sheetName })
-    });
-    const result = await resp.json();
-    if (result.success) {
-      const note = document.getElementById('key-saved-note');
-      note.textContent = '✅ Clave guardada correctamente en la hoja activa.';
-      note.classList.add('show');
-      setTimeout(() => note.classList.remove('show'), 4000);
-    } else {
-      alert('Error al guardar clave: ' + result.error);
-    }
-  } catch(e) {
-    alert('Error de conexión al guardar la clave.');
-  }
+  _populateKgSimSelect();
 }
 
 // ══ HOJAS ══════════════════════════════════════════════════════════════════
