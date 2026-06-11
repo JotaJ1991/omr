@@ -5741,9 +5741,40 @@ function renderSimulacrosList() {
                 style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
                        background:rgba(6,182,212,.1);color:var(--accent);
                        border-radius:6px;cursor:pointer;">📊 Resultados</button>
+        <button onclick="copyEscanerLink('${safeNombre}', this)"
+                title="Copia el enlace del Modo Escaneo para compartir a los ayudantes"
+                style="font-size:.75rem;padding:5px 10px;border:1px solid rgba(250,204,21,.35);
+                       background:rgba(250,204,21,.08);color:var(--gold, #facc15);
+                       border-radius:6px;cursor:pointer;">📋 Enlace escaneo</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// Copia al portapapeles el enlace del Modo Escaneo (/escanear) del simulacro
+async function copyEscanerLink(nombre, btn) {
+  const url = `${location.origin}/escanear?simulacro=${encodeURIComponent(nombre)}`;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    copied = true;
+  } catch (e) {
+    // Fallback (HTTP / navegadores viejos): textarea temporal
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy');
+      document.body.removeChild(ta);
+      copied = true;
+    } catch (e2) { /* mostrar el enlace para copiar a mano */ }
+  }
+  if (copied && btn) {
+    const orig = btn.textContent;
+    btn.textContent = '✅ Copiado';
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  } else {
+    prompt('Copia el enlace del Modo Escaneo:', url);
+  }
 }
 
 function _onSimulacroTipoChange() {
