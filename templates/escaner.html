@@ -235,6 +235,9 @@
     </div>
     <button class="btn btn-guide" id="btn-more" style="display:none;" onclick="document.getElementById('file-input').click()">
       ➕ Otra foto para completar faltantes</button>
+    <button class="btn" id="btn-discard" style="display:none;background:rgba(239,68,68,.12);
+            border:1.5px solid rgba(239,68,68,.45);color:#fca5a5;"
+            onclick="discardScan()">🗑️ Descartar foto y volver a escanear</button>
     <div class="grid" id="answers-grid"></div>
   </div>
 
@@ -433,6 +436,7 @@ async function processPhoto() {
     document.getElementById('c-det').textContent = d.detected;
     document.getElementById('c-mis').textContent = d.missing;
     document.getElementById('btn-more').style.display = d.missing > 0 ? 'block' : 'none';
+    document.getElementById('btn-discard').style.display = 'block';
     setSt('scan-status', d.missing > 0 ? 'warn' : 'ok',
           d.missing > 0
             ? `⚠️ Faltan ${d.missing} respuestas por detectar. Puedes tomar otra foto o corregirlas tocando cada pregunta.`
@@ -609,10 +613,21 @@ function resetScanState() {
   document.getElementById('debug-img').style.display = 'none';
   document.getElementById('counter').style.display = 'none';
   document.getElementById('btn-more').style.display = 'none';
+  document.getElementById('btn-discard').style.display = 'none';
   document.getElementById('answers-grid').innerHTML = '';
   setSt('scan-status', '', '');
   setSt('qr-banner', '', '');
   updateSaveBtn();
+}
+
+// Descarta la(s) foto(s) actuales (mal enfocadas, mal tomadas) SIN guardar
+// nada, conservando curso y datos del estudiante para volver a escanear.
+function discardScan() {
+  if (!confirm('¿Descartar esta foto y sus respuestas detectadas?\n' +
+               'No se guardará nada. Podrás escanear de nuevo.')) return;
+  resetScanState();
+  setSt('save-status', '', '');
+  setSt('scan-status', 'warn', '🗑️ Foto descartada. Toma una nueva foto cuando estés listo.');
 }
 
 function nextStudent() {
