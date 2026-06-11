@@ -881,15 +881,24 @@ _RATE_WINDOW_S = 60
 _RATE_MAX = 10
 
 
+_login_attempts_lock = threading.Lock()
+
 def _rate_limit_ok(ip: str) -> bool:
     now = time.time()
-    # Limpia intentos viejos
-    _login_attempts[ip] = [t for t in _login_attempts[ip]
-                           if now - t < _RATE_WINDOW_S]
-    if len(_login_attempts[ip]) >= _RATE_MAX:
-        return False
-    _login_attempts[ip].append(now)
-    return True
+    with _login_attempts_lock:
+        # Limpia intentos viejos
+        _login_attempts[ip] = [t for t in _login_attempts[ip]
+                               if now - t < _RATE_WINDOW_S]
+        if len(_login_attempts[ip]) >= _RATE_MAX:
+            return False
+        _login_attempts[ip].append(now)
+        # Evita crecimiento indefinido del dict con miles de IPs
+        if len(_login_attempts) > 5000:
+            stale = [k for k, v in _login_attempts.items()
+                     if not v or now - v[-1] > _RATE_WINDOW_S]
+            for k in stale:
+                del _login_attempts[k]
+        return True
 
 
 @app.route('/resultados', methods=['GET'])

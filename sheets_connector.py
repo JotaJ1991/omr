@@ -20,7 +20,15 @@ Columnas:
 
 import os
 import json
+import threading
 from datetime import datetime
+
+# ── Locks de concurrencia (gunicorn corre 4 threads en 1 worker) ───────────
+# _CACHE_LOCK protege los caches globales de lectura.
+# _WRITE_LOCK serializa las operaciones leer-luego-escribir (upserts por ID)
+# para que dos guardados simultáneos del mismo estudiante no dupliquen filas.
+_CACHE_LOCK = threading.RLock()
+_WRITE_LOCK = threading.RLock()
 
 SPREADSHEET_ID   = os.environ.get('SPREADSHEET_ID', '15erGbl2O6j7SGORYl2FbOO2wVV_r9vFzE4c304y-PUs')
 CREDENTIALS_FILE = os.environ.get('GOOGLE_CREDENTIALS_FILE', 'credentials.json')
@@ -118,25 +126,30 @@ _READ_CACHE_TTL = 60   # segundos. Conservador: cambios se reflejan en <1 min.
 
 
 def _cached_read(key, fn, ttl=None):
-    """Memoriza el resultado de fn() durante ttl segundos."""
+    """Memoriza el resultado de fn() durante ttl segundos (thread-safe)."""
     import time
     if ttl is None: ttl = _READ_CACHE_TTL
     now = time.time()
-    cached = _READ_CACHE.get(key)
-    if cached and (now - cached[0]) < ttl:
-        return cached[1]
+    with _CACHE_LOCK:
+        cached = _READ_CACHE.get(key)
+        if cached and (now - cached[0]) < ttl:
+            return cached[1]
+    # fn() fuera del lock: una lectura lenta a Sheets no debe bloquear el
+    # resto del cache (a lo sumo dos threads leen lo mismo una vez).
     val = fn()
-    _READ_CACHE[key] = (now, val)
+    with _CACHE_LOCK:
+        _READ_CACHE[key] = (now, val)
     return val
 
 
 def invalidate_read_cache(prefix=''):
     """Limpia el cache. Si prefix se pasa, solo borra claves con ese prefijo."""
-    if not prefix:
-        _READ_CACHE.clear()
-    else:
-        for k in [k for k in _READ_CACHE if k.startswith(prefix)]:
-            del _READ_CACHE[k]
+    with _CACHE_LOCK:
+        if not prefix:
+            _READ_CACHE.clear()
+        else:
+            for k in [k for k in _READ_CACHE if k.startswith(prefix)]:
+                del _READ_CACHE[k]
 
 def _open_spreadsheet(force_fresh: bool = False):
     """
@@ -146,15 +159,17 @@ def _open_spreadsheet(force_fresh: bool = False):
     """
     import time
     now = time.time()
-    cached = _SPREADSHEET_CACHE.get('ss')
-    cached_ts = _SPREADSHEET_CACHE.get('ts', 0)
-    if not force_fresh and cached is not None and (now - cached_ts) < 30:
-        return cached
+    with _CACHE_LOCK:
+        cached = _SPREADSHEET_CACHE.get('ss')
+        cached_ts = _SPREADSHEET_CACHE.get('ts', 0)
+        if not force_fresh and cached is not None and (now - cached_ts) < 30:
+            return cached
     client = _get_sheets_client()
     try:
         ss = client.open_by_key(SPREADSHEET_ID)
-        _SPREADSHEET_CACHE['ss'] = ss
-        _SPREADSHEET_CACHE['ts'] = now
+        with _CACHE_LOCK:
+            _SPREADSHEET_CACHE['ss'] = ss
+            _SPREADSHEET_CACHE['ts'] = now
         return ss
     except Exception as e:
         msg = str(e)
@@ -546,13 +561,17 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
                 ans = list(r[3:])
                 while ans and not (ans[-1] or '').strip(): ans.pop()
                 keys_idx[(ses, gr)] = [(a or '').strip() for a in ans]
-    except Exception:
+    except Exception as e:
+        print(f'[analisis] ADVERTENCIA: no se pudieron leer las claves por '
+              f'grado de "{simulacro_nombre}": {e}', flush=True)
         keys_idx = {}
     try:
         for a in list_anuladas():
             if a['simulacro'] == simulacro_nombre:
                 anu_idx[(a['sesion'], a['grado'])] = set(a['preguntas'])
-    except Exception:
+    except Exception as e:
+        print(f'[analisis] ADVERTENCIA: no se pudieron leer las anuladas de '
+              f'"{simulacro_nombre}": {e}', flush=True)
         anu_idx = {}
 
     # Cache de claves por (session, grado)
@@ -1412,13 +1431,6 @@ def save_to_sheets(student_name: str, exam_id: str,
     key_n   = _key_total(key)
     pct_str = f'{round(correct / key_n * 100)}%' if key_n > 0 else ''
 
-    # ── Eliminar fila de TOTALES existente antes de agregar el estudiante ─────
-    all_rows = worksheet.get_all_values()
-    for i, row in enumerate(all_rows):
-        if row and len(row) > 2 and row[2] == '--- TOTALES ---':
-            worksheet.delete_rows(i + 1)
-            break
-
     # ── Construir fila del estudiante ─────────────────────────────────────────
     now      = datetime.now()
     row_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
@@ -1433,29 +1445,39 @@ def save_to_sheets(student_name: str, exam_id: str,
             row_data.append('')
         row_data.append(curso or '')
 
-    # ── DEDUPE: si ya hay fila con el mismo ID, ACTUALIZAR en lugar de agregar
-    #    El ID está en col D (índice 3). Omite fila 1 (header) y fila 2 (clave).
-    existing_row = None
-    if exam_id:
+    # Sección leer-luego-escribir bajo lock: sin él, dos guardados
+    # simultáneos del mismo ID verían ambos "no existe" y duplicarían la fila.
+    with _WRITE_LOCK:
+        # ── Eliminar fila de TOTALES existente antes de agregar el estudiante ─
+        all_rows = worksheet.get_all_values()
         for i, row in enumerate(all_rows):
-            if i < 2: continue
-            if len(row) > 3 and (row[3] or '').strip() == str(exam_id).strip():
-                existing_row = i + 1   # 1-based
+            if row and len(row) > 2 and row[2] == '--- TOTALES ---':
+                worksheet.delete_rows(i + 1)
                 break
 
-    was_updated = False
-    if existing_row:
-        # UPDATE: usar la fila existente para preservar orden histórico
-        end_col = _col_letter(len(row_data) - 1)
-        worksheet.update(f'A{existing_row}:{end_col}{existing_row}',
-                         [row_data], value_input_option='RAW')
-        row_num = existing_row
-        was_updated = True
-    else:
-        worksheet.append_row(row_data, value_input_option='RAW')
-        row_num = len(worksheet.col_values(1))
+        # ── DEDUPE: si ya hay fila con el mismo ID, ACTUALIZAR en vez de agregar
+        #    El ID está en col D (índice 3). Omite fila 1 (header) y 2 (clave).
+        existing_row = None
+        if exam_id:
+            for i, row in enumerate(all_rows):
+                if i < 2: continue
+                if len(row) > 3 and (row[3] or '').strip() == str(exam_id).strip():
+                    existing_row = i + 1   # 1-based
+                    break
 
-    _update_totals_row(worksheet, n_questions)
+        was_updated = False
+        if existing_row:
+            # UPDATE: usar la fila existente para preservar orden histórico
+            end_col = _col_letter(len(row_data) - 1)
+            worksheet.update(f'A{existing_row}:{end_col}{existing_row}',
+                             [row_data], value_input_option='RAW')
+            row_num = existing_row
+            was_updated = True
+        else:
+            worksheet.append_row(row_data, value_input_option='RAW')
+            row_num = len(worksheet.col_values(1))
+
+        _update_totals_row(worksheet, n_questions)
 
     return {
         'row':     row_num,
@@ -1728,33 +1750,42 @@ def _extract_students(worksheet):
     return students
 
 
-def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
-                             results_sheet: str = 'Resultados SIPAGRE') -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# RESULTADOS — núcleo común para SIPAGRE (1S+2S) y M SIPAGRE (M)
+# ─────────────────────────────────────────────────────────────────────────────
+def _generate_results_core(session_sheets, tipo, results_sheet,
+                           fallback_grado, header_color):
     """
-    Combina las sesiones 1S y 2S SIPAGRE por ID de estudiante.
-    Calcula puntajes por materia y puntaje general.
-    Escribe los resultados en una hoja nueva/existente.
+    Núcleo común de generación de resultados (antes duplicado en
+    generate_sipagre_results y generate_msipagre_results).
+
+    session_sheets: lista de (sesion, nombre_hoja) en orden,
+                    p.ej. [('1S','...'), ('2S','...')] o [('M','...')].
+    tipo:           'completo' | 'media'. Decide la distribución y, en media,
+                    los subscores Química/Física para grado 10°.
+    fallback_grado: grado cuya distribución default se usa como último recurso.
+    header_color:   color de fondo del encabezado en la hoja de resultados.
     """
     spreadsheet = _open_spreadsheet()
 
-    # Leer hojas fuente
-    try:
-        ws_1s = spreadsheet.worksheet(sheet_1s)
-    except Exception:
-        return {'success': False, 'error': f'Hoja "{sheet_1s}" no encontrada.'}
-    try:
-        ws_2s = spreadsheet.worksheet(sheet_2s)
-    except Exception:
-        return {'success': False, 'error': f'Hoja "{sheet_2s}" no encontrada.'}
+    # Abrir hojas fuente (error claro por cada una, en orden)
+    worksheets = {}
+    for ses, name in session_sheets:
+        try:
+            worksheets[ses] = spreadsheet.worksheet(name)
+        except Exception:
+            return {'success': False, 'error': f'Hoja "{name}" no encontrada.'}
 
-    # Leer claves globales (legacy). Si están vacías, validar que haya
-    # claves por grado configuradas para el simulacro.
-    key_1s = _get_answer_key(ws_1s)
-    key_2s = _get_answer_key(ws_2s)
+    sheet_names = [name for _, name in session_sheets]
+    sim_name = _find_simulacro_for_sheets(sheet_names)
+
+    # Claves globales (fila 2 de cada hoja). Si faltan, debe existir al menos
+    # una clave por grado para esa sesión.
+    keys_global = {ses: _get_answer_key(ws) for ses, ws in worksheets.items()}
 
     def _has_grade_keys(session):
-        sim_name = _find_simulacro_for_sheets([sheet_1s, sheet_2s])
-        if not sim_name: return False
+        if not sim_name:
+            return False
         try:
             for kg in list_keys_grade():
                 if (kg['simulacro'] == sim_name
@@ -1765,27 +1796,29 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
             pass
         return False
 
-    if not key_1s and not _has_grade_keys('1S'):
-        return {'success': False,
-                'error': (f'No hay clave de respuestas para "{sheet_1s}". '
-                          'Configura la clave por grado en la pestaña Clave o la global de la hoja.')}
-    if not key_2s and not _has_grade_keys('2S'):
-        return {'success': False,
-                'error': (f'No hay clave de respuestas para "{sheet_2s}". '
-                          'Configura la clave por grado en la pestaña Clave o la global de la hoja.')}
+    for ses, name in session_sheets:
+        if not keys_global[ses] and not _has_grade_keys(ses):
+            return {'success': False,
+                    'error': (f'No hay clave de respuestas para "{name}". '
+                              'Configura la clave por grado en la pestaña '
+                              'Clave o la clave global de la hoja.')}
 
-    # Extraer estudiantes
-    students_1s = _extract_students(ws_1s)
-    students_2s = _extract_students(ws_2s)
-
-    # Unir por ID — incluir estudiantes que estén en al menos una sesión
-    all_ids = set(students_1s.keys()) | set(students_2s.keys())
+    # Extraer estudiantes por sesión y unir por ID
+    students_by_ses = {ses: _extract_students(ws)
+                       for ses, ws in worksheets.items()}
+    all_ids = set()
+    for d in students_by_ses.values():
+        all_ids |= set(d.keys())
     if not all_ids:
+        if len(session_sheets) == 1:
+            return {'success': False,
+                    'error': (f'No se encontraron estudiantes en '
+                              f'"{sheet_names[0]}". Verifica que la hoja tenga '
+                              'filas de estudiantes con nombre o ID.')}
         return {'success': False, 'error': 'No se encontraron estudiantes.'}
 
     courses_list = list_courses()
     distribuciones = list_distribuciones()
-    sim_name = _find_simulacro_for_sheets([sheet_1s, sheet_2s])
 
     # Pre-cargar TODAS las claves por grado y anuladas en una sola lectura
     # de cada hoja (evita N llamadas a Sheets API que disparan 429 quota).
@@ -1801,61 +1834,55 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
                     ans = list(r[3:])
                     while ans and not (ans[-1] or '').strip(): ans.pop()
                     keys_idx[(ses, gr)] = [(a or '').strip() for a in ans]
-        except Exception:
+        except Exception as e:
+            # No silenciar: sin claves por grado se calificaría con la clave
+            # global, dando puntajes distintos sin que nadie lo note.
+            print(f'[resultados] ADVERTENCIA: no se pudieron leer las claves '
+                  f'por grado de "{sim_name}": {e}', flush=True)
             keys_idx = {}
         try:
             for a in list_anuladas():
                 if a['simulacro'] == sim_name:
                     anu_idx[(a['sesion'], a['grado'])] = a['preguntas']
-        except Exception:
+        except Exception as e:
+            print(f'[resultados] ADVERTENCIA: no se pudieron leer las '
+                  f'anuladas de "{sim_name}": {e}', flush=True)
             anu_idx = {}
 
-    keys_by_grade = {}  # {grado: {'1S': k1s, '2S': k2s}}
-    anuladas_by_grade = {}  # {grado: {'1S': [...], '2S': [...]}}
+    sessions = [ses for ses, _ in session_sheets]
+    with_quimfis = (tipo == 'media')
+    keys_by_grade = {}      # {grado: {ses: clave}}
+    anuladas_by_grade = {}  # {grado: {ses: [preguntas]}}
 
-    # Calcular resultados
     results = []
     for key in sorted(all_ids):
-        s1 = students_1s.get(key)
-        s2 = students_2s.get(key)
-        s_any = s1 or s2
-        name  = s_any.get('name','')
-        sid   = s_any.get('id','') or (key if not key.startswith('_') else '')
-        curso = ''
-        if s1 and s1.get('curso'): curso = s1['curso']
-        elif s2 and s2.get('curso'): curso = s2['curso']
-        ans_1s = s1['answers'] if s1 else []
-        ans_2s = s2['answers'] if s2 else []
+        per_ses = {ses: students_by_ses[ses].get(key) for ses in sessions}
+        s_any = next((per_ses[ses] for ses in sessions if per_ses[ses]), None)
+        name  = s_any.get('name', '')
+        sid   = s_any.get('id', '')
+        curso = next((per_ses[ses]['curso'] for ses in sessions
+                      if per_ses[ses] and per_ses[ses].get('curso')), '')
+        answers_by_ses = {ses: (per_ses[ses]['answers'] if per_ses[ses] else [])
+                          for ses in sessions}
 
         grado = _grade_of_curso(curso, courses_list)
-        dist = distribuciones.get(('completo', grado))
-        if not dist:
-            dist = DEFAULT_DISTRIBUCIONES.get(('completo', grado))
-        if not dist:
-            dist = DEFAULT_DISTRIBUCIONES.get(('completo', '11'))
+        dist = (distribuciones.get((tipo, grado))
+                or DEFAULT_DISTRIBUCIONES.get((tipo, grado))
+                or DEFAULT_DISTRIBUCIONES.get((tipo, fallback_grado)))
 
-        # Claves por grado (lookup en memoria, sin tocar Sheets)
+        # Claves y anuladas por grado (lookup en memoria, sin tocar Sheets)
         if grado not in keys_by_grade:
-            specific_1s = keys_idx.get(('1S', grado), [])
-            specific_2s = keys_idx.get(('2S', grado), [])
             keys_by_grade[grado] = {
-                '1S': specific_1s or key_1s,
-                '2S': specific_2s or key_2s,
-            }
+                ses: (keys_idx.get((ses, grado), []) or keys_global[ses])
+                for ses in sessions}
         kfor = keys_by_grade[grado]
-
-        # Preguntas anuladas para este grado (lookup en memoria)
         if grado not in anuladas_by_grade:
             anuladas_by_grade[grado] = {
-                '1S': anu_idx.get(('1S', grado), []),
-                '2S': anu_idx.get(('2S', grado), []),
-            }
+                ses: anu_idx.get((ses, grado), []) for ses in sessions}
         anu_for = anuladas_by_grade[grado]
 
         scores = _score_student_with_distribution(
-            {'1S': ans_1s, '2S': ans_2s},
-            {'1S': kfor['1S'], '2S': kfor['2S']}, dist,
-            anuladas_by_session=anu_for)
+            answers_by_ses, kfor, dist, anuladas_by_session=anu_for)
 
         mat  = int(round(scores['Matematica']))
         lect = int(round(scores['Lectura Critica']))
@@ -1867,7 +1894,7 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         # para escalar a 0-500. Max general = 500.
         general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
 
-        results.append({
+        entry = {
             'id':       sid,
             'name':     name,
             'curso':    curso,
@@ -1877,7 +1904,24 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
             'nat':      nat,
             'ing':      ing,
             'general':  general,
-        })
+        }
+        if with_quimfis:
+            # Solo grado 10°: descomponer Naturales en Química (P61-P80) y
+            # Física (P81-P100). Para otros grados queda vacío.
+            quim, fis = '', ''
+            if str(grado) == '10':
+                sub = _compute_nat_subscores_grade10(
+                    answers_by_ses[sessions[0]], kfor[sessions[0]],
+                    set(anu_for[sessions[0]] or []))
+                quim = int(round(sub['quim']))
+                fis  = int(round(sub['fis']))
+            entry['quim']  = quim
+            entry['fis']   = fis
+            entry['grado'] = grado
+            # 'general' debe quedar después de ing en el orden histórico de
+            # la fila, pero en el dict el orden no afecta la escritura.
+            entry['type']  = 'M'
+        results.append(entry)
 
     # Crear/sobrescribir hoja de resultados
     needed_rows = len(results) + 5  # header + datos + promedio + margen
@@ -1890,42 +1934,51 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         ws_res = spreadsheet.add_worksheet(
             title=results_sheet, rows=needed_rows, cols=20)
 
-    # Encabezado (con Curso)
     header = [
         'ID Estudiante', 'Nombre', 'Curso',
         'Matematica', 'Lectura Critica', 'Sociales',
-        'Naturales', 'Ingles', 'Puntaje General'
+        'Naturales', 'Ingles', 'Puntaje General',
     ]
-    ws_res.update('A1:I1', [header], value_input_option='RAW')
+    if with_quimfis:
+        header += ['Quimica (10°)', 'Fisica (10°)']
+    end_col = _col_letter(len(header) - 1)
+    ws_res.update(f'A1:{end_col}1', [header], value_input_option='RAW')
 
-    # Datos
     rows = []
     for r in results:
-        rows.append([
-            r['id'], r['name'], r.get('curso',''),
-            r['mat'], r['lect'], r['soc'],
-            r['nat'], r['ing'], r['general'],
-        ])
+        row = [r['id'], r['name'], r.get('curso', ''),
+               r['mat'], r['lect'], r['soc'],
+               r['nat'], r['ing'], r['general']]
+        if with_quimfis:
+            row += [r.get('quim', ''), r.get('fis', '')]
+        rows.append(row)
 
     if rows:
-        end_col = _col_letter(len(header) - 1)
         end_row = len(rows) + 1
         ws_res.update(f'A2:{end_col}{end_row}', rows, value_input_option='RAW')
 
         # Fila de promedios
         n = len(results)
-        avg_mat  = int(round(sum(r['mat']     for r in results) / n))
-        avg_lect = int(round(sum(r['lect']    for r in results) / n))
-        avg_soc  = int(round(sum(r['soc']     for r in results) / n))
-        avg_nat  = int(round(sum(r['nat']     for r in results) / n))
-        avg_ing  = int(round(sum(r['ing']     for r in results) / n))
-        avg_gen  = int(round(sum(r['general'] for r in results) / n))
+        avg = {k: int(round(sum(r[k] for r in results) / n))
+               for k in ['mat', 'lect', 'soc', 'nat', 'ing', 'general']}
+        avg_vals = ['', 'PROMEDIO', '', avg['mat'], avg['lect'], avg['soc'],
+                    avg['nat'], avg['ing'], avg['general']]
+        if with_quimfis:
+            # Promedio Quím/Fís solo sobre los de 10°
+            only10 = [r for r in results
+                      if isinstance(r.get('quim'), int)
+                      and isinstance(r.get('fis'), int)]
+            avg_vals += [
+                (int(round(sum(r['quim'] for r in only10) / len(only10)))
+                 if only10 else ''),
+                (int(round(sum(r['fis'] for r in only10) / len(only10)))
+                 if only10 else ''),
+            ]
         avg_row = end_row + 1
-        ws_res.update(f'A{avg_row}:I{avg_row}',
-                      [['', 'PROMEDIO', '', avg_mat, avg_lect, avg_soc, avg_nat, avg_ing, avg_gen]],
+        ws_res.update(f'A{avg_row}:{end_col}{avg_row}', [avg_vals],
                       value_input_option='RAW')
         try:
-            ws_res.format(f'A{avg_row}:I{avg_row}', {
+            ws_res.format(f'A{avg_row}:{end_col}{avg_row}', {
                 'backgroundColor': {'red': 0.93, 'green': 0.93, 'blue': 0.93},
                 'textFormat': {'bold': True},
                 'horizontalAlignment': 'CENTER'
@@ -1933,10 +1986,10 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
         except Exception:
             pass
 
-    # Formato encabezado
+    # Formato encabezado (histórico: siempre A1:I1, también en media)
     try:
         ws_res.format('A1:I1', {
-            'backgroundColor': {'red': 0.13, 'green': 0.27, 'blue': 0.53},
+            'backgroundColor': header_color,
             'textFormat': {'bold': True,
                            'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
             'horizontalAlignment': 'CENTER'
@@ -1952,217 +2005,24 @@ def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RESULTADOS M SIPAGRE — una sola jornada (125 preguntas)
-# ─────────────────────────────────────────────────────────────────────────────
+def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
+                             results_sheet: str = 'Resultados SIPAGRE') -> dict:
+    """Combina las sesiones 1S y 2S por ID de estudiante (tipo 'completo')."""
+    return _generate_results_core(
+        [('1S', sheet_1s), ('2S', sheet_2s)], 'completo', results_sheet,
+        fallback_grado='11',
+        header_color={'red': 0.13, 'green': 0.27, 'blue': 0.53})
+
+
 def generate_msipagre_results(sheet_m: str = 'M SIPAGRE',
                               results_sheet: str = 'Resultados M SIPAGRE') -> dict:
-    """
-    Calcula puntajes por materia y puntaje general para M SIPAGRE
-    (una sola jornada de 125 preguntas) y los escribe en una hoja nueva/existente.
-    """
-    spreadsheet = _open_spreadsheet()
+    """Una sola jornada (sesión M, tipo 'media') con Quím/Fís para 10°."""
+    return _generate_results_core(
+        [('M', sheet_m)], 'media', results_sheet,
+        fallback_grado='10',
+        header_color={'red': 0.30, 'green': 0.39, 'blue': 0.85})
 
-    try:
-        ws_m = spreadsheet.worksheet(sheet_m)
-    except Exception:
-        return {'success': False, 'error': f'Hoja "{sheet_m}" no encontrada.'}
 
-    key_m = _get_answer_key(ws_m)
-    # Si no hay clave global, verificar si hay alguna clave por grado registrada
-    if not key_m:
-        sim_name = _find_simulacro_for_sheet(sheet_m)
-        has_any = False
-        if sim_name:
-            try:
-                for kg in list_keys_grade():
-                    if (kg['simulacro'] == sim_name and kg['sesion'] == 'M'
-                            and kg.get('count', 0) > 0):
-                        has_any = True; break
-            except Exception:
-                pass
-        if not has_any:
-            return {'success': False,
-                    'error': (f'No hay clave de respuestas para "{sheet_m}". '
-                              'Configura la clave por grado en la pestaña Clave o '
-                              'la clave global de la hoja.')}
-
-    students = _extract_students(ws_m)
-    if not students:
-        return {'success': False,
-                'error': f'No se encontraron estudiantes en "{sheet_m}". Verifica que la hoja tenga filas de estudiantes con nombre o ID.'}
-
-    courses_list = list_courses()
-    distribuciones = list_distribuciones()
-
-    # Cache de claves y anuladas por grado: {grado: ...}
-    keys_by_grade = {}
-    anuladas_by_grade = {}
-    sim_name = _find_simulacro_for_sheet(sheet_m)
-
-    # Pre-cargar TODAS las claves y anuladas del simulacro en UNA lectura
-    keys_idx = {}   # (ses, grado) -> answers list
-    anu_idx  = {}   # (ses, grado) -> [pregunta1, ...]
-    if sim_name:
-        try:
-            ws_kg = _open_spreadsheet().worksheet(KEYS_GRADE_SHEET)
-            for r in ws_kg.get_all_values()[1:]:
-                if len(r) >= 3 and (r[0] or '').strip() == sim_name:
-                    ses = (r[1] or '').strip().upper()
-                    gr  = str(r[2] or '').strip()
-                    ans = list(r[3:])
-                    while ans and not (ans[-1] or '').strip(): ans.pop()
-                    keys_idx[(ses, gr)] = [(a or '').strip() for a in ans]
-        except Exception:
-            keys_idx = {}
-        try:
-            for a in list_anuladas():
-                if a['simulacro'] == sim_name:
-                    anu_idx[(a['sesion'], a['grado'])] = a['preguntas']
-        except Exception:
-            anu_idx = {}
-
-    results = []
-    for key in sorted(students.keys()):
-        s     = students[key]
-        name  = s['name']
-        sid   = s.get('id', '')
-        curso = s.get('curso', '')
-        ans   = s['answers']
-
-        # Distribución según el grado del estudiante
-        grado = _grade_of_curso(curso, courses_list)
-        dist = distribuciones.get(('media', grado))
-        if not dist:
-            dist = DEFAULT_DISTRIBUCIONES.get(('media', grado))
-        if not dist:
-            dist = DEFAULT_DISTRIBUCIONES.get(('media', '10'))
-
-        # Clave: si hay una específica para (simulacro, M, grado), úsala;
-        # sino usa la global del sheet (key_m). Lookup en memoria.
-        if grado not in keys_by_grade:
-            specific = keys_idx.get(('M', grado), [])
-            keys_by_grade[grado] = specific or key_m
-        key_for_student = keys_by_grade[grado]
-
-        # Preguntas anuladas para este grado (sesión M) — lookup en memoria
-        if grado not in anuladas_by_grade:
-            anuladas_by_grade[grado] = anu_idx.get(('M', grado), [])
-        anu_m = anuladas_by_grade[grado]
-
-        scores = _score_student_with_distribution(
-            {'M': ans}, {'M': key_for_student}, dist,
-            anuladas_by_session={'M': anu_m})
-
-        mat  = int(round(scores['Matematica']))
-        lect = int(round(scores['Lectura Critica']))
-        soc  = int(round(scores['Sociales']))
-        nat  = int(round(scores['Naturales']))
-        ing  = int(round(scores['Ingles']))
-        # Sistema ICFES Saber 11: pesos 3-3-3-3-1 (Mat, Lect, Soc, Nat = 3
-        # cada una; Ing = 1). Suma de pesos = 13. Multiplicamos por 5
-        # para escalar a 0-500. Max general = 500.
-        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
-
-        # Solo grado 10°: descomponer Naturales en Química (P61-P80) y
-        # Física (P81-P100). Para otros grados se queda vacío.
-        quim, fis = '', ''
-        if str(grado) == '10':
-            sub = _compute_nat_subscores_grade10(
-                ans, key_for_student, set(anu_m or []))
-            quim = int(round(sub['quim']))
-            fis  = int(round(sub['fis']))
-
-        results.append({
-            'id':       sid,
-            'name':     name,
-            'curso':    curso,
-            'mat':      mat,
-            'lect':     lect,
-            'soc':      soc,
-            'nat':      nat,
-            'ing':      ing,
-            'quim':     quim,  # solo 10°; otros grados ''
-            'fis':      fis,   # solo 10°; otros grados ''
-            'grado':    grado,
-            'general':  general,
-            'type':     'M',
-        })
-
-    # Crear/sobrescribir hoja de resultados
-    needed_rows = len(results) + 5
-    try:
-        ws_res = spreadsheet.worksheet(results_sheet)
-        ws_res.clear()
-        if ws_res.row_count < needed_rows:
-            ws_res.resize(rows=needed_rows)
-    except Exception:
-        ws_res = spreadsheet.add_worksheet(
-            title=results_sheet, rows=needed_rows, cols=20)
-
-    header = [
-        'ID Estudiante', 'Nombre', 'Curso',
-        'Matematica', 'Lectura Critica', 'Sociales',
-        'Naturales', 'Ingles', 'Puntaje General',
-        'Quimica (10°)', 'Fisica (10°)'
-    ]
-    ws_res.update('A1:K1', [header], value_input_option='RAW')
-
-    rows = []
-    for r in results:
-        rows.append([
-            r['id'], r['name'], r.get('curso',''),
-            r['mat'], r['lect'], r['soc'],
-            r['nat'], r['ing'], r['general'],
-            r.get('quim',''), r.get('fis',''),
-        ])
-
-    if rows:
-        end_col = _col_letter(len(header) - 1)
-        end_row = len(rows) + 1
-        ws_res.update(f'A2:{end_col}{end_row}', rows, value_input_option='RAW')
-
-        n = len(results)
-        avg = {k: int(round(sum(r[k] for r in results) / n))
-               for k in ['mat','lect','soc','nat','ing','general']}
-        # Promedio Quim/Fis solo sobre los de 10°
-        only10 = [r for r in results
-                  if isinstance(r.get('quim'), int) and isinstance(r.get('fis'), int)]
-        avg_quim = (int(round(sum(r['quim'] for r in only10) / len(only10)))
-                    if only10 else '')
-        avg_fis  = (int(round(sum(r['fis']  for r in only10) / len(only10)))
-                    if only10 else '')
-        avg_row = end_row + 1
-        ws_res.update(
-            f'A{avg_row}:K{avg_row}',
-            [['', 'PROMEDIO', '', avg['mat'], avg['lect'], avg['soc'],
-              avg['nat'], avg['ing'], avg['general'], avg_quim, avg_fis]],
-            value_input_option='RAW')
-        try:
-            ws_res.format(f'A{avg_row}:K{avg_row}', {
-                'backgroundColor': {'red': 0.93, 'green': 0.93, 'blue': 0.93},
-                'textFormat': {'bold': True},
-                'horizontalAlignment': 'CENTER'
-            })
-        except Exception:
-            pass
-
-    try:
-        ws_res.format('A1:I1', {
-            'backgroundColor': {'red': 0.30, 'green': 0.39, 'blue': 0.85},
-            'textFormat': {'bold': True,
-                           'foregroundColor': {'red':1,'green':1,'blue':1}},
-            'horizontalAlignment': 'CENTER'
-        })
-    except Exception:
-        pass
-
-    return {
-        'success':  True,
-        'students': len(results),
-        'results':  results,
-        'url':      f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
-    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2204,6 +2064,8 @@ def save_roster_for_simulacro(simulacro_safe: str, students: list) -> dict:
     if not isinstance(students, list):
         return {'success': False, 'error': 'students debe ser lista'}
     try:
+      # Borrar-luego-insertar serializado (ver _WRITE_LOCK).
+      with _WRITE_LOCK:
         ws = _ensure_roster_sheet()
         all_rows = ws.get_all_values()
         # Borrar filas existentes de este simulacro (de abajo arriba)
@@ -2225,6 +2087,7 @@ def save_roster_for_simulacro(simulacro_safe: str, students: list) -> dict:
             rows_to_add.append([simulacro_safe, curso, ident, nombre])
         if rows_to_add:
             ws.append_rows(rows_to_add, value_input_option='RAW')
+        invalidate_read_cache('roster:')
         return {'success': True, 'count': len(rows_to_add)}
     except Exception as e:
         return {'success': False, 'error': str(e)}
@@ -2240,8 +2103,11 @@ def get_student_from_roster(simulacro_safe: str, student_id: str) -> dict:
     if not simulacro_safe or not student_id:
         return None
     try:
-        ws = _ensure_roster_sheet()
-        for r in ws.get_all_values()[1:]:
+        # Cacheado 60s: cada QR escaneado consulta el roster; sin caché eso
+        # es una lectura completa de la hoja por escaneo (gasta cuota API).
+        rows = _cached_read('roster:all',
+                            lambda: _ensure_roster_sheet().get_all_values())
+        for r in rows[1:]:
             if (len(r) >= 4
                 and (r[0] or '').strip().upper() == simulacro_safe
                 and (r[2] or '').strip() == student_id):
@@ -2741,6 +2607,9 @@ def save_estudiantes(students: list, replace: bool = False) -> dict:
     if not isinstance(students, list):
         return {'success': False, 'error': 'students debe ser lista'}
     try:
+      # Upsert leer-luego-escribir: serializado para no duplicar IDs si dos
+      # threads suben el roster a la vez.
+      with _WRITE_LOCK:
         ws = _ensure_estudiantes_sheet()
         rows_existing = ws.get_all_values()
         # Indexar existentes por ID
