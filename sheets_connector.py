@@ -122,7 +122,10 @@ _SPREADSHEET_CACHE = {'ss': None, 'ts': 0}
 # Cache de lectura por TTL (Time To Live) para reducir llamadas a Sheets
 # y mejorar la capacidad de concurrencia del portal estudiantil.
 _READ_CACHE = {}   # key → (timestamp, value)
-_READ_CACHE_TTL = 60   # segundos. Conservador: cambios se reflejan en <1 min.
+# TTL por defecto. 300s ahorra ~5x lecturas de cuota API; los escritores
+# invalidan su prefijo al guardar, así que los cambios propios se ven al
+# instante y solo lo editado a mano en el Sheets tarda hasta 5 min.
+_READ_CACHE_TTL = 300
 
 
 def _cached_read(key, fn, ttl=None):
@@ -1263,7 +1266,10 @@ def _ensure_structure(worksheet, n_questions=125):
     """
     all_rows = worksheet.get_all_values()
 
-    if not all_rows:
+    # OJO: una hoja recién creada devuelve [[]] (no []) — ambas son "vacías".
+    _is_blank = (not all_rows
+                 or not any(any((c or '').strip() for c in r) for r in all_rows))
+    if _is_blank:
         # Hoja vacía: crear encabezado + clave vacía
         header = _build_header(n_questions)
         worksheet.append_row(header, value_input_option='RAW')
@@ -1468,6 +1474,29 @@ def create_sheet(name: str) -> dict:
         return {'success': False, 'error': str(e)}
 
 
+def _compute_totals_row(student_rows: list, key: list, n_questions: int) -> list:
+    """
+    Calcula la fila '--- TOTALES ---' a partir de las filas de estudiantes
+    (misma lógica que _update_totals_row, pero EN MEMORIA — sin tocar la API).
+    """
+    key_n = _key_total(key)
+    totals = ['', '', '--- TOTALES ---', '']
+    for q in range(n_questions):
+        col_idx = COL_OFFSET + q
+        answers_for_q  = [r[col_idx] if col_idx < len(r) else ''
+                          for r in student_rows]
+        total_students = len(answers_for_q)
+        if key and q < len(key) and key[q] not in ('', '?'):
+            correct = sum(1 for a in answers_for_q if a == key[q])
+            pct     = round(correct / total_students * 100) if total_students else 0
+            totals.append(f'{correct}/{total_students} ({pct}%)')
+        else:
+            detected = sum(1 for a in answers_for_q if a not in ('', '?', '—'))
+            totals.append(f'{detected}/{total_students}')
+    totals += ['', '', '']
+    return totals
+
+
 def save_to_sheets(student_name: str, exam_id: str,
                    answers: list, sheet_name: str,
                    curso: str = '') -> dict:
@@ -1476,8 +1505,10 @@ def save_to_sheets(student_name: str, exam_id: str,
     y mantiene UNA SOLA fila de totales al final.
     El nombre del estudiante se almacena siempre en MAYÚSCULAS.
 
-    Nota: invalida el cache de lectura de hojas Resultados/respuestas
-    para que el portal y los reportes vean los datos frescos.
+    Optimizado para cuota de la Sheets API: UNA lectura (snapshot de la
+    hoja) y 1-2 escrituras por guardado. La clave, la columna Curso, el
+    dedupe por ID y la fila de TOTALES se resuelven desde el snapshot en
+    memoria (antes: ~7 lecturas + 3 escrituras por guardado).
     """
     student_name = (student_name or '').upper()
     spreadsheet  = _open_spreadsheet()
@@ -1486,69 +1517,152 @@ def save_to_sheets(student_name: str, exam_id: str,
         worksheet = spreadsheet.worksheet(sheet_name)
     except Exception:
         worksheet = spreadsheet.add_worksheet(
-            title=sheet_name, rows=1000, cols=135)
+            title=sheet_name, rows=1000, cols=160)
 
     n_questions = len(answers)
-    _ensure_structure(worksheet, n_questions)
-    # Asegurar columna Curso
-    curso_col = _ensure_curso_column(worksheet, n_questions)
-
-    # Obtener clave
-    key      = _get_answer_key(worksheet)
-    correct  = _count_correct(answers, key)
-    detected = len([a for a in answers if a not in ('?', '')])
-
-    # Porcentaje sobre el total de preguntas con clave definida
-    key_n   = _key_total(key)
-    pct_str = f'{round(correct / key_n * 100)}%' if key_n > 0 else ''
-
-    # ── Construir fila del estudiante ─────────────────────────────────────────
-    now      = datetime.now()
-    row_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
-                student_name, exam_id]
-    row_data += [a if a != '?' else '—' for a in answers]
-    row_data += [detected,
-                 correct if key_n > 0 else '',
-                 pct_str]
-    # Agregar curso al final si la columna existe
-    if curso_col >= 0:
-        while len(row_data) < curso_col:
-            row_data.append('')
-        row_data.append(curso or '')
 
     # Sección leer-luego-escribir bajo lock: sin él, dos guardados
     # simultáneos del mismo ID verían ambos "no existe" y duplicarían la fila.
     with _WRITE_LOCK:
-        # ── Eliminar fila de TOTALES existente antes de agregar el estudiante ─
+        # ── UNA sola lectura: snapshot completo de la hoja ──
         all_rows = worksheet.get_all_values()
+
+        # Estructura (header + fila de clave). Solo escribe si falta — raro.
+        # OJO: hoja recién creada devuelve [[]] (no []) — tratarla como vacía.
+        if (not all_rows
+                or not any(any((c or '').strip() for c in r) for r in all_rows)):
+            _ensure_structure(worksheet, n_questions)
+            all_rows = worksheet.get_all_values()
+        elif (len(all_rows[0]) - COL_OFFSET - 3) < n_questions:
+            _ensure_structure(worksheet, n_questions)      # extiende header
+            all_rows[0] = _build_header(n_questions)        # reflejo local
+
+        header = all_rows[0] if all_rows else _build_header(n_questions)
+
+        # Columna Curso desde el snapshot (escribe solo si no existe — 1 vez)
+        curso_col = next((i for i, h in enumerate(header)
+                          if (h or '').strip().lower() == 'curso'), -1)
+        if curso_col < 0:
+            curso_col = len(header)
+            try:
+                worksheet.update(values=[['Curso']],
+                                 range_name=f'{_col_letter(curso_col)}1',
+                                 value_input_option='RAW')
+            except Exception:
+                curso_col = -1
+
+        # Clave desde el snapshot (fila 2)
+        key = []
+        if (len(all_rows) >= 2 and len(all_rows[1]) > 2
+                and all_rows[1][2] == KEY_ROW_NAME):
+            key = list(all_rows[1][COL_OFFSET:])
+            while key and key[-1] in ('', 'Respondidas', 'Correctas', 'Porcentaje'):
+                key.pop()
+
+        correct  = _count_correct(answers, key)
+        detected = len([a for a in answers if a not in ('?', '')])
+        key_n    = _key_total(key)
+        pct_str  = f'{round(correct / key_n * 100)}%' if key_n > 0 else ''
+
+        # ── Fila del estudiante ──
+        now      = datetime.now()
+        row_data = [now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
+                    student_name, exam_id]
+        row_data += [a if a != '?' else '—' for a in answers]
+        row_data += [detected,
+                     correct if key_n > 0 else '',
+                     pct_str]
+        if curso_col >= 0:
+            while len(row_data) < curso_col:
+                row_data.append('')
+            row_data.append(curso or '')
+
+        # ── Localizar en el snapshot: fila del estudiante (dedupe) y TOTALES ──
+        existing_row = None   # 1-based
+        totals_idx   = None   # 1-based
         for i, row in enumerate(all_rows):
-            if row and len(row) > 2 and row[2] == '--- TOTALES ---':
-                worksheet.delete_rows(i + 1)
-                break
+            if i < 2: continue
+            name3 = row[2] if len(row) > 2 else ''
+            if name3 == '--- TOTALES ---':
+                totals_idx = i + 1
+            elif (exam_id and existing_row is None and len(row) > 3
+                  and (row[3] or '').strip() == str(exam_id).strip()):
+                existing_row = i + 1
 
-        # ── DEDUPE: si ya hay fila con el mismo ID, ACTUALIZAR en vez de agregar
-        #    El ID está en col D (índice 3). Omite fila 1 (header) y 2 (clave).
-        existing_row = None
-        if exam_id:
-            for i, row in enumerate(all_rows):
-                if i < 2: continue
-                if len(row) > 3 and (row[3] or '').strip() == str(exam_id).strip():
-                    existing_row = i + 1   # 1-based
-                    break
+        # ── Modelo local de filas de estudiantes DESPUÉS de este guardado ──
+        student_rows = [r for i, r in enumerate(all_rows)
+                        if i >= 2 and len(r) > 2
+                        and r[2] not in (KEY_ROW_NAME, '--- TOTALES ---')
+                        and (i + 1) != existing_row]
+        row_strs = [str(v) for v in row_data]
+        student_rows.append(row_strs)
+        totals_row = _compute_totals_row(student_rows, key, n_questions)
 
+        end_col = _col_letter(max(len(row_data), len(totals_row)) - 1)
         was_updated = False
-        if existing_row:
-            # UPDATE: usar la fila existente para preservar orden histórico
-            end_col = _col_letter(len(row_data) - 1)
-            worksheet.update(f'A{existing_row}:{end_col}{existing_row}',
-                             [row_data], value_input_option='RAW')
-            row_num = existing_row
-            was_updated = True
-        else:
-            worksheet.append_row(row_data, value_input_option='RAW')
-            row_num = len(worksheet.col_values(1))
+        fmt_totals_at = None   # formatear solo si TOTALES cambió de posición
 
-        _update_totals_row(worksheet, n_questions)
+        if existing_row:
+            # UPDATE del estudiante + TOTALES recalculados — 1 sola escritura
+            was_updated = True
+            row_num = existing_row
+            batch = [{'range': f'A{existing_row}:{end_col}{existing_row}',
+                      'values': [row_data]}]
+            if totals_idx:
+                batch.append({'range': f'A{totals_idx}:{end_col}{totals_idx}',
+                              'values': [totals_row]})
+            worksheet.batch_update(batch, value_input_option='RAW')
+            if not totals_idx:
+                worksheet.append_row(totals_row, value_input_option='RAW')
+                fmt_totals_at = len(all_rows) + 1
+        elif totals_idx:
+            # NUEVO estudiante: ocupa la posición de TOTALES y la fila de
+            # TOTALES baja un puesto — 1 escritura (2 filas contiguas)
+            row_num = totals_idx
+            try:
+                worksheet.update(values=[row_data, totals_row],
+                                 range_name=f'A{totals_idx}',
+                                 value_input_option='RAW')
+            except Exception:
+                # Borde de la cuadrícula: escribir estudiante y anexar totales
+                worksheet.update(values=[row_data],
+                                 range_name=f'A{totals_idx}:{end_col}{totals_idx}',
+                                 value_input_option='RAW')
+                worksheet.append_row(totals_row, value_input_option='RAW')
+            fmt_totals_at = totals_idx + 1
+        else:
+            # Hoja sin fila de TOTALES (legado): anexar ambas
+            worksheet.append_rows([row_data, totals_row],
+                                  value_input_option='RAW')
+            row_num = len(all_rows) + 1
+            fmt_totals_at = len(all_rows) + 2
+
+        # Formato solo cuando TOTALES cambió de posición (1 llamada batch):
+        # pinta la nueva fila de TOTALES y LIMPIA la fila que dejó (el
+        # formato gris queda pegado a la celda; sin esto, el estudiante que
+        # ocupa la antigua posición de TOTALES se vería gris/negrilla).
+        if fmt_totals_at:
+            try:
+                gray = {
+                    'backgroundColor': {'red': 0.25, 'green': 0.25, 'blue': 0.25},
+                    'textFormat': {'bold': True,
+                                   'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
+                    'horizontalAlignment': 'CENTER'
+                }
+                clean = {
+                    'backgroundColor': {'red': 1, 'green': 1, 'blue': 1},
+                    'textFormat': {'bold': False,
+                                   'foregroundColor': {'red': 0, 'green': 0, 'blue': 0}},
+                    'horizontalAlignment': 'LEFT'
+                }
+                fmts = [{'range': f'A{fmt_totals_at}:{end_col}{fmt_totals_at}',
+                         'format': gray}]
+                if fmt_totals_at - 1 >= 3:   # la fila que ocupó el estudiante
+                    fmts.insert(0, {'range': f'A{fmt_totals_at-1}:{end_col}{fmt_totals_at-1}',
+                                    'format': clean})
+                worksheet.batch_format(fmts)
+            except Exception:
+                pass
 
     return {
         'row':     row_num,
@@ -2067,6 +2181,9 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
         })
     except Exception:
         pass
+
+    # Resultados recién escritos: el portal debe verlos de inmediato
+    invalidate_read_cache('result_sheet')
 
     return {
         'success':  True,
@@ -2709,6 +2826,7 @@ def save_estudiantes(students: list, replace: bool = False) -> dict:
             if clean:
                 payload = [[s['id'], s['nombre'], s['curso']] for s in clean]
                 ws.update(f'A2:C{1 + len(payload)}', payload, value_input_option='RAW')
+            invalidate_read_cache('estudiantes:')
             return {'success': True, 'count': len(clean),
                     'replaced': True}
         else:
@@ -2732,6 +2850,7 @@ def save_estudiantes(students: list, replace: bool = False) -> dict:
                 ws.batch_update(updates, value_input_option='RAW')
             if new_rows:
                 ws.append_rows(new_rows, value_input_option='RAW')
+            invalidate_read_cache('estudiantes:')
             return {'success': True, 'count': inserted + updated,
                     'inserted': inserted, 'updated': updated}
     except Exception as e:
@@ -2755,7 +2874,7 @@ def _get_estudiantes_indexed():
             return idx
         except Exception:
             return {}
-    return _cached_read('estudiantes:idx', _load, ttl=60)
+    return _cached_read('estudiantes:idx', _load)
 
 
 def get_student_global(student_id: str) -> dict:

@@ -332,11 +332,27 @@ function gradoDeCurso(c) {
   return m ? m[1] : '';
 }
 
+// fetch JSON con caché en localStorage (stale-while-revalidate): sirve al
+// instante lo guardado y refresca en segundo plano. Ideal para celulares.
+async function _cachedJson(url, key, maxAgeMs) {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+  const fresh = fetch(url).then(r => r.json()).then(d => {
+    try { localStorage.setItem(key, JSON.stringify({ts: Date.now(), d})); } catch (e) {}
+    return d;
+  });
+  if (cached && (Date.now() - cached.ts) < maxAgeMs) {
+    fresh.catch(() => {});
+    return cached.d;
+  }
+  try { return await fresh; }
+  catch (e) { if (cached) return cached.d; throw e; }
+}
+
 async function loadCursos() {
   if (!SIM) return;
   try {
-    const r = await fetch('/courses');
-    const d = await r.json();
+    const d = await _cachedJson('/courses', 'esc:courses', 10 * 60 * 1000);
     const cursos = (d.courses || []).filter(c => {
       const g = c.grado || gradoDeCurso(c.name);
       return !SIM.grados || !SIM.grados.length || SIM.grados.includes(String(g));
@@ -381,8 +397,9 @@ async function onCursoChange() {
   if (pid !== state.profileId) {
     state.profileId = pid;
     try {
-      const r = await fetch('/profile?id=' + encodeURIComponent(pid));
-      const d = await r.json();
+      // La geometría de un perfil es estática: caché de 24 h
+      const d = await _cachedJson('/profile?id=' + encodeURIComponent(pid),
+                                  'esc:profile:' + pid, 24 * 60 * 60 * 1000);
       state.totalQ = d.total_q || 0;
       state.optionsPerQ = d.options_per_q || [];
     } catch (e) { /* el backend trunca por curso igualmente */ }
