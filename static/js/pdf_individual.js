@@ -23,10 +23,24 @@
   ];
 
   // Helper para derivar grado del curso ("1101" → "11", "11A" → "11", "902" → "9")
+  // Resolver de grado inyectable: la app de admin registra su propia versión
+  // (que consulta el catálogo de cursos) vía setGradoResolver(). El default
+  // cubre los formatos comunes: "1101"→"11", "601"→"6", "11A"→"11".
+  let _gradoResolver = null;
+  function setGradoResolver(fn) { _gradoResolver = fn; }
+
   function gradoDeCurso(curso) {
     const c = String(curso || '').trim();
     if (!c) return '';
-    const m = c.match(/^(\d{1,2})/);
+    if (_gradoResolver) {
+      try {
+        const g = _gradoResolver(c);
+        if (g) return String(g);
+      } catch (e) { /* caer al default */ }
+    }
+    if (/^\d{4}/.test(c)) return c.slice(0, 2);   // 1101 → 11
+    if (/^\d{3}/.test(c)) return c.slice(0, 1);   // 601  → 6
+    const m = c.match(/^(\d{1,2})/);              // 11A  → 11
     return m ? m[1] : '';
   }
 
@@ -70,11 +84,26 @@
   let _sipagreLogoDataUrl = null;
   let _ietagroLogoDataUrl = null;
 
-  // En el portal no hay selector: el logo de encabezado se decide según el
-  // nombre del simulacro (si contiene IETAGRO → logo IETAGRO; si no, SIPAGRE).
-  function _headerLogoForSim(simulacroLabel) {
+  // Elección de logo del colegio: 'auto' | 'sipagre' | 'ietagro'.
+  // El portal usa 'auto' (decide por el nombre del simulacro); la app de
+  // admin la fija desde su selector vía setLogoChoice().
+  let _logoChoice = 'auto';
+  function setLogoChoice(choice) {
+    _logoChoice = (choice === 'sipagre' || choice === 'ietagro') ? choice : 'auto';
+  }
+
+  // Resuelve qué colegio aplica para un simulacro dado ('ietagro'|'sipagre').
+  // Útil también para mostrar pistas en la UI sin duplicar esta lógica.
+  function resolveLogoChoice(simulacroLabel) {
+    if (_logoChoice !== 'auto') return _logoChoice;
     const name = (simulacroLabel || '').toUpperCase();
-    if (name.includes('IETAGRO') && _ietagroLogoDataUrl) return _ietagroLogoDataUrl;
+    return name.includes('IETAGRO') ? 'ietagro' : 'sipagre';
+  }
+
+  function _headerLogoForSim(simulacroLabel) {
+    if (resolveLogoChoice(simulacroLabel) === 'ietagro' && _ietagroLogoDataUrl) {
+      return _ietagroLogoDataUrl;
+    }
     return _sipagreLogoDataUrl;
   }
 
@@ -527,5 +556,12 @@
     getJsPDF,
     SUBJECTS,
     gradoDeCurso,
+    // Configuración desde la app que use el módulo
+    setLogoChoice,        // 'auto' | 'sipagre' | 'ietagro'
+    resolveLogoChoice,    // (simulacroLabel) → 'sipagre' | 'ietagro'
+    setGradoResolver,     // (fn) — la admin registra su gradoDeCurso con catálogo
+    // Logos cargados (para encabezados/pies de otros reportes)
+    headerLogo: _headerLogoForSim,   // (simulacroLabel) → dataURL
+    footerLogo: () => _logoDataUrl,  // logo JMR pequeño del pie
   };
 })(window);
