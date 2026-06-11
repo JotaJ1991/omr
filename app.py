@@ -6,6 +6,8 @@ import json
 import traceback
 import base64
 import threading
+import uuid
+import secrets
 from flask import Flask, request, jsonify, render_template, session, Response
 from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image, _parse_qr_payload
@@ -30,7 +32,15 @@ from sheets_connector import (
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
 app = Flask(__name__)
-app.secret_key  = os.environ.get('SECRET_KEY', 'omr-secret-2025')
+# SECRET_KEY: SIEMPRE desde el entorno. Si falta, se genera una aleatoria por
+# arranque (las sesiones del portal se invalidan en cada reinicio, pero nunca
+# se usa una clave fija publicada en el repositorio, que permitiría falsificar
+# sesiones). Configura SECRET_KEY en Render -> Environment para sesiones
+# estables entre despliegues.
+app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+if not os.environ.get('SECRET_KEY'):
+    print('[ADVERTENCIA] SECRET_KEY no configurada; usando clave aleatoria '
+          'temporal (las sesiones se invalidan al reiniciar).', flush=True)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER']      = 'uploads'
 # Crear la carpeta de subidas a nivel de módulo (bajo gunicorn no se ejecuta
@@ -233,7 +243,10 @@ def process():
         current = []
 
     try:
-        filename = secure_filename(file.filename)
+        # Prefijo único: dos docentes subiendo "image.jpg" a la vez no deben
+        # pisarse el archivo (con 4 threads el segundo sobreescribiría al
+        # primero y un docente recibiría las respuestas del otro).
+        filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
@@ -712,8 +725,8 @@ def debug_image():
         return jsonify({'success': False, 'error': 'No se recibió imagen'}), 400
     file     = request.files['image']
     pid      = request.form.get('profile_id', active_profile_id())
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'debug_' + filename)
+    filename = f"debug_{uuid.uuid4().hex}_{secure_filename(file.filename)}"
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
 
     # Misma cola de procesamiento que /process (protege la RAM).

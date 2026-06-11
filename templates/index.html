@@ -2804,47 +2804,6 @@ function _refreshSimulacroSelect() {
     sel.innerHTML = html;
     if (prev) sel.value = prev;
   }
-  // Selectores en panel Resultados (Completo y Media)
-  const simSel = document.getElementById('sipagre-sim-select');
-  if (simSel) {
-    const prev = simSel.value;
-    let html = '<option value="">— manual —</option>';
-    _simulacrosCache.filter(s => s.tipo === 'completo').forEach(s => {
-      html += `<option value="${s.nombre}">${s.nombre}</option>`;
-    });
-    simSel.innerHTML = html;
-    if (prev) simSel.value = prev;
-  }
-  const mSimSel = document.getElementById('msipagre-sim-select');
-  if (mSimSel) {
-    const prev = mSimSel.value;
-    let html = '<option value="">— manual —</option>';
-    _simulacrosCache.filter(s => s.tipo === 'media').forEach(s => {
-      html += `<option value="${s.nombre}">${s.nombre}</option>`;
-    });
-    mSimSel.innerHTML = html;
-    if (prev) mSimSel.value = prev;
-  }
-}
-
-function _onSipagreSimChange() {
-  const sel = document.getElementById('sipagre-sim-select');
-  if (!sel || !sel.value) return;
-  const sim = _simulacrosCache.find(s => s.nombre === sel.value);
-  if (!sim || !sim.sheets || sim.sheets.length < 2) return;
-  const i1 = document.getElementById('sipagre-1s');
-  const i2 = document.getElementById('sipagre-2s');
-  if (i1) i1.value = sim.sheets[0];
-  if (i2) i2.value = sim.sheets[1];
-}
-
-function _onMSipagreSimChange() {
-  const sel = document.getElementById('msipagre-sim-select');
-  if (!sel || !sel.value) return;
-  const sim = _simulacrosCache.find(s => s.nombre === sel.value);
-  if (!sim || !sim.sheets || !sim.sheets.length) return;
-  const i = document.getElementById('msipagre-sheet');
-  if (i) i.value = sim.sheets[0];
 }
 
 // ── Lógica unificada del panel Resultados ─────────────────────────────

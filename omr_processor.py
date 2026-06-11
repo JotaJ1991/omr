@@ -84,7 +84,10 @@ def process_exam_image(image_path: str,
                                profile['binarize_block'],
                                profile['binarize_c'])
     y_rows, n_rows = _detect_rows(binary, profile)
-    answers, confs = _read_answers(binary, warped, y_rows, profile)
+    try:
+        answers, confs = _read_answers(binary, warped, y_rows, profile)
+    except ValueError as e:
+        return {'success': False, 'error': str(e)}
 
     # ── Truncar respuestas según effective_total_q ──
     total_q_profile = profile['total_q']
@@ -485,8 +488,18 @@ def _read_answers(binary, gray, y_rows, profile):
         options = col['options']
         n_rows  = col['q_end'] - col['q_start'] + 1
 
+        # Si la detección entregó menos filas de las que esta columna necesita,
+        # abortar con error claro: leer en y=0 produciría respuestas
+        # incorrectas SILENCIOSAS (burbujas medidas en el encabezado).
+        if n_rows > len(y_rows):
+            raise ValueError(
+                f'No se detectó la cuadrícula completa: la columna '
+                f'{col.get("q_start","?")}-{col.get("q_end","?")} necesita '
+                f'{n_rows} filas pero solo se ubicaron {len(y_rows)}. '
+                f'Re-toma la foto encuadrando toda la hoja.')
+
         for row_idx in range(n_rows):
-            y = y_rows[row_idx] if row_idx < len(y_rows) else 0
+            y = y_rows[row_idx]
             fills     = []
             darks     = []
             for x in xs:
