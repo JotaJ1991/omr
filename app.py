@@ -138,10 +138,12 @@ def sheets_create():
 
 @app.route('/profile', methods=['GET'])
 def get_profile_route():
-    pid     = active_profile_id()
+    # ?id=PERFIL: consulta de solo lectura de un perfil específico (no toca
+    # la sesión). Lo usa la página de escaneo para ayudantes.
+    pid = (request.args.get('id') or '').strip() or active_profile_id()
     profile = get_profile(pid)
     return jsonify({
-        'active_id':   pid,
+        'active_id':   profile['id'],
         'active_name': profile['name'],
         'total_q':     profile['total_q'],
         'profiles':    PROFILE_LIST,
@@ -899,6 +901,49 @@ def _rate_limit_ok(ip: str) -> bool:
             for k in stale:
                 del _login_attempts[k]
         return True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MODO ESCANEO — página simplificada para ayudantes (profes/estudiantes)
+# ═══════════════════════════════════════════════════════════════════════════
+# Solo escaneo y guardado: sin resultados, claves, configuración ni borrado.
+# Acceso con PIN (variable de entorno ESCANER_PIN; si está vacía, sin PIN).
+# El simulacro destino viene FIJADO en el enlace: /escanear?simulacro=<nombre>
+
+ESCANER_PIN = os.environ.get('ESCANER_PIN', '').strip()
+
+
+@app.route('/escanear', methods=['GET'])
+def escaner_page():
+    sim_name = (request.args.get('simulacro') or '').strip()
+    sim = None
+    if sim_name:
+        try:
+            sims = list_simulacros()
+            sim = next((s for s in sims if s['nombre'] == sim_name), None)
+        except Exception:
+            sim = None
+    need_pin = bool(ESCANER_PIN) and not session.get('escaner_ok')
+    return render_template('escaner.html',
+                           sim=sim, sim_name=sim_name, need_pin=need_pin)
+
+
+@app.route('/escanear/login', methods=['POST'])
+def escaner_login():
+    ip = request.remote_addr or 'unknown'
+    if not _rate_limit_ok(ip):
+        return jsonify({'success': False,
+                        'error': 'Demasiados intentos. Espera un minuto.'}), 429
+    data = request.get_json(silent=True) or {}
+    pin = (data.get('pin') or '').strip()
+    if not ESCANER_PIN:
+        session['escaner_ok'] = True
+        return jsonify({'success': True})
+    if pin == ESCANER_PIN:
+        session['escaner_ok'] = True
+        session.permanent = True   # el dispositivo recuerda el PIN ~31 días
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'PIN incorrecto.'}), 401
 
 
 @app.route('/resultados', methods=['GET'])

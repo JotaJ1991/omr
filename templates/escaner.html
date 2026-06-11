@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a8a">
+<title>Modo Escaneo · Calificador JMR</title>
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+<script src="/static/js/camera_guiada.js"></script>
+<style>
+  :root {
+    --primary:       #1e3a8a;
+    --primary-light: #3b63bf;
+    --gold:          #facc15;
+    --bg:            #0f172a;
+    --card:          rgba(255,255,255,.05);
+    --card-border:   rgba(255,255,255,.10);
+    --text:          #e2e8f0;
+    --muted:         #94a3b8;
+    --success:       #22c55e;
+    --warning:       #fbbf24;
+    --danger:        #ef4444;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: radial-gradient(ellipse at top, #1e3a8a 0%, #0f172a 60%);
+    color: var(--text);
+  }
+  .container { max-width: 640px; margin: 0 auto; padding: 18px 14px 80px; }
+  .brand { text-align: center; margin-bottom: 16px; }
+  .brand-title { font-size: 1.25rem; font-weight: 800; margin: 4px 0 2px; }
+  .brand-sub   { font-size: .8rem; color: var(--muted); }
+  .sim-pill {
+    display: inline-block; margin-top: 8px; padding: 6px 14px;
+    background: rgba(250,204,21,.12); border: 1px solid rgba(250,204,21,.4);
+    border-radius: 99px; font-size: .82rem; color: var(--gold); font-weight: 600;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 14px; padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: .95rem; margin: 0 0 10px; }
+  label { display: block; font-size: .75rem; color: var(--muted);
+          font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+  select, input[type=text], input[type=tel] {
+    width: 100%; padding: 11px 12px; font-size: 1rem;
+    background: rgba(0,0,0,.3); color: var(--text);
+    border: 1.5px solid var(--card-border); border-radius: 10px;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--primary-light); }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .btn {
+    width: 100%; padding: 14px; border: none; border-radius: 12px;
+    font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 8px;
+  }
+  .btn-cam   { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; }
+  .btn-guide { background: rgba(255,255,255,.08); color: var(--text);
+               border: 1.5px solid var(--card-border); }
+  .btn-save  { background: linear-gradient(135deg, #16a34a, var(--success)); color: white; }
+  .btn-next  { background: linear-gradient(135deg, var(--gold), #ca8a04); color: #1e293b; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .ses-radio { display: flex; gap: 8px; margin-top: 6px; }
+  .ses-radio label {
+    flex: 1; text-align: center; padding: 10px; border-radius: 10px;
+    border: 1.5px solid var(--card-border); background: rgba(0,0,0,.25);
+    cursor: pointer; text-transform: none; font-size: .9rem; color: var(--text);
+  }
+  .ses-radio input { display: none; }
+  .ses-radio input:checked + span { color: var(--gold); font-weight: 800; }
+  .ses-radio label:has(input:checked) { border-color: var(--gold); background: rgba(250,204,21,.08); }
+  .status {
+    margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    font-size: .85rem; display: none;
+  }
+  .status.show { display: block; }
+  .status.ok    { background: rgba(34,197,94,.12);  border: 1px solid rgba(34,197,94,.4);  color: #86efac; }
+  .status.error { background: rgba(239,68,68,.12);  border: 1px solid rgba(239,68,68,.4);  color: #fca5a5; }
+  .status.warn  { background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.4); color: #fcd34d; }
+  .status.load  { background: rgba(59,99,191,.12);  border: 1px solid rgba(59,99,191,.4);  color: #93c5fd; }
+  #debug-img { width: 100%; border-radius: 10px; margin-top: 10px; display: none; }
+  .counter { display: flex; gap: 10px; margin-top: 10px; }
+  .counter div {
+    flex: 1; text-align: center; padding: 8px; border-radius: 10px;
+    background: rgba(0,0,0,.25); border: 1px solid var(--card-border);
+  }
+  .counter .num { font-size: 1.3rem; font-weight: 800; }
+  .counter .lbl { font-size: .68rem; color: var(--muted); text-transform: uppercase; }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+    gap: 5px; margin-top: 12px;
+  }
+  .chip {
+    padding: 6px 2px; text-align: center; border-radius: 8px; font-size: .8rem;
+    background: rgba(0,0,0,.25); border: 1px solid var(--card-border); cursor: pointer;
+  }
+  .chip.detected { border-color: rgba(34,197,94,.4); color: #86efac; }
+  .chip.missing  { color: var(--muted); }
+  .chip.edited   { border-color: rgba(250,204,21,.55); color: var(--gold); }
+  .chip b { font-size: .9rem; }
+  /* popup edición */
+  .pop-overlay { position: fixed; inset: 0; z-index: 150; display: none; }
+  .pop {
+    position: fixed; z-index: 151; background: #1e293b;
+    border: 1px solid var(--card-border); border-radius: 12px; padding: 10px;
+    display: none; flex-wrap: wrap; gap: 6px; max-width: 240px;
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+    box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  }
+  .pop button {
+    width: 44px; height: 44px; border-radius: 10px; font-size: 1rem; font-weight: 700;
+    border: 1px solid var(--card-border); background: rgba(255,255,255,.06);
+    color: var(--text); cursor: pointer;
+  }
+  .pop button.sel { background: var(--primary-light); border-color: var(--primary-light); }
+  /* overlay PIN */
+  .pin-overlay {
+    position: fixed; inset: 0; z-index: 300; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .pin-box { max-width: 340px; width: 100%; text-align: center; }
+  .pin-box input {
+    text-align: center; font-size: 1.6rem; letter-spacing: .4em; font-weight: 800;
+  }
+  .spinner {
+    width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.2);
+    border-top-color: currentColor; border-radius: 50%; display: inline-block;
+    vertical-align: -4px; margin-right: 8px;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── CAMERA MODAL (cámara guiada — mismo contrato que index) ── */
+  .cam-modal { display: none; position: fixed; inset: 0; z-index: 200;
+    background: #000; flex-direction: column; }
+  .cam-modal.show { display: flex; }
+  .cam-modal video { width: 100%; height: 100%; object-fit: cover; }
+  .cam-stage { position: relative; flex: 1; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; }
+  .cam-overlay { position: absolute; inset: 0; pointer-events: none;
+    width: 100%; height: 100%; }
+  .cam-loading { position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(8px); z-index: 5; }
+  .cam-loading.hidden { display: none; }
+  .cam-hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.6); color: white; padding: 8px 16px; border-radius: 99px;
+    font-size: .82rem; backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.15); }
+  .cam-hint.detected { background: rgba(16,185,129,.85); }
+  .cam-error { position: absolute; inset: auto 16px 16px; background: rgba(239,68,68,.9);
+    color: white; padding: 10px 14px; border-radius: 10px; font-size: .85rem; }
+  .cam-controls { background: #000; padding: 16px; display: flex; gap: 12px;
+    align-items: center; justify-content: space-between;
+    padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .cam-btn { width: 56px; height: 56px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,.1); color: white; font-size: 1.2rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .cam-btn.shutter { width: 76px; height: 76px; background: white; font-size: 1.8rem; }
+</style>
+</head>
+<body>
+
+{% if need_pin %}
+<div class="pin-overlay" id="pin-overlay">
+  <div class="pin-box">
+    <div style="font-size:2.2rem;">🔒</div>
+    <h2 style="margin:8px 0 4px;">Modo Escaneo</h2>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:16px;">
+      Ingresa el PIN que te compartió el docente.</p>
+    <input type="tel" inputmode="numeric" id="pin-input" maxlength="8"
+           placeholder="····" onkeydown="if(event.key==='Enter') pinLogin()">
+    <button class="btn btn-cam" onclick="pinLogin()">Entrar</button>
+    <div class="status error" id="pin-error"></div>
+  </div>
+</div>
+{% endif %}
+
+<div class="container">
+  <div class="brand">
+    <div style="font-size:2rem;">📷</div>
+    <div class="brand-title">Modo Escaneo</div>
+    <div class="brand-sub">Calificador JMR — solo escaneo y guardado</div>
+    {% if sim %}
+      <div class="sim-pill">🎯 {{ sim.nombre }}</div>
+    {% endif %}
+  </div>
+
+  {% if not sim %}
+  <div class="card" style="border-color: rgba(239,68,68,.4);">
+    <h2>⚠️ Enlace incompleto</h2>
+    <p style="font-size:.88rem;color:var(--muted);">
+      Este enlace no indica un simulacro válido
+      {% if sim_name %} (<em>{{ sim_name }}</em> no existe){% endif %}.
+      Pide al docente el enlace correcto, que se ve así:<br><br>
+      <code style="font-size:.78rem;">…/escanear?simulacro=NOMBRE DEL SIMULACRO</code>
+    </p>
+  </div>
+  {% else %}
+
+  <!-- Paso 1: curso (y sesión si el simulacro es completo) -->
+  <div class="card">
+    <h2>1️⃣ Curso del estudiante</h2>
+    <div class="row">
+      <div>
+        <label>Curso</label>
+        <select id="curso-select" onchange="onCursoChange()">
+          <option value="">— selecciona —</option>
+        </select>
+      </div>
+    </div>
+    <div id="ses-wrap" style="display:none;margin-top:10px;">
+      <label>Sesión de la hoja</label>
+      <div class="ses-radio">
+        <label><input type="radio" name="ses" value="1S" onchange="onCursoChange()"><span>1° PARTE (1S)</span></label>
+        <label><input type="radio" name="ses" value="2S" onchange="onCursoChange()"><span>2° PARTE (2S)</span></label>
+      </div>
+    </div>
+    <div class="status" id="setup-status"></div>
+  </div>
+
+  <!-- Paso 2: capturar -->
+  <div class="card">
+    <h2>2️⃣ Escanear la hoja</h2>
+    <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none;">
+    <button class="btn btn-cam"   id="btn-cam"   onclick="document.getElementById('file-input').click()" disabled>📷 Tomar foto</button>
+    <button class="btn btn-guide" id="btn-guide" onclick="openCameraModal()" disabled>🎯 Cámara guiada</button>
+    <div class="status" id="scan-status"></div>
+    <img id="debug-img" alt="">
+    <div class="counter" id="counter" style="display:none;">
+      <div><div class="num" id="c-det" style="color:var(--success);">0</div><div class="lbl">Detectadas</div></div>
+      <div><div class="num" id="c-mis" style="color:var(--warning);">0</div><div class="lbl">Faltantes</div></div>
+    </div>
+    <button class="btn btn-guide" id="btn-more" style="display:none;" onclick="document.getElementById('file-input').click()">
+      ➕ Otra foto para completar faltantes</button>
+    <div class="grid" id="answers-grid"></div>
+  </div>
+
+  <!-- Paso 3: estudiante -->
+  <div class="card">
+    <h2>3️⃣ Datos del estudiante</h2>
+    <div class="status warn" id="qr-banner"></div>
+    <label>Número de identificación</label>
+    <input type="tel" inputmode="numeric" id="student-id" placeholder="Documento de identidad"
+           oninput="onIdInput()">
+    <div style="height:10px;"></div>
+    <label>Nombre completo</label>
+    <input type="text" id="student-name" placeholder="Apellidos y nombres">
+    <div class="status" id="lookup-status"></div>
+  </div>
+
+  <!-- Paso 4: guardar -->
+  <div class="card">
+    <h2>4️⃣ Guardar</h2>
+    <button class="btn btn-save" id="btn-save" onclick="saveResult()" disabled>💾 Guardar respuestas</button>
+    <div class="status" id="save-status"></div>
+    <button class="btn btn-next" id="btn-next" style="display:none;" onclick="nextStudent()">
+      ✅ Siguiente estudiante</button>
+  </div>
+
+  {% endif %}
+</div>
+
+<!-- popup de edición de respuesta -->
+<div class="pop-overlay" id="pop-overlay" onclick="closePop()"></div>
+<div class="pop" id="pop"></div>
+
+<!-- ══ CÁMARA GUIADA (contrato de camera_guiada.js) ══ -->
+<div class="cam-modal" id="cam-modal">
+  <div class="cam-stage" id="cam-stage">
+    <video id="cam-video" autoplay playsinline muted></video>
+    <canvas id="cam-canvas" class="cam-overlay"></canvas>
+    <div class="cam-hint" id="cam-hint">Inicializando detector…</div>
+    <div class="cam-error" id="cam-error" style="display:none;"></div>
+    <div class="cam-loading" id="cam-loading">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;color:#10b981"></div>
+      <p style="margin-top:14px;font-size:.9rem;color:white;">Cargando detector OpenCV…</p>
+      <p style="margin-top:6px;font-size:.75rem;color:rgba(255,255,255,.6);">Solo la primera vez (~9 MB)</p>
+    </div>
+  </div>
+  <div class="cam-controls">
+    <button class="cam-btn" onclick="closeCameraModal()" title="Cancelar">✕</button>
+    <button class="cam-btn shutter" id="cam-shutter" onclick="captureFromCamera()" title="Tomar foto">📸</button>
+    <button class="cam-btn" onclick="switchCamera()" title="Cambiar cámara">🔄</button>
+  </div>
+</div>
+
+<script>
+const SIM = {{ (sim or none) | tojson }};
+
+const state = {
+  curso: '', grado: '', sesion: '',
+  profileId: '', totalQ: 0, optionsPerQ: [],
+  answers: [], photoCount: 0,
+  edited: new Set(),
+  qrName: '',          // nombre que vino del QR/roster
+  reprocessed: false,  // evita bucle al re-procesar por sesión del QR
+};
+
+function setSt(id, type, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'status' + (type ? ' show ' + type : '');
+  el.innerHTML = msg || '';
+}
+
+// ── PIN ─────────────────────────────────────────────────────────────────────
+async function pinLogin() {
+  const pin = (document.getElementById('pin-input') || {}).value || '';
+  try {
+    const r = await fetch('/escanear/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pin: pin.trim()})
+    });
+    const d = await r.json();
+    if (d.success) { document.getElementById('pin-overlay').remove(); }
+    else { setSt('pin-error', 'error', d.error || 'PIN incorrecto.'); }
+  } catch (e) { setSt('pin-error', 'error', 'Error de conexión.'); }
+}
+
+// ── Setup: cursos + perfil ──────────────────────────────────────────────────
+function gradoDeCurso(c) {
+  c = String(c || '').trim();
+  if (/^\d{4}/.test(c)) return c.slice(0, 2);
+  if (/^\d{3}/.test(c)) return c.slice(0, 1);
+  const m = c.match(/^(\d{1,2})/);
+  return m ? m[1] : '';
+}
+
+async function loadCursos() {
+  if (!SIM) return;
+  try {
+    const r = await fetch('/courses');
+    const d = await r.json();
+    const cursos = (d.courses || []).filter(c => {
+      const g = c.grado || gradoDeCurso(c.name);
+      return !SIM.grados || !SIM.grados.length || SIM.grados.includes(String(g));
+    });
+    const sel = document.getElementById('curso-select');
+    sel.innerHTML = '<option value="">— selecciona —</option>' +
+      cursos.map(c => `<option value="${c.name}" data-grado="${c.grado || ''}">${c.name}</option>`).join('');
+  } catch (e) {
+    setSt('setup-status', 'error', 'No se pudieron cargar los cursos. Recarga la página.');
+  }
+  if (SIM && SIM.tipo === 'completo') {
+    document.getElementById('ses-wrap').style.display = 'block';
+  }
+}
+
+function _deriveProfile() {
+  if (!SIM) return '';
+  if (SIM.tipo === 'completo') {
+    const ses = document.querySelector('input[name="ses"]:checked');
+    state.sesion = ses ? ses.value : '';
+    if (!state.sesion) return '';
+    return state.sesion === '1S' ? '1SSIPAGRE' : '2SSIPAGRE';
+  }
+  state.sesion = 'M';
+  // Media: 6/7/8 usan el formato físico 1S SIPAGRE; 9/10 el M SIPAGRE
+  return ['6', '7', '8'].includes(state.grado) ? '1SSIPAGRE' : 'MSIPAGRE';
+}
+
+async function onCursoChange() {
+  const sel = document.getElementById('curso-select');
+  state.curso = sel.value;
+  const opt = sel.selectedOptions[0];
+  state.grado = (opt && opt.dataset.grado) || gradoDeCurso(state.curso);
+
+  const pid = _deriveProfile();
+  const ready = !!(state.curso && pid);
+  document.getElementById('btn-cam').disabled = !ready;
+  document.getElementById('btn-guide').disabled = !ready;
+  if (!state.curso) { setSt('setup-status', '', ''); return; }
+  if (!pid) { setSt('setup-status', 'warn', 'Elige la sesión de la hoja (1S o 2S).'); return; }
+
+  if (pid !== state.profileId) {
+    state.profileId = pid;
+    try {
+      const r = await fetch('/profile?id=' + encodeURIComponent(pid));
+      const d = await r.json();
+      state.totalQ = d.total_q || 0;
+      state.optionsPerQ = d.options_per_q || [];
+    } catch (e) { /* el backend trunca por curso igualmente */ }
+    resetScanState();
+  }
+  setSt('setup-status', 'ok',
+        `Listo: curso <b>${state.curso}</b> (grado ${state.grado}°) · formato <b>${pid.replace('SIPAGRE', ' SIPAGRE')}</b>. Ya puedes escanear.`);
+}
+
+// ── Procesamiento ───────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', () => {
+  const f = document.getElementById('file-input').files[0];
+  if (f) processPhoto();
+});
+
+async function processPhoto() {
+  const f = document.getElementById('file-input').files[0];
+  if (!f) return;
+  if (!state.curso || !state.profileId) {
+    setSt('scan-status', 'error', 'Primero selecciona el curso (y la sesión).');
+    return;
+  }
+  setSt('scan-status', 'load', '<span class="spinner"></span>' +
+        (state.photoCount ? 'Buscando respuestas faltantes…' : 'Analizando hoja…'));
+  const fd = new FormData();
+  fd.append('image', f);
+  fd.append('profile_id', state.profileId);
+  fd.append('curso', state.curso);
+  if (state.photoCount > 0 && state.answers.length) {
+    fd.append('current_answers', JSON.stringify(state.answers));
+  }
+  if (typeof _pendingQrHint === 'string' && _pendingQrHint) {
+    fd.append('qr_hint', _pendingQrHint);
+    _pendingQrHint = '';
+  }
+  try {
+    const r = await fetch('/process', {method: 'POST', body: fd});
+    const d = await r.json();
+    if (!d.success) {
+      setSt('scan-status', 'error', '❌ ' + (d.error || 'No se pudo procesar.'));
+      return;
+    }
+    state.answers = d.answers || [];
+    state.photoCount++;
+    if (d.debug_image) {
+      const img = document.getElementById('debug-img');
+      img.src = 'data:image/jpeg;base64,' + d.debug_image;
+      img.style.display = 'block';
+    }
+    document.getElementById('counter').style.display = 'flex';
+    document.getElementById('c-det').textContent = d.detected;
+    document.getElementById('c-mis').textContent = d.missing;
+    document.getElementById('btn-more').style.display = d.missing > 0 ? 'block' : 'none';
+    setSt('scan-status', d.missing > 0 ? 'warn' : 'ok',
+          d.missing > 0
+            ? `⚠️ Faltan ${d.missing} respuestas por detectar. Puedes tomar otra foto o corregirlas tocando cada pregunta.`
+            : '✅ Todas las respuestas detectadas. Verifica los datos y guarda.');
+    renderGrid();
+    handleQr(d.qr);
+    updateSaveBtn();
+  } catch (e) {
+    setSt('scan-status', 'error', 'Error de conexión. Intenta de nuevo.');
+  } finally {
+    document.getElementById('file-input').value = '';
+  }
+}
+
+// ── QR ──────────────────────────────────────────────────────────────────────
+const _safe = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+async function handleQr(qr) {
+  const banner = document.getElementById('qr-banner');
+  if (!qr || !qr.student_id) { return; }
+
+  // ¿El QR pertenece a OTRO simulacro? — bloquear para no guardar mal
+  if (SIM && _safe(qr.simulacro) !== _safe(SIM.nombre)) {
+    setSt('qr-banner', 'error',
+          `❌ Esta hoja es del simulacro <b>${String(qr.simulacro).replace(/_/g, ' ')}</b>, ` +
+          `no de <b>${SIM.nombre}</b>. No la guardes aquí — avisa al docente.`);
+    return;
+  }
+
+  document.getElementById('student-id').value = qr.student_id || '';
+  if (qr.nombre) {
+    document.getElementById('student-name').value = qr.nombre;
+    state.qrName = qr.nombre;
+  }
+  if (qr.curso) {
+    const sel = document.getElementById('curso-select');
+    if (![...sel.options].some(o => o.value === qr.curso)) {
+      const o = document.createElement('option');
+      o.value = qr.curso; o.textContent = qr.curso;
+      sel.appendChild(o);
+    }
+    if (sel.value !== qr.curso) { sel.value = qr.curso; await onCursoChangeKeepAnswers(); }
+  }
+  // Sesión del QR (simulacros completos): si difiere, corregir y re-procesar
+  if (SIM && SIM.tipo === 'completo' && qr.sesion && qr.sesion !== state.sesion) {
+    const radio = document.querySelector(`input[name="ses"][value="${qr.sesion}"]`);
+    if (radio && !state.reprocessed) {
+      radio.checked = true;
+      state.reprocessed = true;
+      setSt('qr-banner', 'warn',
+            `🔄 El QR indica sesión <b>${qr.sesion}</b>; se ajustó automáticamente.`);
+      await onCursoChange();   // re-deriva perfil y resetea
+      return;                  // el ayudante vuelve a tomar la foto
+    }
+  }
+  setSt('qr-banner', 'ok',
+        `📇 QR detectado: <b>${qr.nombre || qr.student_id}</b> · Curso <b>${qr.curso || '—'}</b>` +
+        (qr.roster_matched === false
+          ? ' <br>⚠️ No está en el roster — escribe el nombre manualmente.' : ''));
+  updateSaveBtn();
+}
+
+// cambia curso desde el QR sin borrar las respuestas ya leídas
+async function onCursoChangeKeepAnswers() {
+  const keepA = state.answers, keepC = state.photoCount;
+  await onCursoChange();
+  state.answers = keepA; state.photoCount = keepC;
+  renderGrid();
+}
+
+// ── Grid + edición manual ───────────────────────────────────────────────────
+function renderGrid() {
+  const g = document.getElementById('answers-grid');
+  g.innerHTML = state.answers.map((a, i) => {
+    const cls = state.edited.has(i) ? 'edited' : (a !== '?' ? 'detected' : 'missing');
+    return `<div class="chip ${cls}" onclick="openPop(${i})">${i + 1}<br><b>${a === '?' ? '·' : a}</b></div>`;
+  }).join('');
+}
+
+function openPop(i) {
+  const opts = (state.optionsPerQ && state.optionsPerQ[i]) || ['A', 'B', 'C', 'D'];
+  const pop = document.getElementById('pop');
+  pop.innerHTML = `<div style="width:100%;font-size:.78rem;color:var(--muted);margin-bottom:4px;">Pregunta ${i + 1}</div>` +
+    opts.map(o => `<button class="${state.answers[i] === o ? 'sel' : ''}" onclick="setAns(${i},'${o}')">${o}</button>`).join('') +
+    `<button onclick="setAns(${i},'?')" title="Borrar">✕</button>`;
+  pop.style.display = 'flex';
+  document.getElementById('pop-overlay').style.display = 'block';
+}
+function closePop() {
+  document.getElementById('pop').style.display = 'none';
+  document.getElementById('pop-overlay').style.display = 'none';
+}
+function setAns(i, v) {
+  state.answers[i] = v;
+  state.edited.add(i);
+  closePop(); renderGrid();
+  const det = state.answers.filter(a => a !== '?').length;
+  document.getElementById('c-det').textContent = det;
+  document.getElementById('c-mis').textContent = state.answers.length - det;
+  updateSaveBtn();
+}
+
+// ── Estudiante: autocompletar nombre por ID ─────────────────────────────────
+let _lookupTimer = null;
+function onIdInput() {
+  updateSaveBtn();
+  clearTimeout(_lookupTimer);
+  const sid = document.getElementById('student-id').value.trim();
+  if (sid.length < 5) return;
+  _lookupTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/estudiantes/lookup?id=' + encodeURIComponent(sid));
+      const d = await r.json();
+      if (d.success && d.found && d.nombre) {
+        document.getElementById('student-name').value = d.nombre;
+        setSt('lookup-status', 'ok', `✅ ${d.nombre} (curso ${d.curso || '—'})`);
+        updateSaveBtn();
+      } else { setSt('lookup-status', '', ''); }
+    } catch (e) { /* silencioso */ }
+  }, 450);
+}
+document.getElementById('student-name') && document.getElementById('student-name')
+  .addEventListener('input', updateSaveBtn);
+
+// ── Guardar ─────────────────────────────────────────────────────────────────
+function _targetSheet() {
+  if (!SIM || !SIM.sheets || !SIM.sheets.length) return '';
+  if (SIM.tipo === 'completo') {
+    return state.sesion === '2S' ? (SIM.sheets[1] || '') : (SIM.sheets[0] || '');
+  }
+  return SIM.sheets[0];
+}
+
+function updateSaveBtn() {
+  const name = document.getElementById('student-name').value.trim();
+  const sid  = document.getElementById('student-id').value.trim();
+  document.getElementById('btn-save').disabled =
+    !(state.answers.length && (name || sid) && _targetSheet());
+}
+
+async function saveResult() {
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  setSt('save-status', 'load', '<span class="spinner"></span>Guardando…');
+  try {
+    const r = await fetch('/save', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        student_name: document.getElementById('student-name').value.trim(),
+        exam_id:      document.getElementById('student-id').value.trim(),
+        curso:        state.curso,
+        answers:      state.answers,
+        sheet_name:   _targetSheet(),
+      })
+    });
+    const d = await r.json();
+    if (d.success) {
+      setSt('save-status', 'ok', '✅ ' + (d.message || 'Guardado.'));
+      document.getElementById('btn-next').style.display = 'block';
+    } else {
+      setSt('save-status', 'error', '❌ ' + (d.error || 'No se pudo guardar.'));
+      btn.disabled = false;
+    }
+  } catch (e) {
+    setSt('save-status', 'error', 'Error de conexión. La hoja NO se guardó — intenta de nuevo.');
+    btn.disabled = false;
+  }
+}
+
+// ── Siguiente estudiante ────────────────────────────────────────────────────
+function resetScanState() {
+  state.answers = []; state.photoCount = 0; state.edited = new Set();
+  state.qrName = ''; state.reprocessed = false;
+  document.getElementById('debug-img').style.display = 'none';
+  document.getElementById('counter').style.display = 'none';
+  document.getElementById('btn-more').style.display = 'none';
+  document.getElementById('answers-grid').innerHTML = '';
+  setSt('scan-status', '', '');
+  setSt('qr-banner', '', '');
+  updateSaveBtn();
+}
+
+function nextStudent() {
+  resetScanState();
+  document.getElementById('student-id').value = '';
+  document.getElementById('student-name').value = '';
+  setSt('lookup-status', '', '');
+  setSt('save-status', '', '');
+  document.getElementById('btn-next').style.display = 'none';
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+loadCursos();
+</script>
+</body>
+</html>
