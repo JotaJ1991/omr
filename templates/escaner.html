@@ -225,8 +225,9 @@
   <div class="card">
     <h2>2️⃣ Escanear la hoja</h2>
     <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none;">
-    <button class="btn btn-cam"   id="btn-cam"   onclick="document.getElementById('file-input').click()" disabled>📷 Tomar foto</button>
-    <button class="btn btn-guide" id="btn-guide" onclick="openCameraModal()" disabled>🎯 Cámara guiada</button>
+    <!-- La cámara guiada es la opción principal; la foto nativa queda de respaldo -->
+    <button class="btn btn-cam"   id="btn-guide" onclick="openCameraModal()" disabled>🎯 Escanear con cámara guiada</button>
+    <button class="btn btn-guide" id="btn-cam"   onclick="document.getElementById('file-input').click()" disabled>📷 Usar cámara del teléfono</button>
     <div class="status" id="scan-status"></div>
     <img id="debug-img" alt="">
     <div class="counter" id="counter" style="display:none;">
@@ -238,7 +239,15 @@
     <button class="btn" id="btn-discard" style="display:none;background:rgba(239,68,68,.12);
             border:1.5px solid rgba(239,68,68,.45);color:#fca5a5;"
             onclick="discardScan()">🗑️ Descartar foto y volver a escanear</button>
-    <div class="grid" id="answers-grid"></div>
+    <!-- Cajón plegable: las respuestas leídas quedan ocultas por defecto -->
+    <details id="answers-box" style="display:none; margin-top:10px;">
+      <summary style="cursor:pointer; padding:10px 14px; background:rgba(255,255,255,.05);
+               border:1.5px solid var(--card-border); border-radius:10px;
+               font-size:.9rem; color:var(--muted); list-style:none;">
+        🔎 Ver / corregir respuestas leídas <span id="answers-count" style="color:var(--gold);"></span>
+      </summary>
+      <div class="grid" id="answers-grid"></div>
+    </details>
   </div>
 
   <!-- Paso 3: estudiante -->
@@ -259,8 +268,9 @@
     <h2>4️⃣ Guardar</h2>
     <button class="btn btn-save" id="btn-save" onclick="saveResult()" disabled>💾 Guardar respuestas</button>
     <div class="status" id="save-status"></div>
-    <button class="btn btn-next" id="btn-next" style="display:none;" onclick="nextStudent()">
-      ✅ Siguiente estudiante</button>
+    <button class="btn btn-next" id="btn-next" style="display:none;"
+            onclick="nextStudent(); openCameraModal();">
+      ✅ Siguiente estudiante (abre cámara)</button>
   </div>
 
   {% endif %}
@@ -532,6 +542,15 @@ function renderGrid() {
     const cls = state.edited.has(i) ? 'edited' : (a !== '?' ? 'detected' : 'missing');
     return `<div class="chip ${cls}" onclick="openPop(${i})">${i + 1}<br><b>${a === '?' ? '·' : a}</b></div>`;
   }).join('');
+  // Mostrar el cajón (plegado, salvo que el ayudante ya lo haya abierto)
+  const box = document.getElementById('answers-box');
+  if (box) {
+    box.style.display = state.answers.length ? 'block' : 'none';
+    const det = state.answers.filter(a => a !== '?').length;
+    const cnt = document.getElementById('answers-count');
+    if (cnt) cnt.textContent = state.answers.length
+      ? `(${det}/${state.answers.length})` : '';
+  }
 }
 
 function openPop(i) {
@@ -612,8 +631,16 @@ async function saveResult() {
     });
     const d = await r.json();
     if (d.success) {
-      setSt('save-status', 'ok', '✅ ' + (d.message || 'Guardado.'));
+      setSt('save-status', 'ok', '✅ ' + (d.message || 'Guardado.') +
+            '<br>📸 Abriendo la cámara para el siguiente estudiante…');
       document.getElementById('btn-next').style.display = 'block';
+      // Continuar con el próximo escaneo automáticamente (cámara guiada)
+      window._nextTimer = setTimeout(() => {
+        nextStudent();
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          openCameraModal();
+        }
+      }, 1600);
     } else {
       setSt('save-status', 'error', '❌ ' + (d.error || 'No se pudo guardar.'));
       btn.disabled = false;
@@ -633,6 +660,10 @@ function resetScanState() {
   document.getElementById('btn-more').style.display = 'none';
   document.getElementById('btn-discard').style.display = 'none';
   document.getElementById('answers-grid').innerHTML = '';
+  const _box = document.getElementById('answers-box');
+  if (_box) { _box.style.display = 'none'; _box.removeAttribute('open'); }
+  const _cnt = document.getElementById('answers-count');
+  if (_cnt) _cnt.textContent = '';
   setSt('scan-status', '', '');
   setSt('qr-banner', '', '');
   updateSaveBtn();
@@ -649,6 +680,7 @@ function discardScan() {
 }
 
 function nextStudent() {
+  clearTimeout(window._nextTimer);   // evita doble disparo si tocan el botón
   resetScanState();
   document.getElementById('student-id').value = '';
   document.getElementById('student-name').value = '';
