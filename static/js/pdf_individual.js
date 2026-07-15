@@ -123,13 +123,88 @@
   }
 
   async function _loadLogo() {
-    if (_logoDataUrl === null)        _logoDataUrl        = await _loadImageAsDataUrl('/static/logo.png');
-    if (_sipagreLogoDataUrl === null) _sipagreLogoDataUrl = await _loadImageAsDataUrl('/static/sipagre_logo.png');
-    if (_ietagroLogoDataUrl === null) _ietagroLogoDataUrl = await _loadImageAsDataUrl('/static/ietagro_logo.png');
+    // Versiones _sm (256px): a tamaño de impresión se ven idénticas y el PDF
+    // pasa de ~12 MB a <1 MB (las originales pesan hasta 1.2 MB cada una).
+    if (_logoDataUrl === null)        _logoDataUrl        = await _loadImageAsDataUrl('/static/logo_sm.png');
+    if (_sipagreLogoDataUrl === null) _sipagreLogoDataUrl = await _loadImageAsDataUrl('/static/sipagre_logo_sm.png');
+    if (_ietagroLogoDataUrl === null) _ietagroLogoDataUrl = await _loadImageAsDataUrl('/static/ietagro_logo_sm.png');
     return _logoDataUrl;
   }
 
-  function drawGaugeCanvas(value, max, label) {
+  // ── Iconos de asignatura (emoji → imagen) y bandera UK ─────────────────────
+  // Los emojis no existen en las fuentes del PDF, pero el canvas del navegador
+  // sí los dibuja a color; se convierten a PNG e incrustan como imágenes.
+  // La bandera 🇬🇧 NO se usa como emoji porque Windows no la renderiza
+  // (muestra "GB"): se dibuja una Union Jack en canvas, idéntica en todo OS.
+  const SUBJECT_ICONS = { mat:'🧮', lect:'📖', soc:'🌍', nat:'🔬', ing:'__FLAG__' };
+  const _emojiCache = {};
+  function _emojiDataUrl(ch, size = 96) {
+    const key = ch + '@' + size;
+    if (_emojiCache[key] !== undefined) return _emojiCache[key];
+    let url = '';
+    try {
+      const c = _newCanvas(size, size);
+      const ctx = c.getContext('2d');
+      ctx.font = Math.round(size * 0.8) +
+        'px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(ch, size / 2, size / 2 + size * 0.05);
+      url = c.toDataURL('image/png');
+    } catch (e) { url = ''; }
+    _emojiCache[key] = url;
+    return url;
+  }
+
+  function _drawFlagUK(ctx, x, y, w, h) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.fillStyle = '#012169'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = h * 0.20;
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + w, y + h);
+    ctx.moveTo(x + w, y); ctx.lineTo(x, y + h); ctx.stroke();
+    ctx.strokeStyle = '#C8102E'; ctx.lineWidth = h * 0.10;
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + w, y + h);
+    ctx.moveTo(x + w, y); ctx.lineTo(x, y + h); ctx.stroke();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = h * 0.33;
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h);
+    ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.stroke();
+    ctx.strokeStyle = '#C8102E'; ctx.lineWidth = h * 0.20;
+    ctx.beginPath();
+    ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h);
+    ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  let _flagUrl = null;
+  function _flagDataUrl() {
+    if (_flagUrl !== null) return _flagUrl;
+    try {
+      const c = _newCanvas(120, 72);
+      _drawFlagUK(c.getContext('2d'), 0, 0, 120, 72);
+      _flagUrl = c.toDataURL('image/png');
+    } catch (e) { _flagUrl = ''; }
+    return _flagUrl;
+  }
+
+  function _subjectIconUrl(key) {
+    const ic = SUBJECT_ICONS[key];
+    if (!ic) return '';
+    return ic === '__FLAG__' ? _flagDataUrl() : _emojiDataUrl(ic);
+  }
+
+  // Medalla + mensaje motivacional según el puntaje general (escala 0-500)
+  function _medalFor(general) {
+    if (general >= 400) return { e: '🏆', msg: '¡Excelente! Estás entre los mejores' };
+    if (general >= 350) return { e: '🥇', msg: '¡Muy bien! Gran desempeño' };
+    if (general >= 300) return { e: '🏅', msg: '¡Buen trabajo! Sigue así' };
+    if (general >= 250) return { e: '💪', msg: 'Vas bien, ¡puedes dar más!' };
+    return { e: '📈', msg: 'Vas mejorando, ¡no te detengas!' };
+  }
+
+  function drawGaugeCanvas(value, max, label, medalChar) {
     const W = 700, H = 480;
     const c = _newCanvas(W, H);
     const ctx = c.getContext('2d');
@@ -180,6 +255,13 @@
     ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 72px Inter, Arial';
     ctx.fillText(String(value), cx, cy + 110);
+    if (medalChar) {
+      // Medalla al lado del número (el canvas sí renderiza emoji a color)
+      const numW = ctx.measureText(String(value)).width;
+      ctx.font = '52px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(medalChar, cx + numW / 2 + 44, cy + 106);
+    }
     ctx.fillStyle = '#64748b';
     ctx.font = '500 24px Inter, Arial';
     ctx.fillText(`/ ${max}`, cx, cy + 140);
@@ -220,10 +302,12 @@
   }
 
   function drawPercentileBarCanvas(percent) {
-    const W = 700, H = 110;
+    // Barra espectro rojo→verde con marcador ▼ y número pequeños encima
+    // (más discretos para no interponerse con la fila superior).
+    const W = 700, H = 84;
     const c = _newCanvas(W, H);
     const ctx = c.getContext('2d');
-    const x = 30, y = 60, w = W - 60, h = 16;
+    const x = 14, y = 54, w = W - 28, h = 18;
     const grad = ctx.createLinearGradient(x, 0, x + w, 0);
     grad.addColorStop(0,    '#ef4444');
     grad.addColorStop(0.4,  '#f59e0b');
@@ -231,37 +315,25 @@
     grad.addColorStop(1,    '#22c55e');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x, y, w, h, 8);
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, 9);
     else ctx.rect(x, y, w, h);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 10; i++) {
-      const tx = x + (w * i/10);
-      ctx.beginPath();
-      ctx.moveTo(tx, y);
-      ctx.lineTo(tx, y + h);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#64748b';
-    ctx.font = 'bold 18px Inter, Arial';
-    ctx.textAlign = 'left';
-    ctx.fillText('0', x - 22, y + h + 20);
-    ctx.textAlign = 'right';
-    ctx.fillText('100', x + w + 26, y + h + 20);
-    const px = x + (w * Math.max(0, Math.min(100, percent)) / 100);
-    ctx.fillStyle = '#1e293b';
+    const pc = Math.max(0, Math.min(100, percent));
+    const px = x + (w * pc / 100);
+    ctx.fillStyle = '#475569';
     ctx.beginPath();
-    ctx.moveTo(px - 9, y - 6);
-    ctx.lineTo(px + 9, y - 6);
-    ctx.lineTo(px, y + 6);
+    ctx.moveTo(px - 7, y - 11);
+    ctx.lineTo(px + 7, y - 11);
+    ctx.lineTo(px, y - 2);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 42px Inter, Arial';
+    ctx.fillStyle = '#475569';
+    ctx.font = 'bold 27px Inter, Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(String(percent), px, y - 14);
+    // El número no se sale del lienzo en los extremos (0 o 100)
+    const tx = Math.max(x + 18, Math.min(x + w - 18, px));
+    ctx.fillText(String(percent), tx, y - 18);
     return c;
   }
 
@@ -328,16 +400,22 @@
       ctx.textBaseline = 'middle';
       ctx.fillText(valStr, tx, ty);
     }
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 22px Inter, Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let i = 0; i < N; i++) {
       const a = -Math.PI/2 + 2*Math.PI*i/N;
-      const lblR = R + 50;
+      const lblR = R + 52;
       const x = cx + lblR*Math.cos(a);
       const y = cy + lblR*Math.sin(a);
-      ctx.fillText(labels[i], x, y);
+      if (labels[i] === '__FLAG__') {
+        // Inglés: bandera británica dibujada (los emoji de bandera no
+        // se renderizan en Windows)
+        _drawFlagUK(ctx, x - 27, y - 16, 54, 32);
+      } else {
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '44px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+        ctx.fillText(labels[i], x, y);
+      }
     }
     return c;
   }
@@ -395,7 +473,7 @@
       const logoSize = 46;
       const logoX = 10 + pw - logoSize + 2;
       const logoY = 10 + (titleH - logoSize) / 2;
-      try { doc.addImage(_headerLogo, 'PNG', logoX, logoY, logoSize, logoSize); }
+      try { doc.addImage(_headerLogo, 'PNG', logoX, logoY, logoSize, logoSize, undefined, 'FAST'); }
       catch(e) {}
     }
     doc.setFont('helvetica','bold'); doc.setFontSize(15);
@@ -405,36 +483,54 @@
     doc.setTextColor(220, 235, 255);
     doc.text(`Simulacro ${subTitle}  ·  Reporte individual`, 20, 30);
 
-    // ── DATOS ESTUDIANTE ──
+    // ── DATOS ESTUDIANTE (tarjeta con avatar de iniciales y píldoras) ──
     let y = 47;
-    const cardH = 22;
-    doc.setFillColor(245, 247, 252);
-    doc.roundedRect(10, y, pw, cardH, 2.5, 2.5, 'F');
-    doc.setFillColor(99, 102, 241);
-    doc.roundedRect(10, y, 2.2, cardH, 1.1, 1.1, 'F');
-    doc.setFont('helvetica','bold'); doc.setFontSize(7);
-    doc.setTextColor(99, 102, 241);
-    doc.text('ESTUDIANTE', 16, y + 5);
-    doc.setFont('helvetica','bold'); doc.setFontSize(13);
-    doc.setTextColor(15, 23, 42);
-    doc.text(String(student.name||'').toUpperCase(), 16, y + 11);
-    doc.setFont('helvetica','bold'); doc.setFontSize(8);
-    const idText = `ID:  ${String(student.id||'')}`;
-    const idW = doc.getTextWidth(idText) + 6;
-    doc.setFillColor(99, 102, 241);
-    doc.roundedRect(16, y + 14, idW, 5.5, 1.2, 1.2, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.text(idText, 16 + idW/2, y + 17.8, {align:'center'});
+    const cardH = 24;
+    doc.setFillColor(244, 244, 251);
+    doc.setDrawColor(224, 222, 246);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(10, y, pw, cardH, 3, 3, 'FD');
 
-    if (student.curso) {
-      const cText = `CURSO:  ${String(student.curso)}`;
-      const cW = doc.getTextWidth(cText) + 6;
-      const cX = 16 + idW + 3;
-      doc.setFillColor(6, 182, 212);
-      doc.roundedRect(cX, y + 14, cW, 5.5, 1.2, 1.2, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.text(cText, cX + cW/2, y + 17.8, {align:'center'});
+    const stuName = String(student.name || '').toUpperCase();
+    const initials = (stuName.split(/\s+/).filter(Boolean).slice(0, 2)
+                      .map(w => w[0]).join('')) || '·';
+    const avR = 8, avX = 10 + 6 + avR, avY = y + cardH / 2;
+    doc.setFillColor(99, 102, 241);
+    doc.circle(avX, avY, avR, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.text(initials, avX, avY + 1.6, {align: 'center'});
+
+    const tx0 = avX + avR + 4.5;
+    doc.setFontSize(6.5);
+    doc.setTextColor(127, 119, 221);
+    doc.text('ESTUDIANTE', tx0, y + 5.6);
+    doc.setTextColor(15, 23, 42);
+    let ns = 12.5;
+    doc.setFontSize(ns);
+    while (doc.getTextWidth(stuName) > pw - (tx0 - 10) - 6 && ns > 8) {
+      ns -= 0.5; doc.setFontSize(ns);
     }
+    doc.text(stuName, tx0, y + 11.4);
+
+    const pills = [];
+    if (student.id)    pills.push({icon: '🪪', text: String(student.id)});
+    if (student.curso) pills.push({icon: '🏫', text: 'Curso ' + student.curso});
+    const stuGrado = gradoDeCurso(student.curso);
+    if (stuGrado)      pills.push({icon: '🎓', text: 'Grado ' + stuGrado + '°'});
+    let pillX = tx0;
+    doc.setFontSize(7.5);
+    pills.forEach(p => {
+      const icW = 3.6;
+      const pillW = icW + doc.getTextWidth(p.text) + 7.5;
+      doc.setFillColor(238, 237, 254);
+      doc.roundedRect(pillX, y + 14.2, pillW, 6.2, 3.1, 3.1, 'F');
+      const iu = _emojiDataUrl(p.icon);
+      if (iu) { try { doc.addImage(iu, 'PNG', pillX + 2, y + 15.4, icW, icW, undefined, 'FAST'); } catch (e) {} }
+      doc.setTextColor(60, 52, 137);
+      doc.text(p.text, pillX + icW + 4.2, y + 18.4);
+      pillX += pillW + 3;
+    });
 
     y += cardH + 4;
 
@@ -444,36 +540,57 @@
 
     const general = Number(student.general)||0;
     const pctGen  = (pcts||{}).general||0;
+    const medal   = _medalFor(general);
 
-    const gaugeCanvas = drawGaugeCanvas(general, maxGeneral, 'PUNTAJE GENERAL');
-    const gW = 110;
+    // Medidor un poco más compacto (110→92) para dar espacio al mensaje
+    // motivacional sin desbordar la página.
+    const gaugeCanvas = drawGaugeCanvas(general, maxGeneral, 'PUNTAJE GENERAL', medal.e);
+    const gW = 92;
     const gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
-    doc.addImage(gaugeCanvas.toDataURL('image/png'), 'PNG', 10, y, gW, gH);
+    doc.addImage(gaugeCanvas.toDataURL('image/png'), 'PNG', 10, y, gW, gH, undefined, 'FAST');
 
     const donutCanvas = drawDonutCanvas(pctGen, 'PERCENTIL', '#6366f1');
     const dSize = Math.min(gH, pw - gW - 8);
     const dx = 10 + gW + 8 + (pw - gW - 8 - dSize) / 2;
-    doc.addImage(donutCanvas.toDataURL('image/png'), 'PNG', dx, y + (gH - dSize)/2, dSize, dSize);
+    doc.addImage(donutCanvas.toDataURL('image/png'), 'PNG', dx, y + (gH - dSize)/2, dSize, dSize, undefined, 'FAST');
 
     doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
     doc.text('Posicion respecto a los evaluados', dx + dSize/2, y + (gH + dSize)/2 + 2.5, {align:'center'});
 
-    y += gH + 4;
+    y += gH + 3;
+
+    // Mensaje motivacional (píldora verde centrada)
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    const msgW = doc.getTextWidth(medal.msg) + 12;
+    doc.setFillColor(225, 245, 238);
+    doc.roundedRect(10 + pw/2 - msgW/2, y, msgW, 7, 3.5, 3.5, 'F');
+    doc.setTextColor(15, 110, 86);
+    doc.text(medal.msg, 10 + pw/2, y + 4.7, {align:'center'});
+    y += 10;
 
     // ── RESULTADOS POR PRUEBA ──
     _drawSectionHeader(doc, 10, y, pw, 'RESULTADOS POR PRUEBA');
+    // Leyenda del percentil (dentro de la franja, a la derecha)
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.2);
+    doc.setTextColor(232, 236, 255);
+    const lgT1 = 'Percentil: 0 ', lgT2 = ' 100';
+    const lgW = doc.getTextWidth(lgT1) + 2.6 + doc.getTextWidth(lgT2);
+    let lgX = 10 + pw - 4 - lgW;
+    const lgY = y + 6;
+    doc.text(lgT1, lgX, lgY);
+    lgX += doc.getTextWidth(lgT1);
+    doc.setFillColor(232, 236, 255);
+    doc.triangle(lgX, lgY - 2.6, lgX + 2.6, lgY - 2.6, lgX + 1.3, lgY - 0.3, 'F');
+    doc.text(lgT2, lgX + 2.6, lgY);
     y += 13;
 
-    const labels = SUBJECTS.map(s => s.name
-      .replace('Sociales y Ciudadanas','Sociales')
-      .replace('Ciencias Naturales','Naturales')
-      .replace('Lectura Critica','Lect. Crítica')
-      .replace('Matematicas','Matem.'));
+    // Vértices del radar: iconos de asignatura (bandera dibujada para Inglés)
+    const labels = SUBJECTS.map(s => SUBJECT_ICONS[s.key] || '');
     const values = SUBJECTS.map(s => Number(student[s.key])||0);
     const radarCanvas = drawRadarCanvas(labels, values, 100);
     const rW = 75, rH = 75;
-    doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y + 2, rW, rH);
+    doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y + 2, rW, rH, undefined, 'FAST');
 
     const lx = 10 + rW + 5;
     const lw = pw - rW - 7;
@@ -497,25 +614,61 @@
       'Ingles':                'Inglés',
     };
 
+    // "Tu mejor prueba": la asignatura con mayor puntaje se resalta con ⭐
+    let bestIdx = -1, bestScore = -1;
+    SUBJECTS.forEach((s, i) => {
+      const v = Number(student[s.key]) || 0;
+      if (v > bestScore) { bestScore = v; bestIdx = i; }
+    });
+    if (bestScore <= 0) bestIdx = -1;
+
     SUBJECTS.forEach((subj, idx) => {
       const score = Number(student[subj.key])||0;
       const pct   = (pcts||{})[subj.key]||0;
       const displayName = shortNames[subj.name] || subj.name;
+      const isBest = idx === bestIdx;
 
-      doc.setFillColor(idx % 2 === 0 ? 248 : 241,
-                       idx % 2 === 0 ? 250 : 245,
-                       idx % 2 === 0 ? 252 : 249);
+      if (isBest) {
+        doc.setFillColor(250, 238, 218);   // dorado suave
+      } else {
+        doc.setFillColor(idx % 2 === 0 ? 248 : 241,
+                         idx % 2 === 0 ? 250 : 245,
+                         idx % 2 === 0 ? 252 : 249);
+      }
       doc.roundedRect(lx, ly + 0.5, lw, rowH - 1, 1.5, 1.5, 'F');
+
+      // Icono de la asignatura (la bandera es más ancha que alta)
+      const isFlag = SUBJECT_ICONS[subj.key] === '__FLAG__';
+      const icH = 4.6, icW = isFlag ? icH * 1.6 : icH;
+      const iconUrl = _subjectIconUrl(subj.key);
+      if (iconUrl) {
+        try { doc.addImage(iconUrl, 'PNG', lx + 1.8, ly + rowH/2 - icH/2, icW, icH, undefined, 'FAST'); }
+        catch (e) {}
+      }
+      const nameX = lx + 1.8 + icW + 1.8;
 
       doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
       doc.setTextColor(30, 41, 59);
-      const maxNameW = colNameW - 4;
+      const maxNameW = colNameW - (nameX - lx) - 5;
       let nameSize = 8.5;
-      while (doc.getTextWidth(displayName) > maxNameW && nameSize > 6.5) {
+      while (doc.getTextWidth(displayName) > maxNameW && nameSize > 6) {
         nameSize -= 0.5;
         doc.setFontSize(nameSize);
       }
-      doc.text(displayName, lx + 2, ly + rowH/2 + 1.2);
+      const nameY = isBest ? ly + rowH/2 - 0.6 : ly + rowH/2 + 1.2;
+      doc.text(displayName, nameX, nameY);
+      if (isBest) {
+        const starUrl = _emojiDataUrl('⭐');
+        if (starUrl) {
+          const sx = Math.min(nameX + doc.getTextWidth(displayName) + 1.2,
+                              lx + colNameW - 4.5);
+          try { doc.addImage(starUrl, 'PNG', sx, nameY - 3.2, 3.8, 3.8, undefined, 'FAST'); }
+          catch (e) {}
+        }
+        doc.setFont('helvetica','normal'); doc.setFontSize(5.8);
+        doc.setTextColor(133, 79, 11);
+        doc.text('tu mejor prueba', nameX, nameY + 3.6);
+      }
 
       const badgeW = colScoreW - 1, badgeH = rowH - 3;
       const badgeX = lx + colNameW + 0.5;
@@ -526,7 +679,7 @@
       const barH = barW * (barCanvas.height/barCanvas.width);
       const barX = lx + colNameW + colScoreW + 2;
       const barY = ly + (rowH - barH)/2;
-      doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', barX, barY, barW, barH);
+      doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', barX, barY, barW, barH, undefined, 'FAST');
 
       ly += rowH;
     });
@@ -535,7 +688,7 @@
       const fLogoSize = 12;
       const fLogoX = 10 + pw/2 - fLogoSize/2;
       const fLogoY = 256;
-      try { doc.addImage(_logoDataUrl, 'PNG', fLogoX, fLogoY, fLogoSize, fLogoSize); }
+      try { doc.addImage(_logoDataUrl, 'PNG', fLogoX, fLogoY, fLogoSize, fLogoSize, undefined, 'FAST'); }
       catch(e) {}
     }
     doc.setFont('helvetica','italic'); doc.setFontSize(7);

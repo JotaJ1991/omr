@@ -3233,20 +3233,20 @@ async function downloadIntegralPdf() {
       const col2x = 10 + cellW + gap;
       const row2y = yy + cellH + gap;
       // Top-left: Bar
-      try { doc.addImage(barCanvas.toDataURL('image/png'),   'PNG', 10,    yy,    cellW, cellH); } catch(e){}
+      try { doc.addImage(barCanvas.toDataURL('image/png'),   'PNG', 10,    yy,    cellW, cellH, undefined, 'FAST'); } catch(e){}
       // Top-right: Boxplot
-      try { doc.addImage(boxCanvas.toDataURL('image/png'),   'PNG', col2x, yy,    cellW, cellH); } catch(e){}
+      try { doc.addImage(boxCanvas.toDataURL('image/png'),   'PNG', col2x, yy,    cellW, cellH, undefined, 'FAST'); } catch(e){}
       // Bottom-left: Radar
-      try { doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10,    row2y, cellW, cellH); } catch(e){}
+      try { doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10,    row2y, cellW, cellH, undefined, 'FAST'); } catch(e){}
       // Bottom-right: Histogram
-      try { doc.addImage(histCanvas.toDataURL('image/png'),  'PNG', col2x, row2y, cellW, cellH); } catch(e){}
+      try { doc.addImage(histCanvas.toDataURL('image/png'),  'PNG', col2x, row2y, cellW, cellH, undefined, 'FAST'); } catch(e){}
       y = row2y + cellH + 4;
     } else if (histCanvas) {
       doc.addPage('letter','p'); y = 20;
       y = _drawSectionTitle(doc, 10, y, 'histogram', 'Distribucion de puntajes');
       y += 4;
       const imgH = pw * 380/900;
-      try { doc.addImage(histCanvas.toDataURL('image/png'), 'PNG', 10, y, pw, imgH); } catch(e){}
+      try { doc.addImage(histCanvas.toDataURL('image/png'), 'PNG', 10, y, pw, imgH, undefined, 'FAST'); } catch(e){}
       y += imgH + 4;
     }
 
@@ -4423,7 +4423,7 @@ function _drawReportHeader(doc, title, subtitle) {
     (typeof unifiedSimulacro !== 'undefined' && unifiedSimulacro) ? unifiedSimulacro.nombre : '');
   if (_rh_logo) {
     const sz = 38;
-    try { doc.addImage(_rh_logo, 'PNG', 10 + pw - sz - 1, 10 + (titleH - sz)/2, sz, sz); } catch(e){}
+    try { doc.addImage(_rh_logo, 'PNG', 10 + pw - sz - 1, 10 + (titleH - sz)/2, sz, sz, undefined, 'FAST'); } catch(e){}
   }
   doc.setFont('helvetica','bold'); doc.setFontSize(15);
   doc.setTextColor(255, 255, 255);
@@ -4445,7 +4445,7 @@ function _drawReportFooter(doc, label) {
     doc.rect(10, 268, pw, 0.6, 'F');
     const _ft_logo = window.JMRPdf.footerLogo();
     if (_ft_logo) {
-      try { doc.addImage(_ft_logo, 'PNG', 10 + pw/2 - 5, 270, 10, 10); } catch(e){}
+      try { doc.addImage(_ft_logo, 'PNG', 10 + pw/2 - 5, 270, 10, 10, undefined, 'FAST'); } catch(e){}
     }
     doc.setFont('helvetica','italic'); doc.setFontSize(7);
     doc.setTextColor(...SIPAGRE_BLUE);
@@ -5245,26 +5245,26 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
     if (extra.barChart) {
       const imgH = pw * 420/900;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
-      try { doc.addImage(extra.barChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      try { doc.addImage(extra.barChart, 'PNG', 10, y, pw, imgH, undefined, 'FAST'); } catch(e){}
       y += imgH + 4;
     }
     if (extra.boxChart) {
       const imgH = pw * 460/900;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
-      try { doc.addImage(extra.boxChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      try { doc.addImage(extra.boxChart, 'PNG', 10, y, pw, imgH, undefined, 'FAST'); } catch(e){}
       y += imgH + 4;
     }
     if (extra.radarChart) {
       // Radar es 800x700 → proporción 0.875
       const imgH = pw * 700/800;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
-      try { doc.addImage(extra.radarChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      try { doc.addImage(extra.radarChart, 'PNG', 10, y, pw, imgH, undefined, 'FAST'); } catch(e){}
       y += imgH + 4;
     }
     if (extra.histChart) {
       const imgH = pw * 380/900;
       if (y + imgH > 260) { doc.addPage('letter','p'); y = 20; }
-      try { doc.addImage(extra.histChart, 'PNG', 10, y, pw, imgH); } catch(e){}
+      try { doc.addImage(extra.histChart, 'PNG', 10, y, pw, imgH, undefined, 'FAST'); } catch(e){}
       y += imgH + 4;
     }
   }
