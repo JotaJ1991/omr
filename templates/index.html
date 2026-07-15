@@ -2946,6 +2946,7 @@ function onResultsSimChange() {
     document.getElementById('r-filter-bar').style.display = 'flex';
     document.getElementById('r-view-bar').style.display = 'flex';
     _populateUnifiedCourseFilter();
+    _ensureDefaultGradeFilter();
     setResultsView('integral');   // siempre arrancar en integral
     btnGen.textContent = '🔄 Actualizar resultados';
     btnGen.disabled = false;
@@ -3835,6 +3836,7 @@ async function generateUnifiedResults() {
       document.getElementById('r-filter-bar').style.display = 'flex';
       document.getElementById('r-view-bar').style.display = 'flex';
       _populateUnifiedCourseFilter();
+      _ensureDefaultGradeFilter();  // sin esto la vista integral queda "vacía"
       setResultsView('integral');   // arrancar siempre en integral
       document.getElementById('btn-r-all').disabled = false;
       btn.textContent = '🔄 Actualizar resultados';
@@ -3866,6 +3868,23 @@ function _populateUnifiedCourseFilter() {
   sel.innerHTML = html;
   // Mantener selección si el curso aún existe en el pool filtrado
   if (prev && courses.includes(prev)) sel.value = prev;
+}
+
+// La vista Integral (la inicial tras generar) exige un grado o curso en los
+// filtros; sin esto quedaba "en blanco" con solo una advertencia y parecía
+// que los resultados no cargaban. Auto-selecciona el primer grado que tenga
+// estudiantes si el usuario aún no eligió nada.
+function _ensureDefaultGradeFilter() {
+  const gradeSel = document.getElementById('r-grade-select');
+  const cursoSel = document.getElementById('r-course-select');
+  if (!gradeSel || !unifiedResults || !unifiedResults.length) return;
+  if (gradeSel.value || (cursoSel && cursoSel.value)) return;  // ya hay filtro
+  const conDatos = new Set(unifiedResults.map(r => gradoDeCurso(r.curso)).filter(Boolean));
+  const opt = [...gradeSel.options].find(o => o.value && conDatos.has(o.value));
+  if (opt) {
+    gradeSel.value = opt.value;
+    _populateUnifiedCourseFilter();
+  }
 }
 
 function renderUnifiedTable() {
