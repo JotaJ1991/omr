@@ -3,274 +3,320 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1e3a8a">
+<meta name="theme-color" content="#0b0f19">
 <title>Consulta de resultados · IETECI</title>
+<link rel="icon" type="image/png" href="/static/sipagre_logo_sm.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --primary:        #1e3a8a;
-    --primary-dark:   #101e54;
-    --primary-light:  #3b63bf;
+    --primary:        #3b82f6;
+    --primary-dark:   #1d4ed8;
+    --primary-light:  #60a5fa;
     --gold:           #facc15;
-    --gold-dark:      #ca8a04;
-    --bg:             #0f172a;
-    --bg-soft:        #1e293b;
-    --card:           rgba(255,255,255,.04);
+    --gold-dark:      #eab308;
+    --bg:             #0b0f19;
+    --card:           rgba(255,255,255,.03);
     --card-border:    rgba(255,255,255,.08);
-    --text:           #e2e8f0;
-    --muted:          #94a3b8;
-    --success:        #22c55e;
-    --warning:        #fbbf24;
+    --text:           #f3f4f6;
+    --muted:          #9ca3af;
+    --success:        #10b981;
     --danger:         #ef4444;
   }
   *, *::before, *::after { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; min-height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
-                 Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: radial-gradient(ellipse at top, #1e3a8a 0%, #0f172a 60%);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background-color: var(--bg);
     color: var(--text);
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
   }
-  .container {
-    max-width: 720px; margin: 0 auto;
-    padding: 24px 16px 60px;
+
+  /* ── Fondo con resplandores animados ── */
+  .bg-glow { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+  .blob {
+    position: absolute; border-radius: 50%;
+    filter: blur(110px); opacity: .13;
+    animation: float 24s infinite ease-in-out alternate;
   }
-  /* ── Header ── */
+  .blob-1 { width: 380px; height: 380px; background: #1e3a8a; top: -120px; left: -120px; }
+  .blob-2 { width: 420px; height: 420px; background: #4f46e5; bottom: -160px; right: -120px; animation-delay: -7s; }
+  .blob-3 { width: 280px; height: 280px; background: #facc15; top: 42%; left: 58%; opacity: .05; animation-delay: -13s; }
+  @keyframes float {
+    0%   { transform: translate(0,0) scale(1); }
+    50%  { transform: translate(40px,-50px) scale(1.12); }
+    100% { transform: translate(0,0) scale(1); }
+  }
+
+  .container { max-width: 680px; margin: 0 auto; padding: 28px 16px 70px; position: relative; z-index: 1; }
+
+  /* ── Marca ── */
   .brand {
-    text-align: center; margin-bottom: 24px; padding-top: 8px;
+    text-align: center; margin-bottom: 26px;
+    opacity: 0; transform: translateY(-12px);
+    animation: fadeInDown .8s cubic-bezier(.16,1,.3,1) forwards;
   }
-  .brand-emoji { font-size: 2.4rem; line-height: 1; }
   .brand-logo {
-    width: 88px; height: 88px; object-fit: contain;
-    filter: drop-shadow(0 4px 14px rgba(0,0,0,.45));
+    width: 86px; height: 86px; object-fit: contain;
+    filter: drop-shadow(0 8px 22px rgba(0,0,0,.5));
   }
   .brand-title {
-    font-size: 1.35rem; font-weight: 800; margin: 6px 0 2px;
-    letter-spacing: -0.01em;
+    font-size: 1.45rem; font-weight: 800; margin: 8px 0 2px;
+    letter-spacing: -.02em;
+    background: linear-gradient(120deg, #ffffff, #93c5fd);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
-  .brand-sub { font-size: .82rem; color: var(--muted); }
+  .brand-sub { font-size: .85rem; color: var(--muted); }
 
-  /* ── Card de login ── */
-  .login-card {
-    background: var(--card);
+  /* ── Tarjeta glass ── */
+  .glass {
+    background: rgba(17,24,39,.55);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
     border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 22px 20px 24px;
-    backdrop-filter: blur(8px);
+    border-radius: 22px;
+    box-shadow: 0 18px 38px rgba(0,0,0,.32);
   }
-  .login-card h2 {
-    font-size: 1.05rem; font-weight: 700; margin: 0 0 4px;
-    color: var(--text);
+
+  /* ── Login ── */
+  .login-card {
+    padding: 28px 22px;
+    opacity: 0; transform: translateY(18px);
+    animation: fadeInUp .8s cubic-bezier(.16,1,.3,1) .15s forwards;
   }
-  .login-card .hint {
-    font-size: .78rem; color: var(--muted); margin-bottom: 18px;
-  }
-  .input-group { margin-bottom: 14px; }
+  .login-card h2 { font-size: 1.2rem; font-weight: 700; margin: 0 0 6px; }
+  .login-card .hint { font-size: .84rem; color: var(--muted); margin: 0 0 20px; }
+  .input-group { margin-bottom: 16px; }
   .input-group label {
-    display: block; font-size: .76rem; color: var(--muted);
-    margin-bottom: 4px; font-weight: 600; letter-spacing: .3px;
-    text-transform: uppercase;
+    display: block; font-size: .73rem; color: var(--muted);
+    margin-bottom: 6px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
   }
   .input-group input {
-    width: 100%; padding: 11px 14px; font-size: 1rem;
-    background: rgba(0,0,0,.25);
-    color: var(--text);
-    border: 1.5px solid var(--card-border);
-    border-radius: 10px;
-    font-family: inherit;
-    transition: border-color .15s;
+    width: 100%; padding: 12px 15px; font-size: 1rem;
+    background: rgba(0,0,0,.3); color: var(--text);
+    border: 1.5px solid var(--card-border); border-radius: 12px;
+    font-family: inherit; transition: all .25s ease;
   }
   .input-group input:focus {
-    outline: none;
-    border-color: var(--primary-light);
-    background: rgba(0,0,0,.35);
+    outline: none; border-color: var(--primary);
+    background: rgba(0,0,0,.5);
+    box-shadow: 0 0 14px rgba(59,130,246,.15);
   }
   .btn-primary {
-    width: 100%; padding: 13px;
-    background: linear-gradient(135deg, var(--primary), var(--primary-light));
-    color: white; border: none; border-radius: 10px;
-    font-size: .95rem; font-weight: 700; cursor: pointer;
-    margin-top: 6px;
-    transition: transform .1s, box-shadow .15s;
-    box-shadow: 0 4px 14px rgba(30,58,138,.4);
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--primary-dark), #2563eb);
+    color: #fff; border: none; border-radius: 12px;
+    font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 8px;
+    transition: all .25s ease;
+    box-shadow: 0 8px 20px rgba(37,99,235,.25);
+    font-family: inherit;
   }
-  .btn-primary:hover { box-shadow: 0 6px 20px rgba(30,58,138,.5); }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(37,99,235,.35); }
   .btn-primary:active { transform: translateY(1px); }
-  .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
-
-  /* ── Mensaje de error/info ── */
-  .msg {
-    margin-top: 14px; padding: 10px 12px;
-    border-radius: 8px; font-size: .82rem;
-    display: none;
-  }
-  .msg.error {
-    background: rgba(239,68,68,.12);
-    border: 1px solid rgba(239,68,68,.4);
-    color: #fca5a5;
-  }
+  .btn-primary:disabled { opacity: .65; cursor: wait; }
+  .msg { margin-top: 14px; padding: 10px 12px; border-radius: 10px; font-size: .82rem; display: none; }
+  .msg.error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.4); color: #fca5a5; }
 
   /* ── Dashboard ── */
   .dash { display: none; }
   .dash-header {
-    background: linear-gradient(135deg, var(--primary), var(--primary-light));
-    border-radius: 16px;
-    padding: 20px;
-    margin-bottom: 18px;
-    box-shadow: 0 8px 24px rgba(30,58,138,.35);
-    position: relative;
-    overflow: hidden;
+    background: linear-gradient(135deg, rgba(30,58,138,.45), rgba(59,130,246,.14));
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 20px; padding: 22px; margin-bottom: 20px;
+    opacity: 0; transform: translateY(18px);
+    transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
   }
-  .dash-header::after {
-    content: ''; position: absolute; right: -30px; top: -30px;
-    width: 140px; height: 140px;
-    background: rgba(250,204,21,.18); border-radius: 50%;
+  .dash-header.animate { opacity: 1; transform: none; }
+  .dash-greet { font-size: .88rem; color: #93c5fd; font-weight: 500; }
+  .dash-name { font-size: 1.5rem; font-weight: 800; margin: 4px 0 10px; line-height: 1.15; }
+  .dash-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: .8rem; }
+  .dash-meta span {
+    background: rgba(255,255,255,.06); border: 1px solid var(--card-border);
+    border-radius: 99px; padding: 4px 12px; color: var(--muted);
   }
-  .dash-greet {
-    font-size: .85rem; color: rgba(255,255,255,.85);
-    position: relative; z-index: 1;
-  }
-  .dash-name {
-    font-size: 1.4rem; font-weight: 800; margin: 4px 0 8px;
-    line-height: 1.15; position: relative; z-index: 1;
-  }
-  .dash-meta {
-    display: flex; gap: 12px; flex-wrap: wrap;
-    font-size: .8rem; color: rgba(255,255,255,.85);
-    position: relative; z-index: 1;
-  }
-  .dash-meta strong { color: var(--gold); font-weight: 700; }
+  .dash-meta strong { color: var(--gold); font-weight: 600; }
 
-  /* ── Sección de simulacro ── */
-  .sim-section {
-    background: var(--card);
-    border: 1px solid var(--card-border);
-    border-radius: 14px;
-    padding: 16px 18px 18px;
-    margin-bottom: 14px;
+  /* ── Tarjeta de simulacro ── */
+  .sim-card {
+    padding: 24px 20px; margin-bottom: 20px;
+    opacity: 0; transform: translateY(24px);
+    transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
   }
-  .sim-title {
-    font-size: 1rem; font-weight: 700; margin: 0 0 2px;
-    color: var(--gold);
-  }
-  .sim-meta {
-    font-size: .76rem; color: var(--muted); margin-bottom: 14px;
-  }
+  .sim-card.animate { opacity: 1; transform: none; }
+  .sim-title { font-size: 1.1rem; font-weight: 700; margin: 0 0 3px; color: var(--gold); }
+  .sim-meta { font-size: .78rem; color: var(--muted); margin-bottom: 20px; }
 
-  /* ── Puntaje general (hero) ── */
-  .hero-score {
-    text-align: center; padding: 14px 0 10px;
-    background: linear-gradient(180deg, rgba(250,204,21,.08), transparent);
-    border-radius: 10px; margin-bottom: 14px;
+  /* ── Medidor circular ── */
+  .gauge-wrap { display: flex; justify-content: center; margin-bottom: 16px; }
+  .gauge { position: relative; width: 190px; height: 190px; }
+  .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge-bg { fill: none; stroke: rgba(255,255,255,.06); stroke-width: 8; }
+  .gauge-fill {
+    fill: none; stroke: url(#gauge-grad); stroke-width: 9; stroke-linecap: round;
+    stroke-dasharray: 251.2; stroke-dashoffset: 251.2;
+    transition: stroke-dashoffset 1.8s cubic-bezier(.16,1,.3,1);
   }
-  .hero-label { font-size: .72rem; color: var(--muted); letter-spacing: .8px;
-    text-transform: uppercase; margin-bottom: 4px; }
-  .hero-val {
-    font-size: 2.6rem; font-weight: 800; color: var(--gold);
-    line-height: 1; letter-spacing: -0.02em;
+  .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .gauge-score {
+    font-size: 2.7rem; font-weight: 800; line-height: 1; color: var(--gold);
+    display: flex; align-items: center; gap: 5px;
   }
-  .hero-pos {
-    font-size: .82rem; color: var(--muted); margin-top: 6px;
+  .gauge-score .medal { font-size: 1.7rem; }
+  .gauge-max { font-size: .72rem; color: var(--muted); font-weight: 600; letter-spacing: 1px; margin-top: 4px; }
+  .gauge-pos {
+    font-size: .76rem; color: var(--muted); margin-top: 5px; max-width: 130px;
+    opacity: 0; transform: scale(.92);
+    transition: all .45s cubic-bezier(.34,1.56,.64,1) 1.1s;
   }
+  .sim-card.animate .gauge-pos { opacity: 1; transform: none; }
 
-  /* ── Filas por asignatura ── */
+  /* ── Mensaje motivacional ── */
+  .motiv {
+    background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.18);
+    color: #a7f3d0; padding: 10px 16px; border-radius: 12px;
+    font-size: .8rem; font-weight: 500; text-align: center; line-height: 1.45;
+    margin-bottom: 20px;
+    opacity: 0; transform: scale(.95);
+    transition: all .5s cubic-bezier(.34,1.56,.64,1) 1.2s;
+  }
+  .sim-card.animate .motiv { opacity: 1; transform: none; }
+
+  /* ── Filas de asignaturas ── */
   .subject-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 0;
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 6px;
     border-bottom: 1px solid rgba(255,255,255,.04);
+    opacity: 0; transform: translateY(12px);
+    transition: opacity .5s cubic-bezier(.16,1,.3,1), transform .5s cubic-bezier(.16,1,.3,1);
   }
-  .subject-row:last-child { border-bottom: none; }
-  .subject-name {
-    flex-shrink: 0; width: 110px;
-    font-size: .85rem; font-weight: 600;
+  .subject-row.animate { opacity: 1; transform: none; }
+  .subject-row.best {
+    background: rgba(250,204,21,.06);
+    border: 1px solid rgba(250,204,21,.18);
+    border-radius: 10px;
   }
-  .subject-bar {
-    flex: 1; height: 9px;
-    background: rgba(255,255,255,.07);
-    border-radius: 5px; overflow: hidden;
-    position: relative;
+  .subject-icon { width: 26px; text-align: center; font-size: 1.15rem; line-height: 1; }
+  .subject-icon svg { vertical-align: middle; border-radius: 2px; }
+  .subject-name { width: 116px; font-size: .84rem; font-weight: 600; color: #e5e7eb; line-height: 1.25; }
+  .subject-name .best-tag { display: block; font-size: .62rem; color: var(--gold); font-weight: 600; }
+  .subject-track {
+    flex: 1; height: 9px; background: rgba(255,255,255,.05);
+    border-radius: 9px; overflow: hidden; position: relative;
   }
   .subject-fill {
-    height: 100%; border-radius: 5px;
-    transition: width .8s ease-out;
+    height: 100%; border-radius: 9px; width: 0; position: relative;
+    transition: width 1.4s cubic-bezier(.16,1,.3,1);
   }
-  .subject-val {
-    flex-shrink: 0; width: 50px; text-align: right;
-    font-weight: 700; font-size: .9rem;
+  .subject-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent);
+    animation: shine 2.6s infinite;
   }
-  .subject-cmp {
-    flex-shrink: 0; width: 56px; text-align: right;
-    font-size: .68rem; font-weight: 600;
-  }
-  .cmp-up   { color: var(--success); }
+  @keyframes shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+  .subject-val { width: 32px; text-align: right; font-weight: 700; font-size: .92rem; }
+  .subject-cmp { width: 82px; text-align: right; font-size: .68rem; font-weight: 600; }
+  .cmp-up { color: var(--success); }
   .cmp-down { color: var(--danger); }
-  .cmp-eq   { color: var(--muted); }
+  .cmp-eq { color: var(--muted); }
+  .sub-subject { padding-left: 20px; opacity: .85; }
+  .sub-subject .subject-name { font-size: .76rem; color: var(--muted); }
 
-  /* Notas adicionales (Naturales 10°) */
-  .sub-subject {
-    padding-left: 14px;
-    background: rgba(250,204,21,.04);
-    border-left: 3px solid rgba(250,204,21,.4);
-    border-radius: 0 6px 6px 0;
-    margin: 4px 0;
-  }
-  .sub-subject .subject-name { font-size: .78rem; color: var(--muted); }
-
-  /* Botón descargar PDF dentro de cada simulacro */
+  /* ── Botón de descarga ── */
   .btn-download {
-    display: inline-flex; align-items: center; gap: 6px;
-    margin-top: 14px;
-    padding: 10px 18px;
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 18px; padding: 13px 26px;
     background: linear-gradient(135deg, var(--gold), var(--gold-dark));
-    color: var(--primary-dark);
-    border: none; border-radius: 8px;
-    font-size: .85rem; font-weight: 700; cursor: pointer;
-    box-shadow: 0 3px 10px rgba(250,204,21,.3);
-    transition: transform .1s, box-shadow .15s;
+    color: #0f172a; border: none; border-radius: 12px;
+    font-size: .9rem; font-weight: 700; cursor: pointer; font-family: inherit;
+    box-shadow: 0 4px 15px rgba(250,204,21,.25);
+    transition: all .25s ease; position: relative; overflow: hidden;
   }
-  .btn-download:hover { box-shadow: 0 5px 14px rgba(250,204,21,.4); }
+  .btn-download:hover:not(.loading) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(250,204,21,.4); }
   .btn-download:active { transform: translateY(1px); }
-  .btn-download:disabled { opacity: .55; cursor: wait; }
+  .btn-download.loading { color: transparent; pointer-events: none; }
+  .btn-download.loading::after {
+    content: ''; position: absolute; width: 20px; height: 20px;
+    top: 50%; left: 50%; margin: -10px 0 0 -10px;
+    border: 3px solid rgba(15,23,42,.2); border-top-color: #0f172a;
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
 
+  /* ── Footer ── */
   .footer-bar {
-    margin-top: 20px; padding-top: 14px;
+    margin-top: 24px; padding-top: 16px;
     border-top: 1px solid var(--card-border);
-    display: flex; justify-content: space-between;
-    align-items: center; flex-wrap: wrap; gap: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 10px;
   }
   .footer-text { font-size: .72rem; color: var(--muted); }
   .btn-logout {
     background: transparent; color: var(--muted);
-    border: 1px solid var(--card-border);
-    border-radius: 8px; padding: 7px 14px;
-    font-size: .8rem; cursor: pointer;
+    border: 1px solid var(--card-border); border-radius: 8px;
+    padding: 7px 14px; font-size: .8rem; cursor: pointer; font-family: inherit;
+    transition: all .2s;
   }
-  .btn-logout:hover { color: var(--text); border-color: var(--text); }
+  .btn-logout:hover { color: var(--text); border-color: rgba(255,255,255,.3); }
 
-  /* Loader */
-  .spin {
-    display: inline-block; width: 16px; height: 16px;
-    border: 2px solid rgba(255,255,255,.3);
-    border-top-color: white;
+  /* ── Confeti ── */
+  .confetti {
+    position: fixed; width: 9px; height: 9px; top: -20px;
+    background: var(--c); border-radius: 2px; opacity: .85;
+    z-index: 50; pointer-events: none;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(108vh) rotate(720deg) translateX(90px); }
+  }
+
+  .spin-ico {
+    display: inline-block; width: 15px; height: 15px;
+    border: 2px solid rgba(255,255,255,.3); border-top-color: #fff;
     border-radius: 50%; animation: spin .8s linear infinite;
-    vertical-align: middle; margin-right: 6px;
+    vertical-align: -2px; margin-right: 6px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeInDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeInUp   { from { opacity: 0; transform: translateY(18px);  } to { opacity: 1; transform: none; } }
 
-  @media (max-width: 420px) {
-    .subject-name { width: 90px; font-size: .8rem; }
-    .subject-cmp { width: 48px; }
-    .hero-val { font-size: 2.2rem; }
-    .dash-name { font-size: 1.2rem; }
+  /* ── Accesibilidad y equipos modestos ── */
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .subject-fill::after, .confetti { animation: none !important; }
+    .brand, .login-card { animation-duration: .01s; }
+    .gauge-fill, .subject-fill, .sim-card, .dash-header, .subject-row,
+    .motiv, .gauge-pos { transition-duration: .01s !important; transition-delay: 0s !important; }
+  }
+  @media (max-width: 460px) {
+    .subject-name { width: 92px; font-size: .78rem; }
+    .subject-cmp { width: 58px; font-size: .62rem; }
+    .gauge { width: 165px; height: 165px; }
+    .gauge-score { font-size: 2.3rem; }
+    .dash-name { font-size: 1.25rem; }
+    .blob { filter: blur(80px); }
   }
 </style>
 </head>
 <body>
 
+<div class="bg-glow" aria-hidden="true">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+
+<svg style="width:0;height:0;position:absolute;" aria-hidden="true">
+  <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stop-color="#f59e0b"/>
+    <stop offset="50%" stop-color="#fbbf24"/>
+    <stop offset="100%" stop-color="#facc15"/>
+  </linearGradient>
+</svg>
+
 <div class="container">
 
-  <!-- ══ HEADER MARCA ══ -->
+  <!-- ══ MARCA ══ -->
   <div class="brand">
     <img class="brand-logo" src="/static/sipagre_logo_sm.png" alt="SIPAGRE">
     <div class="brand-title">Consulta de resultados</div>
@@ -278,34 +324,29 @@
   </div>
 
   <!-- ══ LOGIN ══ -->
-  <div class="login-card" id="login-card">
+  <div class="glass login-card" id="login-card">
     <h2>Ingresa a tu cuenta</h2>
     <p class="hint">Usuario y contraseña son tu <strong>número de documento</strong>.</p>
-
     <form id="login-form" autocomplete="off">
       <div class="input-group">
         <label for="usuario">Usuario (documento)</label>
         <input type="text" id="usuario" inputmode="numeric"
-               autocomplete="username" placeholder="Ej: 1098765432"
-               required>
+               autocomplete="username" placeholder="Ej: 1098765432" required>
       </div>
       <div class="input-group">
         <label for="password">Contraseña</label>
         <input type="password" id="password"
-               autocomplete="current-password" placeholder="Ingresa tu documento"
-               required>
+               autocomplete="current-password" placeholder="Ingresa tu documento" required>
       </div>
-      <button type="submit" class="btn-primary" id="btn-login">
-        Ingresar →
-      </button>
+      <button type="submit" class="btn-primary" id="btn-login">Ingresar →</button>
     </form>
     <div class="msg error" id="login-msg"></div>
   </div>
 
-  <!-- ══ DASHBOARD (oculto inicialmente) ══ -->
+  <!-- ══ DASHBOARD ══ -->
   <div class="dash" id="dash">
-    <div class="dash-header">
-      <div class="dash-greet">👋 Hola,</div>
+    <div class="dash-header" id="dash-header">
+      <div class="dash-greet">👋 Hola de nuevo,</div>
       <div class="dash-name" id="dash-name">—</div>
       <div class="dash-meta">
         <span>📚 Curso <strong id="dash-curso">—</strong></span>
@@ -333,7 +374,7 @@ const SUBJECT_LABELS = {
   mat:  'Matemáticas',
   lect: 'Lectura Crítica',
   soc:  'Sociales',
-  nat:  'Ciencias Naturales',
+  nat:  'C. Naturales',
   ing:  'Inglés',
   quim: 'Química',
   fis:  'Física',
@@ -347,6 +388,29 @@ const SUBJECT_COLORS = {
   quim: '#facc15',
   fis:  '#fb923c',
 };
+// Los emojis de bandera no se ven en Windows: la Union Jack va como SVG.
+const FLAG_UK_SVG = '<svg width="19" height="12" viewBox="0 0 60 30">' +
+  '<rect width="60" height="30" fill="#012169"/>' +
+  '<path d="M0,0 60,30 M60,0 0,30" stroke="#fff" stroke-width="6"/>' +
+  '<path d="M0,0 60,30 M60,0 0,30" stroke="#C8102E" stroke-width="3"/>' +
+  '<path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/>' +
+  '<path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></svg>';
+const SUBJECT_ICONS = {
+  mat: '🧮', lect: '📖', soc: '🌍', nat: '🔬',
+  ing: FLAG_UK_SVG, quim: '⚗️', fis: '⚡',
+};
+
+// Mismos rangos y textos que el PDF (coherencia total con lo que descargan)
+function medalFor(general) {
+  if (general >= 300) return { e: '🏆',
+    msg: 'Con esfuerzo, disciplina, perseverancia y constancia puedes ser potencial BECARIO' };
+  if (general >= 221) return { e: '💪',
+    msg: 'La clave del éxito es enfocarse en metas, no en obstáculos' };
+  return { e: '📈',
+    msg: 'El esfuerzo que pones hoy, será tu orgullo mañana' };
+}
+
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 document.getElementById('login-form').addEventListener('submit', async function(e) {
   e.preventDefault();
@@ -365,7 +429,7 @@ async function doLogin() {
     return;
   }
   btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> Verificando...';
+  btn.innerHTML = '<span class="spin-ico"></span> Verificando...';
   msg.style.display = 'none';
   try {
     const resp = await fetch('/resultados/login', {
@@ -400,43 +464,47 @@ function renderDashboard(data) {
 
   _studentData = data;
 
-  // Header
   const s = data.student || {};
-  document.getElementById('dash-name').textContent = s.nombre || '—';
+  document.getElementById('dash-name').textContent  = s.nombre || '—';
   document.getElementById('dash-curso').textContent = s.curso || '—';
-  document.getElementById('dash-grado').textContent = s.grado ? (s.grado+'°') : '—';
-  document.getElementById('dash-id').textContent = s.id || '—';
+  document.getElementById('dash-grado').textContent = s.grado ? (s.grado + '°') : '—';
+  document.getElementById('dash-id').textContent    = s.id || '—';
 
-  // Simulacros
   const container = document.getElementById('dash-sims');
   const results = data.results || [];
   if (!results.length) {
-    container.innerHTML = `<div class="sim-section">
+    container.innerHTML = `<div class="glass sim-card animate">
       <p style="color:var(--muted);text-align:center;">
         Aún no tienes resultados registrados.</p></div>`;
   } else {
     container.innerHTML = results.map((r, i) => renderSimSection(r, i)).join('');
   }
-
   document.getElementById('footer-info').textContent =
     `${results.length} simulacro(s) · Tus datos están protegidos.`;
+
+  startAnimations(results);
 }
 
 function renderSimSection(r, idx) {
   const p = r.puntajes || {};
   const avgC = r.avg_curso || {};
   const isG10 = String(r.grado) === '10';
+  const gen = p.gen != null ? Number(p.gen) : null;
 
-  // Posición
+  // Posición en el curso (dato real del backend)
   let posTxt = '';
   if (r.pos_curso && r.tot_curso) {
-    posTxt = `Posición ${r.pos_curso} de ${r.tot_curso} en tu curso ${r.curso}`;
+    posTxt = `Puesto <strong>${r.pos_curso}</strong> de ${r.tot_curso} en tu curso`;
   }
 
-  // Filas por asignatura
   const subjects = isG10
-    ? ['mat','lect','soc','quim','fis','ing']  // 10° → mostrar Quím/Fís en lugar de Nat
+    ? ['mat','lect','soc','quim','fis','ing']  // 10° → Quím/Fís en lugar de Nat
     : ['mat','lect','soc','nat','ing'];
+
+  // Mejor prueba (solo entre las 5 principales)
+  const mainKeys = ['mat','lect','soc','nat','ing'].filter(k => p[k] != null);
+  let bestKey = null, bestVal = -1;
+  mainKeys.forEach(k => { if (Number(p[k]) > bestVal) { bestVal = Number(p[k]); bestKey = k; } });
 
   const rows = subjects.map(k => {
     const v = p[k];
@@ -445,61 +513,159 @@ function renderSimSection(r, idx) {
     let cmpHtml = '<span class="subject-cmp cmp-eq">—</span>';
     if (cmpVal != null) {
       const diff = v - cmpVal;
-      if (diff > 0)      cmpHtml = `<span class="subject-cmp cmp-up">+${diff} vs curso</span>`;
-      else if (diff < 0) cmpHtml = `<span class="subject-cmp cmp-down">${diff} vs curso</span>`;
+      if (diff > 0)      cmpHtml = `<span class="subject-cmp cmp-up">▲ +${diff} vs curso</span>`;
+      else if (diff < 0) cmpHtml = `<span class="subject-cmp cmp-down">▼ ${diff} vs curso</span>`;
       else               cmpHtml = `<span class="subject-cmp cmp-eq">igual al curso</span>`;
     }
-    const color = SUBJECT_COLORS[k] || '#6366f1';
+    const isBest = (k === bestKey && bestVal > 0);
+    const color = isBest ? '#facc15' : (SUBJECT_COLORS[k] || '#6366f1');
     return `
-      <div class="subject-row">
-        <div class="subject-name">${SUBJECT_LABELS[k] || k}</div>
-        <div class="subject-bar">
-          <div class="subject-fill"
-               style="width:${Math.max(0, Math.min(100, v))}%;
-                      background:${color};"></div>
+      <div class="subject-row${isBest ? ' best' : ''}">
+        <span class="subject-icon">${SUBJECT_ICONS[k] || ''}</span>
+        <div class="subject-name">${SUBJECT_LABELS[k] || k}${isBest ? ' ⭐<span class="best-tag">tu mejor prueba</span>' : ''}</div>
+        <div class="subject-track">
+          <div class="subject-fill" data-w="${Math.max(0, Math.min(100, v))}"
+               style="background:${color};"></div>
         </div>
-        <div class="subject-val">${v}</div>
+        <div class="subject-val" data-target="${v}">0</div>
         ${cmpHtml}
       </div>`;
   }).join('');
 
-  // Mostrar Naturales (promedio) para 10° debajo de Quím+Fís
+  // Naturales (promedio) para 10° bajo Quím+Fís
   let natRow = '';
   if (isG10 && p.nat != null) {
     natRow = `
       <div class="subject-row sub-subject">
+        <span class="subject-icon">🔬</span>
         <div class="subject-name">Naturales (prom.)</div>
-        <div class="subject-bar">
-          <div class="subject-fill"
-               style="width:${p.nat}%;background:rgba(167,139,250,.6);"></div>
+        <div class="subject-track">
+          <div class="subject-fill" data-w="${p.nat}" style="background:rgba(167,139,250,.6);"></div>
         </div>
-        <div class="subject-val">${p.nat}</div>
+        <div class="subject-val" data-target="${p.nat}">0</div>
         <span class="subject-cmp cmp-eq">${(p.quim ?? '—')}/${(p.fis ?? '—')}</span>
       </div>`;
   }
 
+  const medal = gen != null ? medalFor(gen) : null;
+
   return `
-    <div class="sim-section">
+    <div class="glass sim-card" data-idx="${idx}">
       <div class="sim-title">${r.simulacro}</div>
       <div class="sim-meta">
         ${r.fecha ? `📅 ${r.fecha} · ` : ''}${r.tipo === 'completo' ? '2 sesiones' : 'Media jornada'}
       </div>
 
-      ${p.gen != null ? `
-      <div class="hero-score">
-        <div class="hero-label">Puntaje general</div>
-        <div class="hero-val">${p.gen}</div>
-        ${posTxt ? `<div class="hero-pos">${posTxt}</div>` : ''}
-      </div>` : ''}
+      ${gen != null ? `
+      <div class="gauge-wrap">
+        <div class="gauge">
+          <svg viewBox="0 0 100 100">
+            <circle class="gauge-bg" cx="50" cy="50" r="40"/>
+            <circle class="gauge-fill" cx="50" cy="50" r="40" data-general="${gen}"/>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-score">
+              <span class="score-num" data-target="${gen}">0</span>
+              <span class="medal" style="display:none;">${medal.e}</span>
+            </div>
+            <span class="gauge-max">/ 500 PUNTOS</span>
+            ${posTxt ? `<div class="gauge-pos">${posTxt}</div>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="motiv">${medal.msg}</div>` : ''}
 
-      <div style="margin-top:6px;">${rows}${natRow}</div>
+      <div>${rows}${natRow}</div>
 
       <div style="text-align:center;">
         <button class="btn-download" onclick="downloadStudentPdf(${idx}, this)">
-          📥 Descargar resultados en PDF
+          <span>📥 Descargar mi reporte PDF</span>
         </button>
       </div>
     </div>`;
+}
+
+// ── Animaciones (cascada + contadores + barras + confeti) ──────────────────
+function animateValue(el, end, duration) {
+  if (REDUCED_MOTION) { el.textContent = end; return; }
+  let t0 = null;
+  const step = (t) => {
+    if (!t0) t0 = t;
+    const pr = Math.min((t - t0) / duration, 1);
+    el.textContent = Math.floor((pr * (2 - pr)) * end);
+    if (pr < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function animateSimCard(card) {
+  if (card.dataset.done) return;
+  card.dataset.done = '1';
+  card.classList.add('animate');
+
+  // Medidor circular
+  const gauge = card.querySelector('.gauge-fill');
+  if (gauge) {
+    const gen = Number(gauge.dataset.general) || 0;
+    const off = 251.2 - (251.2 * Math.min(1, gen / 500));
+    requestAnimationFrame(() => { gauge.style.strokeDashoffset = off; });
+    const num = card.querySelector('.score-num');
+    if (num) animateValue(num, gen, 1700);
+    setTimeout(() => {
+      const m = card.querySelector('.medal');
+      if (m) m.style.display = 'inline';
+    }, REDUCED_MOTION ? 0 : 1200);
+  }
+
+  // Filas escalonadas
+  card.querySelectorAll('.subject-row').forEach((row, i) => {
+    const delay = REDUCED_MOTION ? 0 : 500 + i * 140;
+    setTimeout(() => {
+      row.classList.add('animate');
+      const fill = row.querySelector('.subject-fill');
+      if (fill) fill.style.width = fill.dataset.w + '%';
+      const val = row.querySelector('.subject-val');
+      if (val) animateValue(val, Number(val.dataset.target) || 0, 1100);
+    }, delay);
+  });
+}
+
+function startAnimations(results) {
+  setTimeout(() => document.getElementById('dash-header').classList.add('animate'), 80);
+
+  const cards = [...document.querySelectorAll('.sim-card[data-idx]')];
+  // La primera tarjeta anima de inmediato; las demás al entrar en pantalla
+  if (cards[0]) setTimeout(() => animateSimCard(cards[0]), 320);
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(en => { if (en.isIntersecting) { animateSimCard(en.target); io.unobserve(en.target); } });
+    }, {threshold: .25});
+    cards.slice(1).forEach(c => io.observe(c));
+  } else {
+    cards.slice(1).forEach(c => animateSimCard(c));
+  }
+
+  // Confeti: una sola vez, si el simulacro más reciente alcanza 300+
+  const first = (results || [])[0];
+  const gen = first && first.puntajes ? Number(first.puntajes.gen) : 0;
+  if (gen >= 300 && !REDUCED_MOTION) setTimeout(lanzarConfeti, 1400);
+}
+
+function lanzarConfeti() {
+  const colors = ['#facc15', '#3b82f6', '#10b981', '#ec4899', '#a78bfa'];
+  for (let i = 0; i < 70; i++) {
+    const p = document.createElement('div');
+    p.className = 'confetti';
+    p.style.setProperty('--c', colors[i % colors.length]);
+    p.style.left = Math.random() * 100 + 'vw';
+    p.style.width  = (Math.random() * 6 + 5) + 'px';
+    p.style.height = (Math.random() * 10 + 6) + 'px';
+    const delay = Math.random() * .8, dur = Math.random() * 2 + 1.8;
+    p.style.animationDelay = delay + 's';
+    p.style.animationDuration = dur + 's';
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), (delay + dur) * 1000);
+  }
 }
 
 // ══ GENERACIÓN DE PDF ═══════════════════════════════════════════════════════
@@ -515,19 +681,14 @@ async function downloadStudentPdf(simIdx, btn) {
     return;
   }
 
-  const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '⏳ Generando...';
+  const span = btn.querySelector('span');
+  btn.classList.add('loading');
 
   try {
-    // Precargar logos
     await window.JMRPdf._loadLogo();
-
     const jsPDF = window.JMRPdf.getJsPDF();
     const doc = new jsPDF({orientation: 'p', unit: 'mm', format: 'letter'});
 
-    // Adaptar los datos del portal al formato que espera renderStudentPage:
-    // necesita {name, id, curso, mat, lect, soc, nat, ing, general}.
     const student = _studentData.student || {};
     const p = sim.puntajes || {};
     const st = {
@@ -541,25 +702,24 @@ async function downloadStudentPdf(simIdx, btn) {
       ing:     p.ing || 0,
       general: p.gen || 0,
     };
-    // El backend provee percentiles ya calculados (por_grado). Si vienen
-    // los usamos; si no, calculamos {0} (no podemos sin más datos).
     const pcts = sim.percentiles || {};
     const tipoLbl = sim.tipo === 'media' ? ' (Media)' : '';
-    const label = `${sim.simulacro}${tipoLbl}`;
-
-    window.JMRPdf.renderStudentPage(doc, st, pcts, false, label);
+    window.JMRPdf.renderStudentPage(doc, st, pcts, false, `${sim.simulacro}${tipoLbl}`);
 
     const safeName = (st.name || 'estudiante')
       .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const safeSim = (sim.simulacro || 'simulacro')
       .replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     doc.save(`Resultado_${safeName}_${safeSim}.pdf`);
+
+    btn.classList.remove('loading');
+    span.textContent = '✅ ¡Descargado!';
+    setTimeout(() => { span.textContent = '📥 Descargar mi reporte PDF'; }, 2500);
   } catch(e) {
     console.error(e);
+    btn.classList.remove('loading');
+    span.textContent = '📥 Descargar mi reporte PDF';
     alert('No se pudo generar el PDF: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = originalText;
   }
 }
 
@@ -568,7 +728,6 @@ async function logout() {
   location.reload();
 }
 
-// Autofocus en usuario
 document.getElementById('usuario').focus();
 </script>
 
