@@ -195,13 +195,15 @@
     return ic === '__FLAG__' ? _flagDataUrl() : _emojiDataUrl(ic);
   }
 
-  // Medalla + mensaje motivacional según el puntaje general (escala 0-500)
+  // Medalla + mensaje motivacional según el puntaje general (escala 0-500).
+  // Rangos y textos definidos por el docente; solo 3 niveles/iconos.
   function _medalFor(general) {
-    if (general >= 400) return { e: '🏆', msg: '¡Excelente! Estás entre los mejores' };
-    if (general >= 350) return { e: '🥇', msg: '¡Muy bien! Gran desempeño' };
-    if (general >= 300) return { e: '🏅', msg: '¡Buen trabajo! Sigue así' };
-    if (general >= 250) return { e: '💪', msg: 'Vas bien, ¡puedes dar más!' };
-    return { e: '📈', msg: 'Vas mejorando, ¡no te detengas!' };
+    if (general >= 300) return { e: '🏆',
+      msg: 'Con esfuerzo, disciplina, perseverancia y constancia puedes ser potencial BECARIO' };
+    if (general >= 221) return { e: '💪',
+      msg: 'La clave del éxito es enfocarse en metas, no en obstáculos' };
+    return { e: '📈',
+      msg: 'El esfuerzo que pones hoy, será tu orgullo mañana' };
   }
 
   function drawGaugeCanvas(value, max, label, medalChar) {
