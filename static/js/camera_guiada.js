@@ -22,7 +22,11 @@ let cvLoading      = false;
 let detectionLoop  = null;
 let lastDetected   = null;
 let videoReady     = false;
-const OPENCV_URL   = 'https://docs.opencv.org/4.10.0/opencv.js';
+// OpenCV.js se sirve LOCALMENTE (static/vendor/) porque docs.opencv.org
+// eliminó las versiones antiguas (la 4.10.0 empezó a dar 404 y rompió la
+// cámara guiada). El respaldo remoto apunta a "4.x" (siempre la última).
+const OPENCV_URL          = '/static/vendor/opencv.js';
+const OPENCV_URL_FALLBACK = 'https://docs.opencv.org/4.x/opencv.js';
 
 
 
@@ -66,26 +70,33 @@ async function loadOpenCV() {
   cvLoading = true;
   return new Promise((resolve) => {
     if (window.cv && window.cv.Mat) { cvLoaded = true; cvLoading = false; resolve(true); return; }
-    const script = document.createElement('script');
-    script.src = OPENCV_URL;
-    script.async = true;
-    script.onload = () => {
-      // OpenCV.js inicializa de forma asíncrona
-      const checkReady = () => {
-        if (window.cv && window.cv.Mat) {
-          cvLoaded = true; cvLoading = false; resolve(true);
-        } else if (window.cv && typeof window.cv.onRuntimeInitialized === 'function') {
-          window.cv.onRuntimeInitialized = () => { cvLoaded = true; cvLoading = false; resolve(true); };
-        } else if (window.cv) {
-          window.cv.onRuntimeInitialized = () => { cvLoaded = true; cvLoading = false; resolve(true); };
-        } else {
-          setTimeout(checkReady, 100);
-        }
+
+    const tryLoad = (url, onFail) => {
+      const script = document.createElement('script');
+      script.src = url;
+      script.async = true;
+      script.onload = () => {
+        // OpenCV.js inicializa de forma asíncrona
+        const checkReady = () => {
+          if (window.cv && window.cv.Mat) {
+            cvLoaded = true; cvLoading = false; resolve(true);
+          } else if (window.cv) {
+            window.cv.onRuntimeInitialized = () => { cvLoaded = true; cvLoading = false; resolve(true); };
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+        checkReady();
       };
-      checkReady();
+      script.onerror = onFail;
+      document.head.appendChild(script);
     };
-    script.onerror = () => { cvLoading = false; resolve(false); };
-    document.head.appendChild(script);
+
+    // 1º el archivo local (mismo dominio, cacheable, sin filtros externos);
+    // 2º el sitio oficial como respaldo.
+    tryLoad(OPENCV_URL, () => {
+      tryLoad(OPENCV_URL_FALLBACK, () => { cvLoading = false; resolve(false); });
+    });
   });
 }
 
