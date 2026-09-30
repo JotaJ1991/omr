@@ -14,13 +14,13 @@
 <title>Calificador JMR</title>
 <style>
   :root {
-    --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #818cf8;
-    --accent: #06b6d4;
+    --primary: #3b82f6; --primary-dark: #1d4ed8; --primary-light: #60a5fa;
+    --accent: #facc15; --gold: #facc15; --gold-dark: #eab308;
     --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
-    --bg: #0f172a; --bg2: #1e293b;
-    --card: rgba(30,41,59,.7); --card-border: rgba(99,102,241,.15);
+    --bg: #0b0f19; --bg2: #111827;
+    --card: rgba(17,24,39,.55); --card-border: rgba(255,255,255,.08);
     --text: #f1f5f9; --muted: #94a3b8; --border: rgba(255,255,255,.08);
-    --radius: 14px;
+    --radius: 18px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -52,10 +52,10 @@
     padding: 0;
   }
   .sidebar .nav-item:hover {
-    background: rgba(99,102,241,.1); color: var(--primary-light);
+    background: rgba(59,130,246,.1); color: var(--primary-light);
   }
   .sidebar .nav-item.active {
-    background: rgba(99,102,241,.15); color: var(--primary-light);
+    background: rgba(59,130,246,.15); color: var(--primary-light);
   }
   .sidebar .nav-item.active::before {
     content: ''; position: absolute; left: -8px;
@@ -96,8 +96,8 @@
   .topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .profile-badge {
     display: flex; align-items: center; gap: 8px;
-    background: rgba(99,102,241,.1);
-    border: 1px solid rgba(99,102,241,.2);
+    background: rgba(59,130,246,.1);
+    border: 1px solid rgba(59,130,246,.2);
     border-radius: 99px; padding: 6px 14px;
     font-size: .78rem; font-weight: 600;
     color: var(--primary-light);
@@ -108,8 +108,8 @@
   }
   .sheet-pill {
     display: flex; align-items: center; gap: 6px;
-    background: rgba(6,182,212,.1);
-    border: 1px solid rgba(6,182,212,.2);
+    background: rgba(250,204,21,.1);
+    border: 1px solid rgba(250,204,21,.2);
     border-radius: 99px; padding: 6px 14px;
     font-size: .78rem; font-weight: 500; color: var(--accent);
   }
@@ -127,7 +127,7 @@
           border: 1px solid var(--card-border);
           border-radius: var(--radius); padding: 20px;
           margin-bottom: 16px; transition: border-color .2s; }
-  .card:hover { border-color: rgba(99,102,241,.25); }
+  .card:hover { border-color: rgba(59,130,246,.25); }
   .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px;
              display: flex; align-items: center; gap: 8px; }
 
@@ -141,7 +141,7 @@
     appearance: none; -webkit-appearance: none; transition: border-color .2s;
   }
   input[type="text"]:focus, select:focus { outline: none; border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+    box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
   input[type="text"]::placeholder { color: var(--muted); }
   input.required-empty { border-color: var(--danger) !important; }
   option { background: var(--bg2); color: var(--text); }
@@ -154,11 +154,11 @@
               border-radius: 8px; background: rgba(255,255,255,.04); cursor: pointer;
               font-size: 1.1rem; display: flex; align-items: center;
               transition: all .2s; color: var(--text); }
-  .btn-icon:hover { border-color: var(--primary); background: rgba(99,102,241,.1); }
+  .btn-icon:hover { border-color: var(--primary); background: rgba(59,130,246,.1); }
 
   .sheet-badge { display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(99,102,241,.1); color: var(--primary-light);
-    border: 1px solid rgba(99,102,241,.2);
+    background: rgba(59,130,246,.1); color: var(--primary-light);
+    border: 1px solid rgba(59,130,246,.2);
     border-radius: 99px; padding: 4px 12px; font-size: .78rem;
     font-weight: 600; margin-bottom: 14px; }
   .sheet-badge .dot { width: 6px; height: 6px; border-radius: 50%;
@@ -175,13 +175,13 @@
   .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
   .modal-btns { display: flex; gap: 10px; margin-top: 16px; }
 
-  .capture-zone { border: 2px dashed rgba(99,102,241,.3); border-radius: var(--radius);
+  .capture-zone { border: 2px dashed rgba(59,130,246,.3); border-radius: var(--radius);
     min-height: 200px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
-    cursor: pointer; background: rgba(99,102,241,.04);
+    cursor: pointer; background: rgba(59,130,246,.04);
     transition: all .3s; position: relative; overflow: hidden; }
-  .capture-zone:hover { border-color: var(--primary); background: rgba(99,102,241,.08);
-    box-shadow: 0 0 30px rgba(99,102,241,.1); }
+  .capture-zone:hover { border-color: var(--primary); background: rgba(59,130,246,.08);
+    box-shadow: 0 0 30px rgba(59,130,246,.1); }
   .capture-zone.active { border-color: var(--primary); border-style: solid; }
   .capture-zone img { width: 100%; height: 100%; object-fit: contain;
                       border-radius: calc(var(--radius) - 2px); }
@@ -201,10 +201,10 @@
     background: rgba(255,255,255,.04); color: var(--text);
   }
   .q-selector input[type="number"]:focus { border-color: var(--primary); outline:none;
-    box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+    box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
   .q-badge {
-    background: rgba(99,102,241,.1); color: var(--primary-light);
-    border: 1px solid rgba(99,102,241,.2); border-radius: 99px;
+    background: rgba(59,130,246,.1); color: var(--primary-light);
+    border: 1px solid rgba(59,130,246,.2); border-radius: 99px;
     padding: 3px 10px; font-size: .78rem; font-weight: 600;
   }
 
@@ -216,8 +216,8 @@
   button:active { transform: scale(.97); }
   button:disabled { opacity: .4; cursor: not-allowed; }
   .btn-primary { background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-    color: white; box-shadow: 0 4px 12px rgba(99,102,241,.3); }
-  .btn-primary:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(99,102,241,.4); }
+    color: white; box-shadow: 0 4px 12px rgba(59,130,246,.3); }
+  .btn-primary:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(59,130,246,.4); }
   .btn-secondary { background: rgba(255,255,255,.06); border: 1px solid var(--card-border);
     color: var(--muted); }
   .btn-secondary:hover:not(:disabled) { background: rgba(255,255,255,.1); }
@@ -234,7 +234,7 @@
     font-size: .85rem; font-weight: 500; margin-top: 12px;
     align-items: flex-start; gap: 10px; }
   .status.show    { display: flex; }
-  .status.loading { background: rgba(99,102,241,.08); border: 1px solid rgba(99,102,241,.15);
+  .status.loading { background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.15);
     color: var(--primary-light); }
   .status.success { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.15);
     color: var(--success); }
@@ -354,14 +354,14 @@
     padding: 16px; cursor: pointer; transition: all .2s;
     text-align: center; background: rgba(255,255,255,.02);
   }
-  .profile-card:hover { border-color: var(--primary); background: rgba(99,102,241,.06); }
+  .profile-card:hover { border-color: var(--primary); background: rgba(59,130,246,.06); }
   .profile-card.active {
-    border-color: var(--primary); background: rgba(99,102,241,.1);
-    box-shadow: 0 0 20px rgba(99,102,241,.15);
+    border-color: var(--primary); background: rgba(59,130,246,.1);
+    box-shadow: 0 0 20px rgba(59,130,246,.15);
   }
   .profile-card .profile-icon {
     width: 48px; height: 48px; margin: 0 auto 10px;
-    background: rgba(99,102,241,.1); border-radius: 12px;
+    background: rgba(59,130,246,.1); border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 1.4rem;
   }
@@ -388,7 +388,7 @@
   .results-table tbody td {
     padding: 12px; border-bottom: 1px solid rgba(255,255,255,.03);
   }
-  .results-table tbody tr:hover { background: rgba(99,102,241,.04); }
+  .results-table tbody tr:hover { background: rgba(59,130,246,.04); }
   .results-table .score { font-weight: 700; color: var(--primary-light); }
   .results-table .general-score {
     font-weight: 800; font-size: 1rem;
@@ -396,7 +396,7 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
   .results-table .avg-row {
-    background: rgba(99,102,241,.06); font-weight: 700;
+    background: rgba(59,130,246,.06); font-weight: 700;
   }
   .results-table .pdf-btn {
     padding: 4px 10px; border: 1px solid var(--card-border);
@@ -405,7 +405,7 @@
     cursor: pointer; transition: all .15s;
   }
   .results-table .pdf-btn:hover {
-    background: rgba(99,102,241,.1); border-color: var(--primary);
+    background: rgba(59,130,246,.1); border-color: var(--primary);
   }
   .results-table-wrap { overflow-x: auto; }
 
@@ -417,11 +417,11 @@
     color: var(--muted); font-size: .82rem; font-weight: 600;
     cursor: pointer; transition: all .15s;
   }
-  .r-view-pill:hover { background: rgba(99,102,241,.08); color: var(--text); }
+  .r-view-pill:hover { background: rgba(59,130,246,.08); color: var(--text); }
   .r-view-pill.active {
     background: linear-gradient(135deg, var(--primary), var(--primary-dark));
     color: white; border-color: var(--primary);
-    box-shadow: 0 2px 8px rgba(99,102,241,.3);
+    box-shadow: 0 2px 8px rgba(59,130,246,.3);
   }
 
   /* ── CAMERA MODAL (cámara guiada) ── */
@@ -508,10 +508,10 @@
     padding: 12px 14px; cursor: pointer;
     transition: all .2s;
   }
-  .profile-option:hover { border-color: var(--primary); background: rgba(99,102,241,.06); }
+  .profile-option:hover { border-color: var(--primary); background: rgba(59,130,246,.06); }
   .profile-option.active-profile {
-    border-color: var(--primary); background: rgba(99,102,241,.1);
-    box-shadow: 0 0 15px rgba(99,102,241,.1);
+    border-color: var(--primary); background: rgba(59,130,246,.1);
+    box-shadow: 0 0 15px rgba(59,130,246,.1);
   }
 
   .key-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
@@ -526,11 +526,11 @@
     -webkit-appearance: none; text-align: center;
   }
   .key-chip select option { background: var(--bg2); color: var(--text); }
-  .key-chip.filled { border-color: rgba(99,102,241,.3); background: rgba(99,102,241,.08); }
+  .key-chip.filled { border-color: rgba(59,130,246,.3); background: rgba(59,130,246,.08); }
   .key-status { font-size: .82rem; color: var(--muted); margin-bottom: 8px; }
   .key-status strong { color: var(--primary-light); }
   .btn-key-save { background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-    color: white; box-shadow: 0 4px 12px rgba(99,102,241,.3); }
+    color: white; box-shadow: 0 4px 12px rgba(59,130,246,.3); }
   .btn-key-save:hover { opacity: .9; }
   .btn-key-clear { background: rgba(255,255,255,.06); color: var(--muted);
     border: 1px solid var(--card-border); }
@@ -538,6 +538,92 @@
     border-radius: 8px; padding: 10px 14px; margin-top: 10px;
     font-size: .88rem; color: #34d399; display: none; }
   .score-note.show { display: block; }
+
+  /* ══ ESTILO UNIFICADO (mismo lenguaje del portal y del Modo Escaneo) ══ */
+  body {
+    background:
+      radial-gradient(ellipse 900px 520px at 15% -10%, rgba(30,58,138,.40), transparent 60%),
+      radial-gradient(ellipse 700px 520px at 105% 105%, rgba(79,70,229,.14), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  .sidebar, .tabs { background: rgba(11,15,25,.92); backdrop-filter: blur(14px);
+                    -webkit-backdrop-filter: blur(14px); }
+  .topbar { background: rgba(11,15,25,.78); border-bottom-color: rgba(255,255,255,.06); }
+  .card {
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    box-shadow: 0 14px 34px rgba(0,0,0,.28);
+  }
+  .card:hover { border-color: rgba(96,165,250,.22); }
+  .card h2 { font-weight: 700; letter-spacing: -.01em; }
+
+  /* Los botones de ícono no deben estirarse (la regla global button{flex:1}
+     les daba el mismo ancho que el selector y lo cortaba en celular). */
+  .btn-icon { flex: 0 0 auto; padding: 9px 11px; font-size: 1rem; border-radius: 10px; }
+
+  /* Todos los campos con el mismo estilo oscuro (number/tel/password salían
+     blancos, p.ej. "Preguntas" en la pestaña Clave). */
+  input[type="number"], input[type="tel"], input[type="password"],
+  input[type="date"], input[type="email"], textarea {
+    background: rgba(0,0,0,.28) !important; color: var(--text) !important;
+    border: 1px solid var(--card-border) !important; border-radius: 10px;
+  }
+  input[type="text"], select { background-color: rgba(0,0,0,.28); }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+  }
+
+  /* Botones: primario azul del portal; deshabilitados sobrios (no lavados) */
+  .btn-primary { background: linear-gradient(135deg, var(--primary-dark), #2563eb);
+                 box-shadow: 0 8px 20px rgba(37,99,235,.25); }
+  .btn-success { background: linear-gradient(135deg, #10b981, #059669); }
+  button:disabled, .btn-primary:disabled, .btn-success:disabled {
+    opacity: 1; background: rgba(255,255,255,.05) !important;
+    color: #64748b !important; box-shadow: none !important;
+    border: 1px solid var(--card-border) !important;
+  }
+  button:not(:disabled):hover { filter: brightness(1.07); }
+
+  /* Barra inferior móvil: pestaña activa más clara */
+  .tab.active { color: var(--gold); border-top-color: var(--gold); }
+  .tab { border-top-width: 3px; }
+
+  /* Encabezado: brillo mientras carga en vez de "Cargando…" plano */
+  .is-loading { position: relative; overflow: hidden; color: transparent !important; }
+  .is-loading::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent);
+    animation: skel 1.2s infinite;
+  }
+  @keyframes skel { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+  /* Estado vacío guiado (Resultados sin simulacro) */
+  .empty-state {
+    text-align: center; padding: 34px 18px; color: var(--muted);
+    border: 1px dashed rgba(255,255,255,.12); border-radius: 16px; margin-top: 6px;
+  }
+  .empty-state .es-ico { font-size: 2.2rem; margin-bottom: 8px; }
+  .empty-state b { color: var(--text); }
+
+  /* Avisos (reemplazan a las ventanas alert que bloqueaban la pantalla) */
+  #toast-stack {
+    position: fixed; right: 16px; bottom: 16px; z-index: 400;
+    display: flex; flex-direction: column; gap: 10px; max-width: min(420px, calc(100vw - 32px));
+  }
+  .toast {
+    background: rgba(17,24,39,.96); color: var(--text);
+    border: 1px solid rgba(255,255,255,.1); border-left: 4px solid var(--primary);
+    border-radius: 12px; padding: 12px 14px; font-size: .88rem; line-height: 1.45;
+    box-shadow: 0 14px 34px rgba(0,0,0,.4); white-space: pre-line; cursor: pointer;
+    animation: toastIn .35s cubic-bezier(.16,1,.3,1);
+  }
+  .toast.error   { border-left-color: var(--danger); }
+  .toast.success { border-left-color: var(--success); }
+  .toast.warn    { border-left-color: var(--warning); }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 768px) { #toast-stack { bottom: 84px; left: 16px; right: 16px; max-width: none; } }
 </style>
 </head>
 <body>
@@ -566,10 +652,10 @@
       <div class="topbar-right">
         <div class="profile-badge">
           <span class="dot"></span>
-          <span id="active-profile-topbar">Cargando…</span>
+          <span id="active-profile-topbar" class="is-loading">Cargando…</span>
         </div>
         <div class="sheet-pill">
-          📄 <span id="active-sheet-topbar">—</span>
+          📄 <span id="active-sheet-topbar" class="is-loading">—</span>
         </div>
       </div>
     </div>
@@ -592,7 +678,7 @@
       <h2>🎯 Simulacro</h2>
       <div class="sheet-badge">
         <span class="dot"></span>
-        <span id="active-badge-text">Cargando…</span>
+        <span id="active-badge-text" class="is-loading">Cargando…</span>
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
@@ -988,7 +1074,7 @@
       </div>
 
       <!-- Info simulacro -->
-      <div id="r-sim-info" style="display:none;background:rgba(99,102,241,.06);
+      <div id="r-sim-info" style="display:none;background:rgba(59,130,246,.06);
            border:1px solid var(--card-border);border-radius:10px;
            padding:10px 14px;margin-bottom:12px;font-size:.82rem;"></div>
 
@@ -1057,25 +1143,12 @@
       </div>
 
       <div id="r-status" style="margin-top:6px;"></div>
-      <div id="r-output" style="margin-top:12px;"></div>
+      <div id="r-output" style="margin-top:12px;"><div class="empty-state"><div class="es-ico">📊</div><b>Elige un simulacro</b><br>para ver sus resultados, informes y estadísticas.</div></div>
     </div>
   </div>
 
   <!-- ══ TAB AYUDA ══════════════════════════════════════════════════════════ -->
   <div id="tab-config" class="tab-content">
-
-    <!-- ── Tipo de evaluación ── -->
-    <div class="card">
-      <h2>📋 Tipo de evaluación</h2>
-      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
-        Selecciona el formato de hoja de respuestas que vas a escanear.
-        El cambio aplica al próximo escaneo.
-      </p>
-      <div id="profile-list" class="profile-grid"></div>
-      <div class="score-note" id="profile-saved-note" style="margin-top:10px;">
-        ✅ Tipo de evaluación actualizado.
-      </div>
-    </div>
 
     <!-- ── Simulacros ── -->
     <div class="card">
@@ -1139,7 +1212,7 @@
 
       <!-- Preview (oculto hasta subir) -->
       <div id="personalize-preview" style="display:none;
-           background:rgba(99,102,241,.06);border:1px solid var(--card-border);
+           background:rgba(59,130,246,.06);border:1px solid var(--card-border);
            border-radius:10px;padding:14px;margin-bottom:12px;"></div>
 
       <!-- Paso 2: seleccionar simulacro y generar -->
@@ -1186,7 +1259,7 @@
                   border-radius:10px;padding:14px;margin-bottom:10px;">
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;
                     margin-bottom:10px;">
-          <div style="background:rgba(99,102,241,.12);border-radius:8px;
+          <div style="background:rgba(59,130,246,.12);border-radius:8px;
                       padding:8px 14px;text-align:center;min-width:120px;">
             <div style="font-size:1.4rem;font-weight:800;color:var(--primary-light);"
                  id="est-count">—</div>
@@ -1225,8 +1298,21 @@
       <summary style="cursor:pointer;font-size:.88rem;font-weight:600;color:var(--muted);
                        padding:10px 14px;background:rgba(255,255,255,.04);
                        border:1px solid var(--card-border);border-radius:10px;">
-        🔧 Herramientas avanzadas — vincular IDs y diagnóstico OMR
+        🔧 Herramientas avanzadas — formato de hoja, vincular IDs y diagnóstico OMR
       </summary>
+    <!-- ── Tipo de evaluación ── -->
+    <div class="card" style="margin-top:10px;">
+      <h2>📋 Tipo de evaluación</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px;">
+        Normalmente NO hace falta: el formato se elige solo según el simulacro y el curso. Úsalo solo para forzar un formato distinto.
+        El cambio aplica al próximo escaneo.
+      </p>
+      <div id="profile-list" class="profile-grid"></div>
+      <div class="score-note" id="profile-saved-note" style="margin-top:10px;">
+        ✅ Tipo de evaluación actualizado.
+      </div>
+    </div>
+
 
     <!-- ── Vincular IDs a estudiantes existentes ── -->
     <div class="card" style="margin-top:10px;">
@@ -1442,6 +1528,38 @@
 </div>
 
 <script>
+// ══ AVISOS NO BLOQUEANTES ═══════════════════════════════════════════════════
+// Reemplazan a window.alert: la pantalla sigue usable y el aviso se cierra
+// solo (o con un toque). confirm() se mantiene para decisiones.
+function showToast(msg, type) {
+  let stack = document.getElementById('toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'toast-stack';
+    document.body.appendChild(stack);
+  }
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' ' + type : '');
+  t.textContent = String(msg == null ? '' : msg);
+  t.onclick = () => t.remove();
+  stack.appendChild(t);
+  setTimeout(() => t.remove(), type === 'error' ? 9000 : 6000);
+}
+window.alert = function (m) {
+  const txt = String(m == null ? '' : m);
+  const type = /❌|error|no se pudo|falló|incorrect/i.test(txt) ? 'error'
+             : /⚠️|primero|selecciona|indica|define|no existe/i.test(txt) ? 'warn'
+             : /✅|guardad|listo|actualizad/i.test(txt) ? 'success' : '';
+  showToast(txt, type);
+};
+
+const _EMPTY_RESULTS_NO_SIM =
+  '<div class="empty-state"><div class="es-ico">📊</div>' +
+  '<b>Elige un simulacro</b><br>para ver sus resultados, informes y estadísticas.</div>';
+const _EMPTY_RESULTS_NO_GEN =
+  '<div class="empty-state"><div class="es-ico">⚡</div>' +
+  '<b>Toca "Generar Resultados"</b><br>para calcular los puntajes de este simulacro.</div>';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1995,7 +2113,7 @@ function _renderMidPreview(data) {
   const hasId     = data.already_has_id || [];
 
   let html = `
-    <div style="background:rgba(99,102,241,.06);border:1px solid var(--card-border);
+    <div style="background:rgba(59,130,246,.06);border:1px solid var(--card-border);
                 border-radius:10px;padding:14px;margin-top:10px;">
       <div style="font-size:.82rem;font-weight:600;color:var(--primary-light);
                   margin-bottom:10px;">
@@ -2247,7 +2365,7 @@ async function onPersonalizeFileChange(input) {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
         ${cursosArr.map(([c, n]) =>
-          `<span style="padding:3px 10px;background:rgba(99,102,241,.15);
+          `<span style="padding:3px 10px;background:rgba(59,130,246,.15);
                   border-radius:12px;font-size:.78rem;font-weight:600;
                   color:var(--primary-light);">${c}: ${n}</span>`
         ).join('')}
@@ -2846,6 +2964,10 @@ async function _refreshAnuList() {
 
 // Llena el selector de simulacro de la pestaña Escanear
 function _refreshSimulacroSelect() {
+  // Con el catálogo ya cargado se puede saber si la hoja activa es "suelta"
+  if (typeof state !== 'undefined' && state.activeSheet !== undefined) {
+    try { updateActiveBadge(state.activeSheet); } catch (e) {}
+  }
   const sel = document.getElementById('simulacro-select');
   if (sel) {
     const prev = sel.value;
@@ -2908,6 +3030,7 @@ function onResultsSimChange() {
   document.getElementById('r-view-bar').style.display = 'none';
 
   if (!unifiedSimulacro) {
+    document.getElementById('r-output').innerHTML = _EMPTY_RESULTS_NO_SIM;
     info.style.display = 'none';
     btnGen.disabled = true;
     btnAll.disabled = true;
@@ -2955,6 +3078,7 @@ function onResultsSimChange() {
     btnGen.textContent = 'Generar Resultados';
     btnGen.disabled = false;
     btnAll.disabled = true;
+    document.getElementById('r-output').innerHTML = _EMPTY_RESULTS_NO_GEN;
   }
 }
 
@@ -3060,7 +3184,7 @@ function generateIntegralReport() {
   html += `</div>`;
 
   // Resumen del contenido del PDF
-  html += `<div style="background:rgba(99,102,241,.06);border:1px solid var(--card-border);
+  html += `<div style="background:rgba(59,130,246,.06);border:1px solid var(--card-border);
                 border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:.85rem;">
     <strong>El PDF incluirá:</strong>
     <ul style="margin:6px 0 0 18px;line-height:1.7;">
@@ -3079,7 +3203,7 @@ function generateIntegralReport() {
     style="padding:12px 20px;font-size:.92rem;
            background:linear-gradient(135deg,var(--primary),var(--primary-dark));
            color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;
-           box-shadow:0 4px 12px rgba(99,102,241,.3);">
+           box-shadow:0 4px 12px rgba(59,130,246,.3);">
     📥 Descargar análisis integral en PDF
   </button>`;
   out.innerHTML = html;
@@ -3480,7 +3604,7 @@ function renderQuestionAnalysis(data) {
     if (!arr.length) return;
     const subjLabel = labels[subj] || subj;
     html += `<details open style="margin-bottom:14px;">
-      <summary style="cursor:pointer;padding:10px 12px;background:rgba(99,102,241,.08);
+      <summary style="cursor:pointer;padding:10px 12px;background:rgba(59,130,246,.08);
                        border-radius:8px;font-weight:700;font-size:.9rem;
                        color:var(--primary-light);">
         📚 ${subjLabel} (${arr.length} preguntas)
@@ -4955,8 +5079,8 @@ function drawBarBoxComboCanvas(groups, opts) {
 
     // 1) BARRA del promedio (con gradiente, opacidad media)
     const grad = ctx.createLinearGradient(0, yAvg, 0, yBase);
-    grad.addColorStop(0, g.barColor || 'rgba(99,102,241,0.55)');
-    grad.addColorStop(1, g.barColorEnd || 'rgba(6,182,212,0.30)');
+    grad.addColorStop(0, g.barColor || 'rgba(59,130,246,0.55)');
+    grad.addColorStop(1, g.barColorEnd || 'rgba(250,204,21,0.30)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.roundRect(barX, yAvg, barW, yBase - yAvg, 4);
@@ -5030,7 +5154,7 @@ function drawBarBoxComboCanvas(groups, opts) {
   ctx.textBaseline = 'middle';
   let lx = padL;
   // barra promedio
-  ctx.fillStyle = 'rgba(99,102,241,0.55)';
+  ctx.fillStyle = 'rgba(59,130,246,0.55)';
   ctx.fillRect(lx, legY - 5, 14, 10);
   ctx.fillStyle = '#475569';
   ctx.fillText('Barra = Promedio', lx + 18, legY);
@@ -5817,22 +5941,22 @@ function renderSimulacrosList() {
         </div>
         <button onclick="confirmDeleteSimulacro('${safeNombre}')"
                 title="Eliminar del catálogo (no borra hojas)"
-                style="border:1px solid rgba(239,68,68,.3);background:transparent;
+                style="flex:0 0 auto;border:1px solid rgba(239,68,68,.3);background:transparent;
                        color:var(--danger);padding:6px 10px;border-radius:8px;
                        cursor:pointer;font-size:.78rem;">🗑️</button>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button onclick="jumpToScan('${safeNombre}')"
                 style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
-                       background:rgba(99,102,241,.08);color:var(--primary-light);
+                       background:rgba(59,130,246,.08);color:var(--primary-light);
                        border-radius:6px;cursor:pointer;">📷 Escanear</button>
         <button onclick="jumpToKey('${safeNombre}')"
                 style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
-                       background:rgba(99,102,241,.08);color:var(--primary-light);
+                       background:rgba(59,130,246,.08);color:var(--primary-light);
                        border-radius:6px;cursor:pointer;">🔑 Clave</button>
         <button onclick="jumpToResults('${safeNombre}')"
                 style="font-size:.75rem;padding:5px 10px;border:1px solid var(--card-border);
-                       background:rgba(6,182,212,.1);color:var(--accent);
+                       background:rgba(250,204,21,.1);color:var(--accent);
                        border-radius:6px;cursor:pointer;">📊 Resultados</button>
         <button onclick="copyEscanerLink('${safeNombre}', this)"
                 title="Copia el enlace del Modo Escaneo para compartir a los ayudantes"
@@ -6195,7 +6319,7 @@ function applyProfile(data) {
 
   // Badge de perfil en topbar
   const topBadge = document.getElementById('active-profile-topbar');
-  if (topBadge) topBadge.textContent = data.active_name;
+  if (topBadge) { topBadge.textContent = data.active_name; topBadge.classList.remove('is-loading'); }
 }
 
 function renderProfileList(data) {
@@ -6270,10 +6394,21 @@ async function loadSheets() {
 }
 
 function updateActiveBadge(name) {
-  document.getElementById('active-badge-text').textContent =
-    name ? `Guardando en: ${name}` : 'Sin hoja seleccionada';
+  // Una hoja que no pertenece a ningún simulacro (p.ej. "Respuestas", la
+  // hoja por defecto) se marca como suelta para no confundir.
+  const sims = (typeof _simulacrosCache !== 'undefined' && _simulacrosCache) || [];
+  const suelta = !!name && sims.length > 0 &&
+                 !sims.some(sm => (sm.sheets || []).includes(name));
+  const badge = document.getElementById('active-badge-text');
+  badge.textContent = !name ? 'Sin hoja seleccionada'
+    : suelta ? 'Elige un simulacro para escanear'
+    : `Guardando en: ${name}`;
+  badge.classList.remove('is-loading');
   const pill = document.getElementById('active-sheet-topbar');
-  if (pill) pill.textContent = name || '—';
+  if (pill) {
+    pill.textContent = !name ? '—' : (suelta ? 'Sin simulacro' : name);
+    pill.classList.remove('is-loading');
+  }
 }
 
 async function selectSheet(name) {
