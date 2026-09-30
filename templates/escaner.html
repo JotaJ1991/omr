@@ -188,6 +188,10 @@
     {% endif %}
   </div>
 
+  <!-- Hojas guardadas en el teléfono que aún no llegan al servidor -->
+  <div class="card" id="queue-bar" style="display:none;border-color:rgba(251,191,36,.45);
+       background:rgba(251,191,36,.08);color:#fcd34d;font-size:.9rem;"></div>
+
   {% if not sim %}
   <div class="card" style="border-color: rgba(239,68,68,.4);">
     <h2>⚠️ Enlace incompleto</h2>
@@ -614,42 +618,205 @@ function updateSaveBtn() {
     !(state.answers.length && (name || sid) && _targetSheet());
 }
 
-async function saveResult() {
-  const btn = document.getElementById('btn-save');
-  btn.disabled = true;
-  setSt('save-status', 'load', '<span class="spinner"></span>Guardando…');
+const _esc = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// POST /save con límite de tiempo: en wifi escolar inestable un fetch puede
+// quedarse colgado; a los 25 s se da por perdido y la hoja va a la cola.
+async function _postSave(payload) {
+  const ctrl = ('AbortController' in window) ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 25000) : null;
   try {
     const r = await fetch('/save', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        student_name: document.getElementById('student-name').value.trim(),
-        exam_id:      document.getElementById('student-id').value.trim(),
-        curso:        state.curso,
-        answers:      state.answers,
-        sheet_name:   _targetSheet(),
-      })
+      body: JSON.stringify(payload), signal: ctrl ? ctrl.signal : undefined,
     });
-    const d = await r.json();
-    if (d.success) {
-      setSt('save-status', 'ok', '✅ ' + (d.message || 'Guardado.') +
-            '<br>📸 Abriendo la cámara para el siguiente estudiante…');
-      document.getElementById('btn-next').style.display = 'block';
-      // Continuar con el próximo escaneo automáticamente (cámara guiada)
-      window._nextTimer = setTimeout(() => {
-        nextStudent();
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          openCameraModal();
-        }
-      }, 1600);
-    } else {
-      setSt('save-status', 'error', '❌ ' + (d.error || 'No se pudo guardar.'));
-      btn.disabled = false;
-    }
+    let d = {};
+    try { d = await r.json(); } catch (e) {}
+    return {status: r.status, data: d, network: false};
   } catch (e) {
-    setSt('save-status', 'error', 'Error de conexión. La hoja NO se guardó — intenta de nuevo.');
-    btn.disabled = false;
+    return {status: 0, data: {}, network: true};
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
+// Fallas que vale la pena reintentar (sin red, servidor dormido/saturado,
+// cuota de Google); un 400 de validación no se arregla reintentando.
+const _retryable = res => res.network || res.status === 0 ||
+                          res.status === 429 || res.status >= 500;
+
+function _currentPayload(force) {
+  return {
+    student_name: document.getElementById('student-name').value.trim(),
+    exam_id:      document.getElementById('student-id').value.trim(),
+    curso:        state.curso,
+    answers:      state.answers.slice(),
+    sheet_name:   _targetSheet(),
+    check_duplicate: !force,
+  };
+}
+
+function _afterSaved(msgHtml, type) {
+  setSt('save-status', type || 'ok', msgHtml +
+        '<br>📸 Abriendo la cámara para el siguiente estudiante…');
+  document.getElementById('btn-next').style.display = 'block';
+  // Continuar con el próximo escaneo automáticamente (cámara guiada)
+  window._nextTimer = setTimeout(() => {
+    nextStudent();
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      openCameraModal();
+    }
+  }, 1600);
+}
+
+async function saveResult(force) {
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  setSt('save-status', 'load', '<span class="spinner"></span>Guardando…');
+  const payload = _currentPayload(!!force);
+  const res = await _postSave(payload);
+
+  if (res.data.success) {
+    _afterSaved('✅ ' + _esc(res.data.message || 'Guardado.'));
+    flushQueue();                      // hay conexión: enviar lo pendiente
+    return;
+  }
+  if (res.status === 409 && res.data.exists) {
+    showOverwritePrompt(res.data.existing || {});
+    btn.disabled = false;
+    return;
+  }
+  if (_retryable(res)) {
+    enqueue(payload);
+    _afterSaved('📦 Sin conexión con el servidor: la hoja quedó guardada en ' +
+                'este teléfono y se enviará sola cuando vuelva la señal.', 'warn');
+    return;
+  }
+  setSt('save-status', 'error', '❌ ' + _esc(res.data.error || 'No se pudo guardar.'));
+  btn.disabled = false;
+}
+
+// ── Aviso antes de sobrescribir un resultado ya guardado ────────────────────
+function showOverwritePrompt(ex) {
+  const cuando = [ex.fecha, ex.hora].filter(Boolean).join(' ');
+  setSt('save-status', 'warn',
+    `⚠️ <b>${_esc(ex.nombre || 'Este estudiante')}</b> ya tiene un resultado ` +
+    `guardado${cuando ? ` (${_esc(cuando)})` : ''}` +
+    `${ex.detectadas ? ` con ${_esc(ex.detectadas)} respuestas` : ''}.` +
+    `<br>¿Reemplazarlo con este escaneo?` +
+    `<div style="display:flex;gap:8px;margin-top:10px;">` +
+    `<button class="btn btn-save" style="margin:0;" onclick="saveResult(true)">Sí, reemplazar</button>` +
+    `<button class="btn btn-guide" style="margin:0;" onclick="cancelOverwrite()">No, conservar el anterior</button>` +
+    `</div>`);
+}
+
+function cancelOverwrite() {
+  setSt('save-status', 'ok', 'Se conservó el resultado anterior. Nada se modificó.');
+  document.getElementById('btn-next').style.display = 'block';
+}
+
+// ── Cola sin conexión (localStorage) ────────────────────────────────────────
+// Cada hoja que no se pudo enviar queda en el teléfono y se reintenta sola:
+// al cargar, al volver la señal, cada 20 s y tras cada guardado exitoso.
+const QUEUE_KEY = 'esc:queue';
+function _qLoad() {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); }
+  catch (e) { return []; }
+}
+function _qSave(q) {
+  try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch (e) {}
+  renderQueueBar();
+}
+function enqueue(payload) {
+  const q = _qLoad();
+  q.push({id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+          payload, ts: Date.now()});
+  _qSave(q);
+}
+
+let _flushing = false;
+async function flushQueue() {
+  if (_flushing) return;
+  _flushing = true;
+  try {
+    for (const item of _qLoad()) {
+      if (item.conflict || item.error) continue;   // esperan decisión humana
+      const res = await _postSave(item.payload);
+      const q = _qLoad();
+      const idx = q.findIndex(x => x.id === item.id);
+      if (idx < 0) continue;
+      if (res.data.success) {
+        q.splice(idx, 1);
+      } else if (res.status === 409 && res.data.exists) {
+        q[idx].conflict = res.data.existing || {};
+      } else if (_retryable(res)) {
+        break;                                     // sigue sin conexión
+      } else {
+        q[idx].error = res.data.error || ('Error ' + res.status);
+      }
+      _qSave(q);
+    }
+  } finally {
+    _flushing = false;
+    renderQueueBar();
+  }
+}
+
+function qResolve(id, action) {
+  const q = _qLoad();
+  const idx = q.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  if (action === 'discard') {
+    if (!confirm('¿Descartar esta hoja pendiente? Se perderán sus respuestas ' +
+                 'y habrá que volver a escanearla.')) return;
+    q.splice(idx, 1);
+  } else if (action === 'replace') {
+    q[idx].payload.check_duplicate = false;
+    delete q[idx].conflict;
+  } else if (action === 'retry') {
+    delete q[idx].error;
+  }
+  _qSave(q);
+  flushQueue();
+}
+
+function renderQueueBar() {
+  const bar = document.getElementById('queue-bar');
+  if (!bar) return;
+  const q = _qLoad();
+  if (!q.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const pend = q.filter(x => !x.conflict && !x.error);
+  const who = x => _esc((x.payload.student_name || x.payload.exam_id || 'Sin nombre')) +
+                   (x.payload.exam_id ? ` <span style="opacity:.7;">(${_esc(x.payload.exam_id)})</span>` : '');
+  let html = '';
+  if (pend.length) {
+    html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="flex:1;min-width:180px;">📦 <b>${pend.length}</b> hoja${pend.length > 1 ? 's' : ''}
+      pendiente${pend.length > 1 ? 's' : ''} por enviar. Se enviarán solas al volver la señal.</span>
+      <button class="btn btn-guide" style="margin:0;width:auto;padding:8px 14px;font-size:.85rem;"
+              onclick="flushQueue()">↻ Reintentar ahora</button></div>`;
+  }
+  q.filter(x => x.conflict || x.error).forEach(x => {
+    const txt = x.conflict
+      ? `⚠️ ${who(x)} ya tenía resultado guardado.`
+      : `❌ ${who(x)}: ${_esc(x.error)}`;
+    const main = x.conflict
+      ? `<button class="btn btn-save" style="margin:0;width:auto;padding:7px 12px;font-size:.8rem;" onclick="qResolve('${x.id}','replace')">Reemplazar</button>`
+      : `<button class="btn btn-guide" style="margin:0;width:auto;padding:7px 12px;font-size:.8rem;" onclick="qResolve('${x.id}','retry')">Reintentar</button>`;
+    html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;
+                  padding-top:10px;border-top:1px solid rgba(255,255,255,.08);">
+      <span style="flex:1;min-width:170px;font-size:.85rem;">${txt}</span>${main}
+      <button class="btn" style="margin:0;width:auto;padding:7px 12px;font-size:.8rem;
+              background:rgba(239,68,68,.12);border:1.5px solid rgba(239,68,68,.45);color:#fca5a5;"
+              onclick="qResolve('${x.id}','discard')">Descartar</button></div>`;
+  });
+  bar.innerHTML = html;
+  bar.style.display = 'block';
+}
+
+window.addEventListener('online', () => flushQueue());
+setInterval(() => { if (_qLoad().some(x => !x.conflict && !x.error)) flushQueue(); }, 20000);
+setTimeout(() => { renderQueueBar(); flushQueue(); }, 1200);
 
 // ── Siguiente estudiante ────────────────────────────────────────────────────
 function resetScanState() {

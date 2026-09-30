@@ -6711,7 +6711,7 @@ function takeAnotherPhoto() {
 }
 
 // ══ GUARDAR EN SHEETS ══════════════════════════════════════════════════════
-async function confirmSave() {
+async function confirmSave(force) {
   let   name = document.getElementById('student-name').value.trim();
   const id   = document.getElementById('student-id').value.trim();
 
@@ -6770,10 +6770,25 @@ async function confirmSave() {
         exam_id:      idFinal,
         curso:        curso,
         answers:      state.answers.slice(0, state.numQuestions),
-        sheet_name:   targetSheet
+        sheet_name:   targetSheet,
+        check_duplicate: !force,
       })
     });
     const data = await resp.json();
+
+    if (resp.status === 409 && data.exists) {
+      const ex = data.existing || {};
+      const cuando = [ex.fecha, ex.hora].filter(Boolean).join(' ');
+      document.querySelectorAll('#action-btns button').forEach(b => b.disabled=false);
+      if (confirm(`⚠️ ${ex.nombre || 'Este estudiante'} ya tiene un resultado guardado` +
+                  `${cuando ? ' (' + cuando + ')' : ''}` +
+                  `${ex.detectadas ? ' con ' + ex.detectadas + ' respuestas' : ''}` +
+                  ` en "${data.sheet_name || targetSheet}".\n\n¿Reemplazarlo con este escaneo?`)) {
+        return confirmSave(true);
+      }
+      setStatus('success', 'Se conservó el resultado anterior. Nada se modificó.');
+      return;
+    }
 
     if (!data.success) {
       setStatus('error', '❌ ' + data.error);

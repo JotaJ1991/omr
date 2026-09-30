@@ -382,14 +382,25 @@ def save():
         return jsonify({'success': False,
                         'error': 'Número de respuestas inválido.'}), 400
 
+    # check_duplicate=True: no sobrescribir en silencio; si el ID ya tiene
+    # resultado en esa hoja, responder 409 para que la interfaz confirme.
+    check_dup = bool(data.get('check_duplicate'))
+
     try:
         sheets_result = save_to_sheets(
             student_name=student_name,
             exam_id=exam_id,
             answers=answers,
             sheet_name=sheet_name,
-            curso=curso
+            curso=curso,
+            if_exists='fail' if check_dup else 'update',
         )
+        if sheets_result.get('exists'):
+            return jsonify({'success': False, 'exists': True,
+                            'existing': sheets_result.get('existing', {}),
+                            'sheet_name': sheet_name,
+                            'error': 'Este estudiante ya tiene un resultado '
+                                     'guardado en esta hoja.'}), 409
         detected = len([a for a in answers if a not in ('?', '')])
         correct  = sheets_result.get('correct')
         pct      = sheets_result.get('pct', '')

@@ -1499,11 +1499,15 @@ def _compute_totals_row(student_rows: list, key: list, n_questions: int) -> list
 
 def save_to_sheets(student_name: str, exam_id: str,
                    answers: list, sheet_name: str,
-                   curso: str = '') -> dict:
+                   curso: str = '', if_exists: str = 'update') -> dict:
     """
     Guarda una fila de respuestas, calcula correctas vs clave,
     y mantiene UNA SOLA fila de totales al final.
     El nombre del estudiante se almacena siempre en MAYÚSCULAS.
+
+    if_exists: 'update' (default) reemplaza la fila si el ID ya existe;
+               'fail' NO escribe nada y devuelve {'exists': True,
+               'existing': {...}} para que la interfaz pida confirmación.
 
     Optimizado para cuota de la Sheets API: UNA lectura (snapshot de la
     hoja) y 1-2 escrituras por guardado. La clave, la columna Curso, el
@@ -1588,6 +1592,21 @@ def save_to_sheets(student_name: str, exam_id: str,
             elif (exam_id and existing_row is None and len(row) > 3
                   and (row[3] or '').strip() == str(exam_id).strip()):
                 existing_row = i + 1
+
+        if existing_row and if_exists == 'fail':
+            prev = all_rows[existing_row - 1]
+            n_ans = len(prev) - COL_OFFSET
+            return {
+                'exists': True,
+                'existing': {
+                    'nombre':   prev[2] if len(prev) > 2 else '',
+                    'fecha':    prev[0] if len(prev) > 0 else '',
+                    'hora':     prev[1] if len(prev) > 1 else '',
+                    'curso':    (prev[curso_col] if 0 <= curso_col < len(prev) else ''),
+                    'detectadas': sum(1 for a in prev[COL_OFFSET:COL_OFFSET + n_questions]
+                                      if a not in ('', '—', '?')) if n_ans > 0 else 0,
+                },
+            }
 
         # ── Modelo local de filas de estudiantes DESPUÉS de este guardado ──
         student_rows = [r for i, r in enumerate(all_rows)
