@@ -182,7 +182,7 @@
   <div class="brand">
     <div style="font-size:2rem;">📷</div>
     <div class="brand-title">Modo Escaneo</div>
-    <div class="brand-sub">Calificador JMR — solo escaneo y guardado</div>
+    <div class="brand-sub">Calificador JMR</div>
     {% if sim %}
       <div class="sim-pill">🎯 {{ sim.nombre }}</div>
     {% endif %}
@@ -230,8 +230,8 @@
     <h2>2️⃣ Escanear la hoja</h2>
     <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none;">
     <!-- La cámara guiada es la opción principal; la foto nativa queda de respaldo -->
-    <button class="btn btn-cam"   id="btn-guide" onclick="openCameraModal()" disabled>🎯 Escanear con cámara guiada</button>
-    <button class="btn btn-guide" id="btn-cam"   onclick="document.getElementById('file-input').click()" disabled>📷 Usar cámara del teléfono</button>
+    <button class="btn btn-cam"   id="btn-guide" onclick="openCameraModal()" disabled>🎯 Cámara guiada</button>
+    <button class="btn btn-guide" id="btn-cam"   onclick="document.getElementById('file-input').click()" disabled>📷 Cámara del teléfono</button>
     <div class="status" id="scan-status"></div>
     <img id="debug-img" alt="">
     <div class="counter" id="counter" style="display:none;">
@@ -239,16 +239,16 @@
       <div><div class="num" id="c-mis" style="color:var(--warning);">0</div><div class="lbl">Faltantes</div></div>
     </div>
     <button class="btn btn-guide" id="btn-more" style="display:none;" onclick="document.getElementById('file-input').click()">
-      ➕ Otra foto para completar faltantes</button>
+      ➕ Otra foto</button>
     <button class="btn" id="btn-discard" style="display:none;background:rgba(239,68,68,.12);
             border:1.5px solid rgba(239,68,68,.45);color:#fca5a5;"
-            onclick="discardScan()">🗑️ Descartar foto y volver a escanear</button>
+            onclick="discardScan()">🗑️ Descartar</button>
     <!-- Cajón plegable: las respuestas leídas quedan ocultas por defecto -->
     <details id="answers-box" style="display:none; margin-top:10px;">
       <summary style="cursor:pointer; padding:10px 14px; background:rgba(255,255,255,.05);
                border:1.5px solid var(--card-border); border-radius:10px;
                font-size:.9rem; color:var(--muted); list-style:none;">
-        🔎 Ver / corregir respuestas leídas <span id="answers-count" style="color:var(--gold);"></span>
+        🔎 Respuestas <span id="answers-count" style="color:var(--gold);"></span>
       </summary>
       <div class="grid" id="answers-grid"></div>
     </details>
@@ -258,11 +258,11 @@
   <div class="card">
     <h2>3️⃣ Datos del estudiante</h2>
     <div class="status warn" id="qr-banner"></div>
-    <label>Número de identificación</label>
+    <label>🪪 Documento</label>
     <input type="tel" inputmode="numeric" id="student-id" placeholder="Documento de identidad"
            oninput="onIdInput()">
     <div style="height:10px;"></div>
-    <label>Nombre completo</label>
+    <label>👤 Nombre</label>
     <input type="text" id="student-name" placeholder="Apellidos y nombres">
     <div class="status" id="lookup-status"></div>
   </div>
@@ -274,7 +274,7 @@
     <div class="status" id="save-status"></div>
     <button class="btn btn-next" id="btn-next" style="display:none;"
             onclick="nextStudent(); openCameraModal();">
-      ✅ Siguiente estudiante (abre cámara)</button>
+      ➡️ Siguiente estudiante</button>
   </div>
 
   {% endif %}
@@ -420,7 +420,7 @@ async function onCursoChange() {
     resetScanState();
   }
   setSt('setup-status', 'ok',
-        `Listo: curso <b>${state.curso}</b> (grado ${state.grado}°) · formato <b>${pid.replace('SIPAGRE', ' SIPAGRE')}</b>. Ya puedes escanear.`);
+        `✅ <b>${state.curso}</b> · ${state.grado}° · ${pid.replace('SIPAGRE', ' SIPAGRE')}`);
 }
 
 // ── Procesamiento ───────────────────────────────────────────────────────────
@@ -471,8 +471,8 @@ async function processPhoto() {
     document.getElementById('btn-discard').style.display = 'block';
     setSt('scan-status', d.missing > 0 ? 'warn' : 'ok',
           d.missing > 0
-            ? `⚠️ Faltan ${d.missing} respuestas por detectar. Puedes tomar otra foto o corregirlas tocando cada pregunta.`
-            : '✅ Todas las respuestas detectadas. Verifica los datos y guarda.');
+            ? `⚠️ Faltan ${d.missing}: toma otra foto o corrígelas en 🔎 Respuestas.`
+            : '✅ Todas detectadas. Verifica y guarda.');
     renderGrid();
     handleQr(d.qr);
     updateSaveBtn();
@@ -527,7 +527,7 @@ async function handleQr(qr) {
   setSt('qr-banner', 'ok',
         `📇 QR detectado: <b>${qr.nombre || qr.student_id}</b> · Curso <b>${qr.curso || '—'}</b>` +
         (qr.roster_matched === false
-          ? ' <br>⚠️ No está en el roster — escribe el nombre manualmente.' : ''));
+          ? ' <br>⚠️ No está en el roster: escribe el nombre.' : ''));
   updateSaveBtn();
 }
 
@@ -658,7 +658,7 @@ function _currentPayload(force) {
 
 function _afterSaved(msgHtml, type) {
   setSt('save-status', type || 'ok', msgHtml +
-        '<br>📸 Abriendo la cámara para el siguiente estudiante…');
+        '<br>📸 Siguiente…');
   document.getElementById('btn-next').style.display = 'block';
   // Continuar con el próximo escaneo automáticamente (cámara guiada)
   window._nextTimer = setTimeout(() => {
@@ -688,8 +688,7 @@ async function saveResult(force) {
   }
   if (_retryable(res)) {
     enqueue(payload);
-    _afterSaved('📦 Sin conexión con el servidor: la hoja quedó guardada en ' +
-                'este teléfono y se enviará sola cuando vuelva la señal.', 'warn');
+    _afterSaved('📦 Sin señal: quedó en el teléfono y se enviará sola.', 'warn');
     return;
   }
   setSt('save-status', 'error', '❌ ' + _esc(res.data.error || 'No se pudo guardar.'));
@@ -703,15 +702,15 @@ function showOverwritePrompt(ex) {
     `⚠️ <b>${_esc(ex.nombre || 'Este estudiante')}</b> ya tiene un resultado ` +
     `guardado${cuando ? ` (${_esc(cuando)})` : ''}` +
     `${ex.detectadas ? ` con ${_esc(ex.detectadas)} respuestas` : ''}.` +
-    `<br>¿Reemplazarlo con este escaneo?` +
+    `<br>¿Reemplazar?` +
     `<div style="display:flex;gap:8px;margin-top:10px;">` +
-    `<button class="btn btn-save" style="margin:0;" onclick="saveResult(true)">Sí, reemplazar</button>` +
-    `<button class="btn btn-guide" style="margin:0;" onclick="cancelOverwrite()">No, conservar el anterior</button>` +
+    `<button class="btn btn-save" style="margin:0;" onclick="saveResult(true)">Reemplazar</button>` +
+    `<button class="btn btn-guide" style="margin:0;" onclick="cancelOverwrite()">Conservar</button>` +
     `</div>`);
 }
 
 function cancelOverwrite() {
-  setSt('save-status', 'ok', 'Se conservó el resultado anterior. Nada se modificó.');
+  setSt('save-status', 'ok', '👍 Se conservó el anterior.');
   document.getElementById('btn-next').style.display = 'block';
 }
 
@@ -791,14 +790,13 @@ function renderQueueBar() {
   let html = '';
   if (pend.length) {
     html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span style="flex:1;min-width:180px;">📦 <b>${pend.length}</b> hoja${pend.length > 1 ? 's' : ''}
-      pendiente${pend.length > 1 ? 's' : ''} por enviar. Se enviarán solas al volver la señal.</span>
+      <span style="flex:1;min-width:140px;" title="Se envían solas al volver la señal">📦 <b>${pend.length}</b> por enviar</span>
       <button class="btn btn-guide" style="margin:0;width:auto;padding:8px 14px;font-size:.85rem;"
-              onclick="flushQueue()">↻ Reintentar ahora</button></div>`;
+              onclick="flushQueue()">↻ Reintentar</button></div>`;
   }
   q.filter(x => x.conflict || x.error).forEach(x => {
     const txt = x.conflict
-      ? `⚠️ ${who(x)} ya tenía resultado guardado.`
+      ? `⚠️ ${who(x)} ya tenía resultado.`
       : `❌ ${who(x)}: ${_esc(x.error)}`;
     const main = x.conflict
       ? `<button class="btn btn-save" style="margin:0;width:auto;padding:7px 12px;font-size:.8rem;" onclick="qResolve('${x.id}','replace')">Reemplazar</button>`

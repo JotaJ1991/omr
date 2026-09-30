@@ -624,6 +624,19 @@
   .toast.warn    { border-left-color: var(--warning); }
   @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
   @media (max-width: 768px) { #toast-stack { bottom: 84px; left: 16px; right: 16px; max-width: none; } }
+
+  /* ── Ayuda plegable: la explicación de cada tarjeta se ve con el botón ⓘ ── */
+  .card-help { display: none; }
+  .card-help.show { display: block; animation: toastIn .25s ease; }
+  .help-btn {
+    flex: 0 0 auto !important; margin-left: auto; width: 24px; height: 24px;
+    padding: 0 !important; border-radius: 50% !important;
+    background: rgba(255,255,255,.06) !important; border: 1px solid var(--card-border) !important;
+    color: var(--muted) !important; font: italic 700 .8rem Georgia, serif !important;
+    box-shadow: none !important;
+  }
+  .help-btn.on { background: rgba(59,130,246,.2) !important; color: var(--primary-light) !important;
+                 border-color: rgba(96,165,250,.45) !important; }
 </style>
 </head>
 <body>
@@ -683,7 +696,7 @@
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
         <div style="flex:1;min-width:160px;">
-          <label>Simulacro activo</label>
+          <label>🎯 Simulacro</label>
           <div class="sheet-selector">
             <select id="simulacro-select" onchange="selectSimulacroSession()">
               <option value="">— sin simulacro —</option>
@@ -758,7 +771,7 @@
       <!-- Modo manual: hoja existente (avanzado, opcional) -->
       <details style="margin-top:14px;">
         <summary style="cursor:pointer;font-size:.78rem;color:var(--muted);">
-          ⚙️ Modo avanzado: seleccionar hoja existente
+          ⚙️ Hoja existente (avanzado)
         </summary>
         <div class="sheet-selector" style="margin-top:8px;">
           <select id="sheet-select" onchange="selectSheet(this.value)">
@@ -785,7 +798,7 @@
              oninput="this.classList.remove('required-empty')">
       <p id="student-roster-hint"
          style="font-size:.78rem;color:var(--muted);margin-top:-6px;margin-bottom:8px;">
-        💡 Si subiste el roster en Configuración, el nombre se autocompleta al teclear el documento.
+        💡 El nombre se completa solo con el documento.
       </p>
     </div>
 
@@ -1034,7 +1047,7 @@
 
       <details style="margin-top:10px;">
         <summary style="cursor:pointer;font-size:.78rem;color:var(--muted);">
-          ⚙️ Modo avanzado — entrar por posición de hoja (CSV)
+          ⚙️ Por posición (CSV)
         </summary>
         <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="text" id="anu-csv-adv" placeholder="Ej: 47, 92"
@@ -1080,9 +1093,9 @@
 
       <!-- Selector de logo del colegio para los reportes -->
       <div style="margin-bottom:10px;">
-        <label style="font-size:.78rem;color:var(--muted);">Logo del colegio (reportes y PDF)</label>
+        <label style="font-size:.78rem;color:var(--muted);" title="Logo que aparece en los reportes y PDF">🏫 Logo</label>
         <select id="r-logo-select" onchange="onResultsLogoChange()">
-          <option value="auto">Automático (según el simulacro)</option>
+          <option value="auto">Automático</option>
           <option value="sipagre">IETECI / SIPAGRE</option>
           <option value="ietagro">IETAGRO Puerto Giraldo</option>
         </select>
@@ -1093,11 +1106,11 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
         <button class="btn-success" onclick="generateUnifiedResults()" id="btn-r-gen"
                 style="flex:1;min-width:160px;padding:12px;font-size:.9rem;" disabled>
-          Generar Resultados
+          ⚡ Generar
         </button>
         <button class="btn-primary" onclick="downloadUnifiedAll()" id="btn-r-all"
                 style="flex:1;min-width:160px;padding:12px;font-size:.9rem;" disabled>
-          📥 Descargar Todos PDF
+          📥 Todos (PDF)
         </button>
       </div>
 
@@ -1128,22 +1141,22 @@
         <button class="r-view-pill active" data-view="integral" onclick="setResultsView('integral')">
           📚 Integral
         </button>
-        <button class="r-view-pill"        data-view="tabla"    onclick="setResultsView('tabla')">
-          📋 Cursos o estudiantes
+        <button class="r-view-pill"        data-view="tabla"    onclick="setResultsView('tabla')" title="Tabla por cursos o estudiantes">
+          📋 Cursos
         </button>
-        <button class="r-view-pill"        data-view="asign"    onclick="setResultsView('asign')">
-          📊 Por asignatura
+        <button class="r-view-pill"        data-view="asign"    onclick="setResultsView('asign')" title="Resultados por asignatura">
+          📊 Materias
         </button>
-        <button class="r-view-pill"        data-view="becarios" onclick="setResultsView('becarios')">
-          🏆 Becarios (≥300)
+        <button class="r-view-pill"        data-view="becarios" onclick="setResultsView('becarios')" title="Estudiantes con 300 o más">
+          🏆 Becarios
         </button>
-        <button class="r-view-pill"        data-view="pregunta" onclick="setResultsView('pregunta')">
-          ❓ Por pregunta
+        <button class="r-view-pill"        data-view="pregunta" onclick="setResultsView('pregunta')" title="Análisis por pregunta">
+          ❓ Preguntas
         </button>
       </div>
 
       <div id="r-status" style="margin-top:6px;"></div>
-      <div id="r-output" style="margin-top:12px;"><div class="empty-state"><div class="es-ico">📊</div><b>Elige un simulacro</b><br>para ver sus resultados, informes y estadísticas.</div></div>
+      <div id="r-output" style="margin-top:12px;"><div class="empty-state"><div class="es-ico">📊</div><b>Elige un simulacro</b><br>para ver sus resultados.</div></div>
     </div>
   </div>
 
@@ -1298,7 +1311,7 @@
       <summary style="cursor:pointer;font-size:.88rem;font-weight:600;color:var(--muted);
                        padding:10px 14px;background:rgba(255,255,255,.04);
                        border:1px solid var(--card-border);border-radius:10px;">
-        🔧 Herramientas avanzadas — formato de hoja, vincular IDs y diagnóstico OMR
+        🔧 Herramientas avanzadas
       </summary>
     <!-- ── Tipo de evaluación ── -->
     <div class="card" style="margin-top:10px;">
@@ -1448,7 +1461,7 @@
       </div>
     </div>
     <p style="font-size:.78rem;color:var(--muted);margin-bottom:6px;">
-      Define las filas: una por cada bloque de preguntas de una materia.
+      Una fila por bloque de preguntas.
     </p>
     <div id="distrib-rows" style="display:flex;flex-direction:column;gap:6px;
                                     max-height:280px;overflow:auto;
@@ -1492,7 +1505,7 @@
       <button class="btn-success"   onclick="createNewSimulacro()">✅ Crear</button>
     </div>
     <p style="font-size:.75rem;color:var(--muted);margin-top:10px;">
-      Se crearán automáticamente las hojas en tu Google Sheets.
+      Las hojas se crean solas en Google Sheets.
     </p>
     <div id="simulacro-modal-error"
          style="color:var(--danger);font-size:.85rem;margin-top:10px;display:none;"></div>
@@ -1555,10 +1568,10 @@ window.alert = function (m) {
 
 const _EMPTY_RESULTS_NO_SIM =
   '<div class="empty-state"><div class="es-ico">📊</div>' +
-  '<b>Elige un simulacro</b><br>para ver sus resultados, informes y estadísticas.</div>';
+  '<b>Elige un simulacro</b><br>para ver sus resultados.</div>';
 const _EMPTY_RESULTS_NO_GEN =
   '<div class="empty-state"><div class="es-ico">⚡</div>' +
-  '<b>Toca "Generar Resultados"</b><br>para calcular los puntajes de este simulacro.</div>';
+  '<b>Toca ⚡ Generar</b><br>para calcular los puntajes.</div>';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ESTADO GLOBAL
@@ -2047,8 +2060,7 @@ function _resetRosterHint() {
   const hint = document.getElementById('student-roster-hint');
   if (idInput) idInput.style.borderColor = '';
   if (hint) {
-    hint.innerHTML = `💡 Si subiste el roster en Configuración, el nombre se
-      autocompleta al teclear el documento.`;
+    hint.innerHTML = `💡 El nombre se completa solo con el documento.`;
   }
   if (nameInput && nameInput.dataset.rosterFilled === '1') {
     nameInput.value = '';
@@ -3071,11 +3083,11 @@ function onResultsSimChange() {
     _populateUnifiedCourseFilter();
     _ensureDefaultGradeFilter();
     setResultsView('integral');   // siempre arrancar en integral
-    btnGen.textContent = '🔄 Actualizar resultados';
+    btnGen.textContent = '🔄 Actualizar';
     btnGen.disabled = false;
     btnAll.disabled = false;
   } else {
-    btnGen.textContent = 'Generar Resultados';
+    btnGen.textContent = '⚡ Generar';
     btnGen.disabled = false;
     btnAll.disabled = true;
     document.getElementById('r-output').innerHTML = _EMPTY_RESULTS_NO_GEN;
@@ -3963,14 +3975,14 @@ async function generateUnifiedResults() {
       _ensureDefaultGradeFilter();  // sin esto la vista integral queda "vacía"
       setResultsView('integral');   // arrancar siempre en integral
       document.getElementById('btn-r-all').disabled = false;
-      btn.textContent = '🔄 Actualizar resultados';
+      btn.textContent = '🔄 Actualizar';
     } else {
       status.innerHTML = `<p style="color:var(--danger);">${data.error || 'Error'}</p>`;
-      btn.textContent = isUpdate ? '🔄 Actualizar resultados' : 'Generar Resultados';
+      btn.textContent = isUpdate ? '🔄 Actualizar' : '⚡ Generar';
     }
   } catch(e) {
     status.innerHTML = '<p style="color:var(--danger);">Error de conexión.</p>';
-    btn.textContent = isUpdate ? '🔄 Actualizar resultados' : 'Generar Resultados';
+    btn.textContent = isUpdate ? '🔄 Actualizar' : '⚡ Generar';
   }
   btn.disabled = false;
 }
@@ -4388,7 +4400,7 @@ async function downloadUnifiedAll() {
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
-  btn.disabled = false; btn.textContent = 'Descargar Todos PDF';
+  btn.disabled = false; btn.textContent = '📥 Todos (PDF)';
 }
 
 async function downloadUnifiedFiltered() {
@@ -4415,7 +4427,7 @@ async function downloadUnifiedFiltered() {
   } catch(e) {
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
-  btn.disabled = false; btn.textContent = '📥 Descargar filtrado';
+  btn.disabled = false; btn.textContent = '📥 Filtrado';
 }
 
 async function downloadUnifiedStudent(idx) {
@@ -5962,7 +5974,7 @@ function renderSimulacrosList() {
                 title="Copia el enlace del Modo Escaneo para compartir a los ayudantes"
                 style="font-size:.75rem;padding:5px 10px;border:1px solid rgba(250,204,21,.35);
                        background:rgba(250,204,21,.08);color:var(--gold, #facc15);
-                       border-radius:6px;cursor:pointer;">📋 Enlace escaneo</button>
+                       border-radius:6px;cursor:pointer;">🔗 Enlace</button>
       </div>
     </div>`;
   }).join('');
@@ -7082,6 +7094,29 @@ async function debugImage(input) {
   } catch(e) {
     result.innerHTML='<p style="color:var(--danger)">Error de conexión</p>';
   }
+}
+
+// ══ AYUDA PLEGABLE ═══════════════════════════════════════════════════════════
+// El párrafo explicativo bajo el título de cada tarjeta queda oculto y se
+// muestra con el botón ⓘ del título (la información sigue disponible).
+function _compactCardHelp(root) {
+  (root || document).querySelectorAll('.card > h2').forEach(h2 => {
+    const p = h2.nextElementSibling;
+    if (!p || p.tagName !== 'P' || p.dataset.help) return;
+    if ((p.textContent || '').trim().length < 40) return;
+    p.dataset.help = '1';
+    p.classList.add('card-help');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'help-btn'; b.textContent = 'i';
+    b.title = 'Ver ayuda'; b.setAttribute('aria-label', 'Ver ayuda');
+    b.onclick = (e) => { e.stopPropagation(); p.classList.toggle('show'); b.classList.toggle('on'); };
+    h2.appendChild(b);
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => _compactCardHelp());
+} else {
+  _compactCardHelp();
 }
 </script>
 </body>
