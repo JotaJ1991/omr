@@ -530,8 +530,17 @@ function renderDashboard(data) {
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio',
                'Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 function simLabel(r) {
+  // 1º el mes y el año escritos en el NOMBRE ("Mayo 2026 IETECI Tarde",
+  // "IETECI OCTUBRE 2026"): la fecha registrada puede ser la de creación.
+  const name = String(r.simulacro || '');
+  const plain = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const mi = MESES.findIndex(m => new RegExp('\\b' + m.toLowerCase() + '\\b').test(plain));
+  const yr = (name.match(/\b(20\d{2})\b/) || [])[1];
+  if (mi >= 0 && yr) return `${MESES[mi]} ${yr}`;
+  // 2º la fecha registrada
   const m = /^(\d{4})-(\d{2})/.exec(r.fecha || '');
-  return m ? `${MESES[+m[2] - 1]} ${m[1]}` : (r.simulacro || 'Simulacro');
+  if (m) return `${MESES[+m[2] - 1]} ${m[1]}`;
+  return name || 'Simulacro';
 }
 const _escH = t => String(t == null ? '' : t)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -543,7 +552,7 @@ function renderSimPicker(results) {
               onclick="selectSim(${i})">
         <span class="sp-month">${_escH(simLabel(r))}</span>
         ${gen !== '' ? `<span class="sp-score">⭐ ${gen} <small>/ 500</small></span>` : ''}
-        <span class="sp-sub">${_escH(r.simulacro || '')}</span>
+        <span class="sp-sub">${r.tipo === 'completo' ? '2 sesiones' : 'Media jornada'}</span>
       </button>`;
   }).join('');
   return `<div class="glass sim-picker" id="sim-picker">
@@ -630,9 +639,9 @@ function renderSimSection(r, idx) {
 
   return `
     <div class="glass sim-card" data-idx="${idx}">
-      <div class="sim-title">${r.simulacro}</div>
+      <div class="sim-title">📅 ${_escH(simLabel(r))}</div>
       <div class="sim-meta">
-        ${r.fecha ? `📅 ${r.fecha} · ` : ''}${r.tipo === 'completo' ? '2 sesiones' : 'Media jornada'}
+        ${_escH(r.simulacro || '')} · ${r.tipo === 'completo' ? '2 sesiones' : 'Media jornada'}
       </div>
 
       ${gen != null ? `
