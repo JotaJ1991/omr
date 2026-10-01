@@ -23,6 +23,19 @@ import json
 import threading
 from datetime import datetime
 
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def _rh(x) -> int:
+    """Redondeo escolar: ,5 hacia arriba (62,5 -> 63; 67,5 -> 68).
+    round() de Python redondea al par (62,5 -> 62), lo que hacía que medio
+    punto a veces subiera y a veces bajara."""
+    try:
+        return int(Decimal(repr(round(float(x), 9)))
+                   .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    except Exception:
+        return 0
+
 # ── Locks de concurrencia (gunicorn corre 4 threads en 1 worker) ───────────
 # _CACHE_LOCK protege los caches globales de lectura.
 # _WRITE_LOCK serializa las operaciones leer-luego-escribir (upserts por ID)
@@ -706,11 +719,11 @@ def analyze_simulacro_questions(simulacro_nombre: str) -> dict:
                     'key':      correct_ans,
                     'total':    total,
                     'correct':  correct,
-                    'pct':      round(correct / total * 100),
+                    'pct':      _rh(correct / total * 100),
                     'anulada':  False,
                     'by_grade': {grado: {'n': total, 'c': correct,
-                                          'pct': round(correct/total*100)}},
-                    'by_curso': {cc: {'n': t, 'c': c, 'pct': round(c/t*100)}
+                                          'pct': _rh(correct/total*100)}},
+                    'by_curso': {cc: {'n': t, 'c': c, 'pct': _rh(c/t*100)}
                                   for cc, (t,c) in by_curso.items() if t},
                 })
         if questions:
@@ -1409,7 +1422,7 @@ def _update_totals_row(worksheet, n_questions):
 
             if key and q < len(key) and key[q] not in ('', '?'):
                 correct = sum(1 for a in answers_for_q if a == key[q])
-                pct     = round(correct / total_students * 100) if total_students else 0
+                pct     = _rh(correct / total_students * 100) if total_students else 0
                 col_totals.append(f'{correct}/{total_students} ({pct}%)')
             elif q < key_n:
                 # Dentro del rango de la clave pero sin respuesta definida
@@ -1488,7 +1501,7 @@ def _compute_totals_row(student_rows: list, key: list, n_questions: int) -> list
         total_students = len(answers_for_q)
         if key and q < len(key) and key[q] not in ('', '?'):
             correct = sum(1 for a in answers_for_q if a == key[q])
-            pct     = round(correct / total_students * 100) if total_students else 0
+            pct     = _rh(correct / total_students * 100) if total_students else 0
             totals.append(f'{correct}/{total_students} ({pct}%)')
         else:
             detected = sum(1 for a in answers_for_q if a not in ('', '?', '—'))
@@ -1566,7 +1579,7 @@ def save_to_sheets(student_name: str, exam_id: str,
         correct  = _count_correct(answers, key)
         detected = len([a for a in answers if a not in ('?', '')])
         key_n    = _key_total(key)
-        pct_str  = f'{round(correct / key_n * 100)}%' if key_n > 0 else ''
+        pct_str  = f'{_rh(correct / key_n * 100)}%' if key_n > 0 else ''
 
         # ── Fila del estudiante ──
         now      = datetime.now()
@@ -2088,15 +2101,15 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
         scores = _score_student_with_distribution(
             answers_by_ses, kfor, dist, anuladas_by_session=anu_for)
 
-        mat  = int(round(scores['Matematica']))
-        lect = int(round(scores['Lectura Critica']))
-        soc  = int(round(scores['Sociales']))
-        nat  = int(round(scores['Naturales']))
-        ing  = int(round(scores['Ingles']))
+        mat  = _rh(scores['Matematica'])
+        lect = _rh(scores['Lectura Critica'])
+        soc  = _rh(scores['Sociales'])
+        nat  = _rh(scores['Naturales'])
+        ing  = _rh(scores['Ingles'])
         # Sistema ICFES Saber 11: pesos 3-3-3-3-1 (Mat, Lect, Soc, Nat = 3
         # cada una; Ing = 1). Suma de pesos = 13. Multiplicamos por 5
         # para escalar a 0-500. Max general = 500.
-        general = int(round(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13)))
+        general = _rh(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13))
 
         entry = {
             'id':       sid,
@@ -2117,8 +2130,8 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
                 sub = _compute_nat_subscores_grade10(
                     answers_by_ses[sessions[0]], kfor[sessions[0]],
                     set(anu_for[sessions[0]] or []))
-                quim = int(round(sub['quim']))
-                fis  = int(round(sub['fis']))
+                quim = _rh(sub['quim'])
+                fis  = _rh(sub['fis'])
             entry['quim']  = quim
             entry['fis']   = fis
             entry['grado'] = grado
@@ -2163,7 +2176,7 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
 
         # Fila de promedios
         n = len(results)
-        avg = {k: int(round(sum(r[k] for r in results) / n))
+        avg = {k: _rh(sum(r[k] for r in results) / n)
                for k in ['mat', 'lect', 'soc', 'nat', 'ing', 'general']}
         avg_vals = ['', 'PROMEDIO', '', avg['mat'], avg['lect'], avg['soc'],
                     avg['nat'], avg['ing'], avg['general']]
@@ -2173,9 +2186,9 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
                       if isinstance(r.get('quim'), int)
                       and isinstance(r.get('fis'), int)]
             avg_vals += [
-                (int(round(sum(r['quim'] for r in only10) / len(only10)))
+                (_rh(sum(r['quim'] for r in only10) / len(only10))
                  if only10 else ''),
-                (int(round(sum(r['fis'] for r in only10) / len(only10)))
+                (_rh(sum(r['fis'] for r in only10) / len(only10))
                  if only10 else ''),
             ]
         avg_row = end_row + 1
@@ -2444,7 +2457,7 @@ def get_student_results_all_simulacros(student_id: str) -> list:
             # Parsear puntajes (cols: A=ID, B=Nombre, C=Curso, D=Mat,
             # E=Lect, F=Soc, G=Nat, H=Ing, I=General, J=Quim, K=Fis)
             def _num(v):
-                try: return int(round(float((v or '').strip())))
+                try: return _rh(float((v or '').strip()))
                 except: return None
             nombre = (student_row[1] or '').strip() if len(student_row) > 1 else ''
             curso  = (student_row[2] or '').strip() if len(student_row) > 2 else ''
@@ -2498,10 +2511,10 @@ def get_student_results_all_simulacros(student_id: str) -> list:
                     cnt_grado += 1
             for k, v in acc_curso.items():
                 if v and v[1] > 0:
-                    avg_curso[k] = int(round(v[0] / v[1]))
+                    avg_curso[k] = _rh(v[0] / v[1])
             for k, v in acc_grado.items():
                 if v and v[1] > 0:
-                    avg_grado[k] = int(round(v[0] / v[1]))
+                    avg_grado[k] = _rh(v[0] / v[1])
 
             # Posición en el curso (1-based, mayor puntaje general = pos 1).
             # Identificamos al estudiante por su fila exacta (objeto) ya que
@@ -2560,7 +2573,7 @@ def get_student_results_all_simulacros(student_id: str) -> list:
                             v = _num(r[ci])
                             if v is not None and v <= my_v:
                                 cnt += 1
-                        percentiles[f] = int(round(cnt / n * 100))
+                        percentiles[f] = _rh(cnt / n * 100)
             except Exception:
                 percentiles = {}
 
