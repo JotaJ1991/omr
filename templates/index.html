@@ -6664,6 +6664,9 @@ async function processPhoto() {
   // Simulacro activo: permite usar su distribución específica (si existe)
   const simSelEl = document.getElementById('simulacro-select');
   if (simSelEl && simSelEl.value) fd.append('simulacro', simSelEl.value);
+  const sesChk = document.querySelector('input[name="session"]:checked');
+  const sesPick = document.getElementById('session-picker');
+  if (sesChk && sesPick && sesPick.style.display !== 'none') fd.append('sesion', sesChk.value);
   if (curso) {
     fd.append('curso', curso);
     console.log('[OMR] Enviando curso=' + curso + ' profile=' + state.profileId

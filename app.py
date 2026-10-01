@@ -220,9 +220,25 @@ def process():
                 # Si el cliente envía el simulacro, la distribución específica
                 # de ese simulacro tiene prioridad sobre la default.
                 dists = list_distribuciones(sim_req)
+                # Si se conoce el simulacro, su tipo manda: un completo de
+                # 7°/8° no debe caer en la distribución media por defecto
+                # (125 preguntas) solo porque 'media' se prueba primero.
+                tipos = ('media', 'completo')
+                if sim_req:
+                    try:
+                        from sheets_connector import _cached_read
+                        sims = _cached_read('simulacros:list', list_simulacros,
+                                            ttl=300)
+                        sim_obj = next((s for s in sims
+                                        if s.get('nombre') == sim_req), None)
+                        if sim_obj and sim_obj.get('tipo') in tipos:
+                            tipos = (sim_obj['tipo'],) + tuple(
+                                t for t in tipos if t != sim_obj['tipo'])
+                    except Exception:
+                        pass
                 dist = None
                 tipo_used = None
-                for tipo in ('media', 'completo'):
+                for tipo in tipos:
                     d = dists.get((tipo, grado_stu)) or \
                         DEFAULT_DISTRIBUCIONES.get((tipo, grado_stu))
                     if d:
@@ -230,9 +246,21 @@ def process():
                         tipo_used = tipo
                         break
                 if dist:
-                    effective_total_q = max((int(e.get('fin', 0)) for e in dist),
+                    # En simulacros de 2 sesiones cada hoja tiene su propio
+                    # largo (p.ej. 1S=100, 2S=90): limitar con los bloques de
+                    # la sesión que se está escaneando.
+                    ses_req = (request.form.get('sesion') or '').strip().upper()
+                    if not ses_req:
+                        ses_req = {'1SSIPAGRE': '1S', '2SSIPAGRE': '2S'}.get(pid, '')
+                    ses_dist = {(e.get('sesion') or '').upper() for e in dist}
+                    entries = dist
+                    if ses_req and ses_req in ses_dist and len(ses_dist) > 1:
+                        entries = [e for e in dist
+                                   if (e.get('sesion') or '').upper() == ses_req]
+                    effective_total_q = max((int(e.get('fin', 0)) for e in entries),
                                             default=0) or None
                     print(f'[/process] grado={grado_stu} tipo_usado={tipo_used} '
+                          f'sesion={ses_req or "-"} '
                           f'effective_total_q={effective_total_q}', flush=True)
                 else:
                     print(f'[/process] grado={grado_stu} '
@@ -481,6 +509,8 @@ def simulacros_add():
     grados = data.get('grados') or []
     try:
         result = add_simulacro(nombre, fecha, tipo, grados)
+        from sheets_connector import invalidate_read_cache
+        invalidate_read_cache('simulacros:')
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -675,6 +705,8 @@ def simulacros_delete():
     nombre = (data.get('nombre') or '').strip()
     try:
         result = delete_simulacro(nombre)
+        from sheets_connector import invalidate_read_cache
+        invalidate_read_cache('simulacros:')
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
