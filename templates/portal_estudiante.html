@@ -59,7 +59,7 @@
     animation: fadeInDown .8s cubic-bezier(.16,1,.3,1) forwards;
   }
   .brand-logo {
-    width: 86px; height: 86px; object-fit: contain;
+    width: 150px; height: 150px; object-fit: contain;
     filter: drop-shadow(0 8px 22px rgba(0,0,0,.5));
   }
   .brand-title {
@@ -224,6 +224,39 @@
   .sub-subject { padding-left: 20px; opacity: .85; }
   .sub-subject .subject-name { font-size: .76rem; color: var(--muted); }
 
+  /* ── Selector de simulacro (cuando el estudiante tiene varios) ── */
+  .sim-picker { padding: 16px; margin-bottom: 18px;
+    opacity: 0; transform: translateY(18px);
+    transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
+  .sim-picker.animate { opacity: 1; transform: none; }
+  .sp-label { font-size: .72rem; color: var(--muted); font-weight: 600;
+              letter-spacing: .6px; text-transform: uppercase; margin-bottom: 10px; }
+  .sp-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+  .sp-pill {
+    flex: 1 1 140px; text-align: left; cursor: pointer; font-family: inherit;
+    background: rgba(255,255,255,.04); color: var(--text);
+    border: 1.5px solid var(--card-border); border-radius: 14px;
+    padding: 12px 14px; transition: all .25s ease;
+  }
+  .sp-pill:hover { border-color: rgba(96,165,250,.45); }
+  .sp-pill.active {
+    background: linear-gradient(135deg, rgba(29,78,216,.45), rgba(59,130,246,.18));
+    border-color: var(--primary-light); box-shadow: 0 6px 18px rgba(37,99,235,.25);
+  }
+  .sp-month { display: block; font-weight: 800; font-size: 1rem; }
+  .sp-pill.active .sp-month { color: var(--gold); }
+  .sp-sub { display: block; font-size: .72rem; color: var(--muted); margin-top: 2px; }
+  .sp-score { display: block; font-weight: 800; font-size: .95rem; color: var(--gold); margin-top: 4px; }
+  .sp-score small { color: var(--muted); font-weight: 600; font-size: .72rem; }
+  .btn-all {
+    width: 100%; margin-top: 12px; padding: 11px; cursor: pointer; font-family: inherit;
+    background: rgba(250,204,21,.08); color: var(--gold);
+    border: 1.5px solid rgba(250,204,21,.35); border-radius: 12px;
+    font-size: .88rem; font-weight: 700; transition: all .2s ease;
+  }
+  .btn-all:hover { background: rgba(250,204,21,.14); }
+  .btn-all:disabled { opacity: .6; cursor: wait; }
+
   /* ── Botón de descarga ── */
   .btn-download {
     display: inline-flex; align-items: center; gap: 8px;
@@ -294,6 +327,7 @@
     .gauge { width: 165px; height: 165px; }
     .gauge-score { font-size: 2.3rem; }
     .dash-name { font-size: 1.25rem; }
+    .brand-logo { width: 124px; height: 124px; }
     .blob { filter: blur(80px); }
   }
 </style>
@@ -477,12 +511,57 @@ function renderDashboard(data) {
       <p style="color:var(--muted);text-align:center;">
         Aún no tienes resultados registrados.</p></div>`;
   } else {
-    container.innerHTML = results.map((r, i) => renderSimSection(r, i)).join('');
+    container.innerHTML = (results.length > 1 ? renderSimPicker(results) : '') +
+                          results.map((r, i) => renderSimSection(r, i)).join('');
+    // Con varios simulacros se ve uno a la vez (el más reciente primero)
+    if (results.length > 1) {
+      document.querySelectorAll('.sim-card[data-idx]').forEach((c, i) => {
+        if (i > 0) c.style.display = 'none';
+      });
+    }
   }
   document.getElementById('footer-info').textContent =
     `${results.length} simulacro(s) · Tus datos están protegidos.`;
 
   startAnimations(results);
+}
+
+// ── Selector de simulacro ───────────────────────────────────────────────────
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio',
+               'Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+function simLabel(r) {
+  const m = /^(\d{4})-(\d{2})/.exec(r.fecha || '');
+  return m ? `${MESES[+m[2] - 1]} ${m[1]}` : (r.simulacro || 'Simulacro');
+}
+const _escH = t => String(t == null ? '' : t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function renderSimPicker(results) {
+  const pills = results.map((r, i) => {
+    const gen = r.puntajes && r.puntajes.gen != null ? r.puntajes.gen : '';
+    return `<button class="sp-pill${i === 0 ? ' active' : ''}" data-idx="${i}"
+              onclick="selectSim(${i})">
+        <span class="sp-month">${_escH(simLabel(r))}</span>
+        ${gen !== '' ? `<span class="sp-score">⭐ ${gen} <small>/ 500</small></span>` : ''}
+        <span class="sp-sub">${_escH(r.simulacro || '')}</span>
+      </button>`;
+  }).join('');
+  return `<div class="glass sim-picker" id="sim-picker">
+      <div class="sp-label">Elige el simulacro</div>
+      <div class="sp-pills">${pills}</div>
+      <button class="btn-all" onclick="downloadAllPdf(this)">
+        📥 Descargar todos en un PDF (${results.length})</button>
+    </div>`;
+}
+
+function selectSim(idx) {
+  document.querySelectorAll('.sp-pill').forEach(b =>
+    b.classList.toggle('active', Number(b.dataset.idx) === idx));
+  document.querySelectorAll('.sim-card[data-idx]').forEach(c => {
+    const show = Number(c.dataset.idx) === idx;
+    c.style.display = show ? '' : 'none';
+    if (show) animateSimCard(c);
+  });
 }
 
 function renderSimSection(r, idx) {
@@ -632,6 +711,8 @@ function animateSimCard(card) {
 
 function startAnimations(results) {
   setTimeout(() => document.getElementById('dash-header').classList.add('animate'), 80);
+  const picker = document.getElementById('sim-picker');
+  if (picker) setTimeout(() => picker.classList.add('animate'), 200);
 
   const cards = [...document.querySelectorAll('.sim-card[data-idx]')];
   // La primera tarjeta anima de inmediato; las demás al entrar en pantalla
@@ -672,6 +753,52 @@ function lanzarConfeti() {
 // Usa el mismo renderStudentPage que el dashboard admin (módulo compartido
 // /static/js/pdf_individual.js). Así el reporte individual del portal es
 // idéntico al de la app JMR.
+function _pdfStudentFor(sim) {
+  const student = _studentData.student || {};
+  const p = sim.puntajes || {};
+  return {
+    name:    student.nombre || '',
+    id:      student.id     || '',
+    curso:   sim.curso      || student.curso || '',
+    mat:     p.mat || 0, lect: p.lect || 0, soc: p.soc || 0,
+    nat:     p.nat || 0, ing: p.ing || 0, general: p.gen || 0,
+  };
+}
+
+// Un solo PDF con una página por simulacro
+async function downloadAllPdf(btn) {
+  if (!_studentData || !window.JMRPdf) {
+    alert('El módulo de PDF no cargó. Refresca la página.');
+    return;
+  }
+  const sims = _studentData.results || [];
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Generando…';
+  try {
+    await window.JMRPdf._loadLogo();
+    const jsPDF = window.JMRPdf.getJsPDF();
+    const doc = new jsPDF({orientation: 'p', unit: 'mm', format: 'letter'});
+    sims.forEach((sim, i) => {
+      const tipoLbl = sim.tipo === 'media' ? ' (Media)' : '';
+      window.JMRPdf.renderStudentPage(doc, _pdfStudentFor(sim), sim.percentiles || {},
+                                      i > 0, `${sim.simulacro}${tipoLbl}`);
+    });
+    const st = _pdfStudentFor(sims[0] || {});
+    const safeName = (st.name || 'estudiante')
+      .toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    doc.save(`Resultados_${safeName}_todos.pdf`);
+    btn.textContent = '✅ ¡Descargado!';
+  } catch (e) {
+    console.error(e);
+    alert('No se pudo generar el PDF: ' + e.message);
+    btn.textContent = orig;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = orig; }, 2500);
+  }
+}
+
 async function downloadStudentPdf(simIdx, btn) {
   if (!_studentData) return;
   const sim = _studentData.results[simIdx];
@@ -689,19 +816,7 @@ async function downloadStudentPdf(simIdx, btn) {
     const jsPDF = window.JMRPdf.getJsPDF();
     const doc = new jsPDF({orientation: 'p', unit: 'mm', format: 'letter'});
 
-    const student = _studentData.student || {};
-    const p = sim.puntajes || {};
-    const st = {
-      name:    student.nombre || '',
-      id:      student.id     || '',
-      curso:   sim.curso      || student.curso || '',
-      mat:     p.mat || 0,
-      lect:    p.lect || 0,
-      soc:     p.soc || 0,
-      nat:     p.nat || 0,
-      ing:     p.ing || 0,
-      general: p.gen || 0,
-    };
+    const st = _pdfStudentFor(sim);
     const pcts = sim.percentiles || {};
     const tipoLbl = sim.tipo === 'media' ? ' (Media)' : '';
     window.JMRPdf.renderStudentPage(doc, st, pcts, false, `${sim.simulacro}${tipoLbl}`);
