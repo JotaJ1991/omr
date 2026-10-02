@@ -3298,6 +3298,266 @@ function generateIntegralReport() {
   out.innerHTML = html;
 }
 
+// ══ NIVELES DE DESEMPEÑO ICFES (Saber 11) ═══════════════════════════════════
+// Rangos oficiales por prueba (puntaje 0-100): el último número de cada
+// corte es el tope del nivel (p.ej. Matemáticas: N1 0-35, N2 36-50,
+// N3 51-70, N4 71-100). Inglés usa la escala MCER: Pre A1, A1, A2, B1.
+// Química y Física (10°) se ubican con los cortes de Ciencias Naturales.
+const ICFES_CORTES = {
+  mat:  [35, 50, 70],
+  lect: [35, 50, 65],
+  soc:  [40, 55, 70],
+  nat:  [40, 55, 70],
+  quim: [40, 55, 70],
+  fis:  [40, 55, 70],
+  ing:  [36, 57, 70],
+};
+const ICFES_NOMBRES_ING = ['Pre A1', 'A1', 'A2', 'B1'];
+function nivelIcfes(key, score) {
+  const c = ICFES_CORTES[key];
+  if (!c || score === '' || score == null || isNaN(Number(score))) return 0;
+  const v = Number(score);
+  return v <= c[0] ? 1 : v <= c[1] ? 2 : v <= c[2] ? 3 : 4;
+}
+function nombreNivel(key, n, corto) {
+  if (!n) return '—';
+  if (key === 'ing') return ICFES_NOMBRES_ING[n - 1];
+  return corto ? `N${n}` : `Nivel ${n}`;
+}
+function rangoNivel(key, n) {
+  const c = ICFES_CORTES[key];
+  const lo = n === 1 ? 0 : c[n - 2] + 1;
+  const hi = n === 4 ? 100 : c[n - 1];
+  return `${lo}-${hi}`;
+}
+// Colores de la escalera del ICFES (rojo, naranja, amarillo, verde)
+const NIV_FUERTE = [null, [226, 75, 74], [239, 159, 39], [234, 190, 40], [76, 175, 80]];
+const NIV_TENUE  = [null, [248, 205, 205], [251, 222, 178], [252, 238, 180], [205, 233, 206]];
+const NIV_TEXTO  = [null, [121, 31, 31], [110, 60, 5], [100, 74, 5], [27, 94, 32]];
+const INT_AREAS = [
+  {k: 'mat',  l: 'Matemáticas',     s: 'Mat'},
+  {k: 'lect', l: 'Lectura Crítica', s: 'Lect'},
+  {k: 'soc',  l: 'Sociales',        s: 'Soc'},
+  {k: 'nat',  l: 'Naturales',       s: 'Nat'},
+  {k: 'ing',  l: 'Inglés',          s: 'Ing'},
+];
+const INT_NAVY = [15, 37, 87], INT_GOLD = [250, 204, 21];
+
+const _emoCacheInt = {};
+function _emojiPng(ch) {
+  if (_emoCacheInt[ch] !== undefined) return _emoCacheInt[ch];
+  let u = '';
+  try {
+    const c = _newCanvas(96, 96); const x = c.getContext('2d');
+    x.font = '76px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(ch, 48, 53);
+    u = c.toDataURL('image/png');
+  } catch (e) {}
+  return (_emoCacheInt[ch] = u);
+}
+function _avgK(arr, k) {
+  const vals = arr.map(r => r[k]).filter(v => v !== '' && v != null && !isNaN(Number(v)));
+  return vals.length ? Math.round(vals.reduce((s, v) => s + Number(v), 0) / vals.length) : null;
+}
+function _fitText(doc, t, w) {
+  t = String(t == null ? '' : t);
+  if (doc.getTextWidth(t) <= w) return t;
+  while (t.length > 1 && doc.getTextWidth(t + '…') > w) t = t.slice(0, -1);
+  return t + '…';
+}
+
+function _intSecTitle(doc, y, title, sub) {
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.setTextColor(...INT_NAVY);
+  doc.text(title, 10, y);
+  if (sub) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110, 120, 140);
+    doc.text(sub, 205.9, y, {align: 'right'});
+  }
+  doc.setFillColor(...INT_GOLD); doc.rect(10, y + 2, 22, 1.1, 'F');
+  doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.25); doc.line(32, y + 2.55, 205.9, y + 2.55);
+  return y + 8;
+}
+
+// Tabla con celdas coloreadas por nivel ICFES.
+// cols: [{label, w, kind:'text'|'num'|'area'|'gen', key, medals}]
+function _drawHeatTable(doc, y, cols, rows, opts) {
+  opts = opts || {};
+  const x0 = 10, rowH = opts.rowH || 7, headH = 8, bottom = 262;
+  const totalW = cols.reduce((s, c) => s + c.w, 0);
+  const header = () => {
+    doc.setFillColor(...INT_NAVY); doc.roundedRect(x0, y, totalW, headH, 1.2, 1.2, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
+    let x = x0;
+    cols.forEach(c => {
+      if (c.kind === 'text') doc.text(String(c.label), x + 2, y + 5.3);
+      else doc.text(String(c.label), x + c.w / 2, y + 5.3, {align: 'center'});
+      x += c.w;
+    });
+    y += headH + 0.6;
+  };
+  const drawRow = (row, ri, isAvg) => {
+    if (isAvg) { doc.setFillColor(232, 237, 247); doc.rect(x0, y, totalW, rowH, 'F'); }
+    else if (ri % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(x0, y, totalW, rowH, 'F'); }
+    let x = x0;
+    cols.forEach((c, ci) => {
+      const v = row[ci];
+      const ty = y + rowH / 2 + 1.1;
+      if (c.kind === 'area' && v !== '' && v != null && !isAvg) {
+        const n = nivelIcfes(c.key, v);
+        if (n) {
+          doc.setFillColor(...NIV_TENUE[n]);
+          doc.roundedRect(x + 0.6, y + 0.7, c.w - 1.2, rowH - 1.4, 1, 1, 'F');
+          doc.setTextColor(...NIV_TEXTO[n]);
+        } else doc.setTextColor(60, 70, 85);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+        doc.text(String(v), x + c.w / 2, ty, {align: 'center'});
+      } else if (c.kind === 'gen' && v !== '' && v != null) {
+        doc.setFillColor(...INT_NAVY);
+        doc.roundedRect(x + 0.6, y + 0.7, c.w - 1.2, rowH - 1.4, 1, 1, 'F');
+        doc.setTextColor(...INT_GOLD); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6);
+        doc.text(String(v), x + c.w / 2, ty, {align: 'center'});
+      } else if (c.kind === 'text') {
+        doc.setFont('helvetica', isAvg ? 'bold' : 'normal'); doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
+        let tx = x + 2;
+        if (c.medals && !isAvg && ri < 3) {
+          const m = _emojiPng(['🥇', '🥈', '🥉'][ri]);
+          if (m) { try { doc.addImage(m, 'PNG', x + 1.4, y + 1.1, rowH - 2.2, rowH - 2.2, undefined, 'FAST'); } catch (e) {} }
+          tx = x + rowH + 0.6;
+        }
+        doc.text(_fitText(doc, v, c.w - (tx - x) - 1.5), tx, ty);
+      } else {
+        doc.setFont('helvetica', isAvg ? 'bold' : 'normal'); doc.setFontSize(8);
+        doc.setTextColor(isAvg ? 30 : 90, isAvg ? 41 : 100, isAvg ? 59 : 115);
+        doc.text(String(v == null ? '' : v), x + c.w / 2, ty, {align: 'center'});
+      }
+      x += c.w;
+    });
+    y += rowH;
+  };
+  header();
+  rows.forEach((row, ri) => {
+    if (y + rowH > bottom) { doc.addPage('letter', 'p'); y = 20; header(); }
+    drawRow(row, ri, false);
+  });
+  if (opts.avgRow) {
+    if (y + rowH > bottom) { doc.addPage('letter', 'p'); y = 20; header(); }
+    drawRow(opts.avgRow, -1, true);
+  }
+  return y + 2;
+}
+
+function _nivelLegend(doc, y) {
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(90, 100, 115);
+  let x = 10;
+  doc.text('Niveles ICFES:', x, y + 2.6); x += 19;
+  [1, 2, 3, 4].forEach(n => {
+    doc.setFillColor(...NIV_FUERTE[n]); doc.roundedRect(x, y, 3.4, 3.4, 0.6, 0.6, 'F');
+    doc.text(`Nivel ${n}`, x + 4.6, y + 2.6); x += 17;
+  });
+  doc.text('·  Inglés: Pre A1 · A1 · A2 · B1', x + 1, y + 2.6);
+  return y + 6;
+}
+
+function _kpiCard(doc, x, y, w, h, label, value, sub, dark, frac) {
+  if (dark) doc.setFillColor(...INT_NAVY); else doc.setFillColor(241, 245, 249);
+  doc.roundedRect(x, y, w, h, 2.5, 2.5, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8);
+  if (dark) doc.setTextColor(199, 210, 254); else doc.setTextColor(100, 116, 139);
+  doc.text(label, x + 4, y + 5.5);
+  doc.setFontSize(dark ? 20 : 15);
+  if (dark) doc.setTextColor(...INT_GOLD); else doc.setTextColor(...INT_NAVY);
+  doc.text(String(value), x + 4, y + (dark ? 14.5 : 13.5));
+  if (sub) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    if (dark) doc.setTextColor(199, 210, 254); else doc.setTextColor(100, 116, 139);
+    doc.text(sub, x + 4, y + h - 3.6);
+  }
+  if (dark && frac != null) {
+    doc.setFillColor(45, 65, 120); doc.roundedRect(x + 4, y + h - 8.2, w - 8, 1.8, 0.9, 0.9, 'F');
+    doc.setFillColor(...INT_GOLD);
+    doc.roundedRect(x + 4, y + h - 8.2, Math.max(1.8, (w - 8) * Math.min(1, frac)), 1.8, 0.9, 0.9, 'F');
+  }
+}
+
+function _insightsBox(doc, y, lines) {
+  if (!lines.length) return y;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6);
+  const wrapped = lines.map(l => doc.splitTextToSize(l, 180));
+  const h = 9 + wrapped.reduce((s, w) => s + w.length * 4.1 + 1.2, 0) + 1;
+  doc.setFillColor(253, 243, 224); doc.roundedRect(10, y, 195.9, h, 2.5, 2.5, 'F');
+  doc.setFillColor(186, 117, 23); doc.rect(10, y, 1.6, h, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2); doc.setTextColor(99, 56, 6);
+  const bulb = _emojiPng('💡');
+  if (bulb) { try { doc.addImage(bulb, 'PNG', 15, y + 2.4, 4.2, 4.2, undefined, 'FAST'); } catch (e) {} }
+  doc.text('LO MÁS IMPORTANTE', 20.5, y + 5.6);
+  let yy = y + 11;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.6); doc.setTextColor(65, 36, 2);
+  wrapped.forEach(w => {
+    doc.setFillColor(186, 117, 23); doc.circle(17.2, yy - 1.2, 0.75, 'F');
+    w.forEach((ln, i) => { doc.text(ln, 20, yy + i * 4.1); });
+    yy += w.length * 4.1 + 1.2;
+  });
+  return y + h + 5;
+}
+
+function _integralInsights(view, cursos, refInfo) {
+  const out = [];
+  const n = view.length;
+  if (cursos.length >= 2) {
+    const ca = cursos.map(c => ({c, avg: _avgK(view.filter(r => (r.curso || '').trim() === c), 'general') || 0}))
+                     .sort((a, b) => b.avg - a.avg);
+    const top = ca[0], bot = ca[ca.length - 1];
+    out.push(`El curso ${top.c} lidera con ${top.avg} puntos; el ${bot.c} está ${top.avg - bot.avg} puntos por debajo.`);
+  }
+  const areas = INT_AREAS.map(a => ({...a, avg: _avgK(view, a.k)})).filter(a => a.avg != null);
+  if (areas.length) {
+    const best = areas.reduce((a, b) => b.avg > a.avg ? b : a);
+    const worst = areas.reduce((a, b) => b.avg < a.avg ? b : a);
+    out.push(`Fortaleza del grupo: ${best.l} (${best.avg}). Área a reforzar: ${worst.l} (${worst.avg}).`);
+  }
+  let bad = null;
+  INT_AREAS.forEach(a => {
+    const c1 = view.filter(r => nivelIcfes(a.k, r[a.k]) === 1).length;
+    if (c1 && (!bad || c1 > bad.c)) bad = {a, c: c1};
+  });
+  if (bad) {
+    out.push(`${bad.a.l}: ${bad.c} estudiante(s) (${Math.round(bad.c / n * 100)}%) en ${nombreNivel(bad.a.k, 1)}; requieren refuerzo prioritario.`);
+  } else if (n) {
+    out.push('Ningún estudiante quedó en el nivel más bajo (Nivel 1 / Pre A1) en ninguna área.');
+  }
+  const nb = view.filter(r => (+r.general || 0) >= 300).length;
+  out.push(nb ? `${nb} de ${n} estudiantes (${Math.round(nb / n * 100)}%) alcanzan 300 puntos o más (posibles becarios).`
+              : 'Ningún estudiante alcanzó todavía los 300 puntos.');
+  const ing = view.filter(r => r.ing !== '' && r.ing != null);
+  if (ing.length) {
+    const alto = ing.filter(r => nivelIcfes('ing', r.ing) >= 3).length;
+    out.push(`En inglés, ${Math.round(alto / ing.length * 100)}% está en A2 o B1.`);
+  }
+  if (refInfo && refInfo.jornadas) out.push(refInfo.jornadas);
+  return out.slice(0, 6);
+}
+
+function _drawIntegralFooter(doc, label, runHead) {
+  const pages = doc.getNumberOfPages();
+  const f = new Date();
+  const fecha = `${String(f.getDate()).padStart(2, '0')}/${String(f.getMonth() + 1).padStart(2, '0')}/${f.getFullYear()}`;
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    if (p > 1 && runHead) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(140, 150, 165);
+      doc.text(runHead, 205.9, 11, {align: 'right'});
+    }
+    doc.setFillColor(...INT_GOLD); doc.rect(10, 268, 195.9, 0.5, 'F');
+    const lg = window.JMRPdf && window.JMRPdf.footerLogo ? window.JMRPdf.footerLogo() : null;
+    if (lg) { try { doc.addImage(lg, 'PNG', 10, 269.4, 6.5, 6.5, undefined, 'FAST'); } catch (e) {} }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(120, 130, 150);
+    doc.text(`Calificador JMR · ${fecha}`, lg ? 18 : 10, 273.6);
+    doc.text(label, 108, 273.6, {align: 'center'});
+    doc.text(`Página ${p} de ${pages}`, 205.9, 273.6, {align: 'right'});
+  }
+}
+
 async function downloadIntegralPdf() {
   if (!unifiedResults || !unifiedResults.length) return;
   const gradeF = document.getElementById('r-grade-select')?.value || '';
@@ -3309,257 +3569,356 @@ async function downloadIntegralPdf() {
   try {
     await _loadLogo();
     const jsPDF = getJsPDF();
-    const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
+    const doc = new jsPDF({orientation: 'p', unit: 'mm', format: 'letter'});
 
     let view = unifiedResults.slice();
     if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
-    if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
+    if (cursoF) view = view.filter(r => (r.curso || '').trim() === cursoF);
     const scopeLabel = (cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`) +
                        (!cursoF && _jornadaTexto() ? ` · ${_jornadaTexto()}` : '');
     const simName = unifiedSimulacro ? unifiedSimulacro.nombre : '';
-    const cursos = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
+    const cursos = [...new Set(view.map(r => (r.curso || '').trim()).filter(c => c))].sort();
     const general = _statsFor(view.map(r => +r.general || 0));
-    const becarios = view.filter(r => (+r.general||0) >= 300)
-                         .sort((a,b) => (+b.general||0) - (+a.general||0));
+    const becarios = view.filter(r => (+r.general || 0) >= 300)
+                         .sort((a, b) => (+b.general || 0) - (+a.general || 0));
+    const allG10 = view.length > 0 && view.every(r => String(gradoDeCurso(r.curso || '')) === '10');
+    const grado = gradeF || gradoDeCurso(cursoF);
 
-    const pw = 215.9 - 20;
-
-    // ── PORTADA ──
-    let y = _drawReportHeader(doc, `Análisis integral`, `${simName} · ${scopeLabel}`);
-    y = _drawSectionTitle(doc, 10, y + 2, 'bars', 'Datos relevantes');
-    y += 2;
-    y = _drawSummaryCards(doc, 10, y, [
-      {icon:'',  label:'Estudiantes',      value: general.n},
-      {icon:'',  label:'Cursos',           value: cursos.length},
-      {icon:'',  label:'Promedio',         value: general.avg},
-      {icon:'',  label:'Mediana',          value: general.median},
-      {icon:'',  label:'Min',              value: general.min},
-      {icon:'',  label:'Max',              value: general.max},
-      {icon:'',  label:'Desv. estandar',   value: general.std},
-      {icon:'',  label:'Becarios (>=300)', value: becarios.length},
-    ]);
-
-    // ── PORTADA + TABLA DE CURSOS (misma página) ──
-    // Detecta si todos los estudiantes del scope son de grado 10°
-    const allG10 = view.every(r => String(gradoDeCurso(r.curso || '')) === '10');
-    const numV = v => (v === '' || v == null) ? null : (+v || 0);
-    const avgSubset = (arr, k) => {
-      const vals = arr.map(r => numV(r[k])).filter(v => v !== null);
-      return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : '—';
-    };
-    if (gradeF && !cursoF && cursos.length >= 1) {
-      y += 2;
-      const titleSuffix = allG10 ? ' (10° con Quím / Fís)' : '';
-      y = _drawSectionTitle(doc, 10, y, 'clipboard',
-        `Puntajes por curso - ${scopeLabel}${titleSuffix}`);
-      y += 2;
-      if (allG10) {
-        const cursoRows = cursos.map(c => {
-          const arr = view.filter(r => (r.curso||'').trim() === c);
-          const n = arr.length;
-          const avg = (k) => Math.round(arr.reduce((s,r)=>s+(+r[k]||0),0)/n);
-          return [c, n, avg('mat'), avg('lect'), avg('soc'),
-                  avgSubset(arr,'quim'), avgSubset(arr,'fis'),
-                  avg('nat'), avg('ing'), avg('general')];
-        }).sort((a,b) => b[9] - a[9]);
-        const avgRow = ['PROMEDIO', general.n,
-          Math.round(view.reduce((s,r)=>s+(+r.mat||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.lect||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.soc||0),0)/general.n),
-          avgSubset(view, 'quim'),
-          avgSubset(view, 'fis'),
-          Math.round(view.reduce((s,r)=>s+(+r.nat||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.ing||0),0)/general.n),
-          general.avg];
-        _drawPdfTable(doc, 10, y,
-          ['Curso','Estud.','Mat','Lect','Soc','Quím','Fís','Prom','Ing','General'],
-          cursoRows, [25, 16, 16, 16, 16, 16, 16, 16, 16, 41.9], avgRow,
-          {groupedHeader: [{from: 5, to: 7, label: 'Ciencias Naturales'}],
-           highlightCols: [5, 6, 7]});
-      } else {
-        const cursoRows = cursos.map(c => {
-          const arr = view.filter(r => (r.curso||'').trim() === c);
-          const n = arr.length;
-          const avg = (k) => Math.round(arr.reduce((s,r)=>s+(+r[k]||0),0)/n);
-          return [c, n, avg('mat'), avg('lect'), avg('soc'), avg('nat'), avg('ing'), avg('general')];
-        }).sort((a,b) => b[7] - a[7]);
-        const avgRow = ['PROMEDIO', general.n,
-          Math.round(view.reduce((s,r)=>s+(+r.mat||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.lect||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.soc||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.nat||0),0)/general.n),
-          Math.round(view.reduce((s,r)=>s+(+r.ing||0),0)/general.n),
-          general.avg];
-        _drawPdfTable(doc, 10, y,
-          ['Curso','Estudiantes','Mat','Lect','Soc','Nat','Ing','General'],
-          cursoRows, [30, 24, 20, 20, 20, 20, 20, 41.9], avgRow);
-      }
-    }
-
-    // ── PÁGINA DE GRÁFICOS (cuadrícula 2×2) ──
-    let barCanvas = null, boxCanvas = null, radarCanvas = null, histCanvas = null;
-    if (cursos.length >= 2) {
-      // Combo Bar+Box: promedio + distribución por CURSO (puntaje general)
-      const cursoComboGroups = cursos.map(c => ({
-        label:  c,
-        values: view.filter(r => (r.curso||'').trim() === c).map(r => +r.general || 0),
-      }));
-      barCanvas = drawBarBoxComboCanvas(cursoComboGroups, {
-        title: `Promedio + distribución por curso`, max: 500,
-      });
-      // Combo Bar+Box: por ASIGNATURA (todas las materias del scope)
-      const subjComboGroups = REP_SUBJECTS.filter(s => s.key !== 'general').map(s => ({
-        label:  s.label.replace('Lectura Crítica','Lectura').replace('Sociales y Ciudadanas','Sociales').replace('Ciencias Naturales','Naturales').replace('Matemáticas','Matem.'),
-        values: view.map(r => +r[s.key] || 0),
-      }));
-      boxCanvas = drawBarBoxComboCanvas(subjComboGroups, {
-        title: `Promedio + distribución por asignatura`, max: 100,
-      });
-      const radarSubjects = REP_SUBJECTS.filter(s => s.key !== 'general');
-      const radarLabels = radarSubjects.map(s =>
-        s.label.replace('Lectura Crítica','Lect. Crítica')
-               .replace('Sociales y Ciudadanas','Sociales')
-               .replace('Ciencias Naturales','Naturales')
-               .replace('Matemáticas','Matem.'));
-      const radarGroups = cursos.map(c => {
-        const arr = view.filter(r => (r.curso||'').trim() === c);
-        return {
-          name:   c,
-          values: radarSubjects.map(s =>
-            arr.length ? Math.round(arr.reduce((a,r)=>a+(+r[s.key]||0),0)/arr.length) : 0),
-        };
-      });
-      radarCanvas = drawRadarMultiCanvas(radarLabels, radarGroups, 100);
-    }
-    if (view.length >= 5) {
-      histCanvas = drawHistogramCanvas(view.map(r => +r.general || 0), {
-        title: `Distribución de puntajes`, max: 500, binSize: 50,
-      });
-    }
-
-    // Si tenemos los 4 → grid 2×2; si solo histograma, mostrarlo solo
-    if (barCanvas && boxCanvas && radarCanvas && histCanvas) {
-      doc.addPage('letter','p');
-      let yy = 20;
-      yy = _drawSectionTitle(doc, 10, yy, 'chart-up', 'Graficos comparativos');
-      yy += 4;
-      // Cuadrícula: 2 columnas × 2 filas, cada celda 95×120 mm (uniforme)
-      const cellW = 95, cellH = 120, gap = 5;
-      const col2x = 10 + cellW + gap;
-      const row2y = yy + cellH + gap;
-      // Top-left: Bar
-      try { doc.addImage(barCanvas.toDataURL('image/png'),   'PNG', 10,    yy,    cellW, cellH, undefined, 'FAST'); } catch(e){}
-      // Top-right: Boxplot
-      try { doc.addImage(boxCanvas.toDataURL('image/png'),   'PNG', col2x, yy,    cellW, cellH, undefined, 'FAST'); } catch(e){}
-      // Bottom-left: Radar
-      try { doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10,    row2y, cellW, cellH, undefined, 'FAST'); } catch(e){}
-      // Bottom-right: Histogram
-      try { doc.addImage(histCanvas.toDataURL('image/png'),  'PNG', col2x, row2y, cellW, cellH, undefined, 'FAST'); } catch(e){}
-      y = row2y + cellH + 4;
-    } else if (histCanvas) {
-      doc.addPage('letter','p'); y = 20;
-      y = _drawSectionTitle(doc, 10, y, 'histogram', 'Distribucion de puntajes');
-      y += 4;
-      const imgH = pw * 380/900;
-      try { doc.addImage(histCanvas.toDataURL('image/png'), 'PNG', 10, y, pw, imgH, undefined, 'FAST'); } catch(e){}
-      y += imgH + 4;
-    }
-
-    // ── TABLA: Posibles becarios ──
-    doc.addPage('letter','p'); y = 20;
-    y = _drawSectionTitle(doc, 10, y, 'trophy', `Posibles becarios (>=300) - ${becarios.length} estudiante(s)`);
-    y += 4;
-    if (!becarios.length) {
-      doc.setFont('helvetica','normal'); doc.setFontSize(10);
-      doc.setTextColor(120,120,120);
-      doc.text('Ningún estudiante alcanzó 300 puntos en este ámbito.', 10, y + 6);
+    // Grupo de referencia para comparar: todo el grado (ambas jornadas) o,
+    // si ya se mira el grado completo, todo el simulacro.
+    const base = unifiedResultsAll || unifiedResults;
+    let ref = null, refLabel = '';
+    if (cursoF || _jornadaSel()) {
+      ref = base.filter(r => gradoDeCurso(r.curso) === grado); refLabel = `Todo el grado ${grado}°`;
     } else {
-      const becRows = becarios.map((r, i) => [
-        i+1, (r.name || '—').slice(0, 32), r.curso || '—',
-        gradoDeCurso(r.curso) ? gradoDeCurso(r.curso)+'°' : '—',
-        r.general
-      ]);
-      const avgGen = Math.round(becarios.reduce((s,r)=>s+(+r.general||0),0)/becarios.length);
-      const becAvg = ['', 'PROMEDIO', '', '', avgGen];
-      _drawPdfTable(doc, 10, y,
-        ['#','Estudiante','Curso','Grado','General'],
-        becRows, [12, 90, 22, 22, 49.9], becAvg);
+      ref = base.slice(); refLabel = 'Todo el simulacro';
+    }
+    let jornadasTxt = '';
+    if (!cursoF && !_jornadaSel()) {
+      const m = view.filter(r => _jornadaDe(r.curso) === 'manana');
+      const t = view.filter(r => _jornadaDe(r.curso) === 'tarde');
+      if (m.length && t.length) {
+        const am = _avgK(m, 'general'), at = _avgK(t, 'general');
+        jornadasTxt = `Jornada mañana promedia ${am} puntos y jornada tarde ${at} (diferencia de ${Math.abs(am - at)}).`;
+      }
     }
 
-    // ── Una hoja por curso con sus estudiantes ──
-    cursos.forEach(c => {
-      doc.addPage('letter','p'); y = 20;
-      const arr = view.filter(r => (r.curso||'').trim() === c)
-                       .sort((a,b)=>(+b.general||0)-(+a.general||0));
-      const cursoIs10 = arr.length > 0 &&
-        arr.every(r => String(gradoDeCurso(r.curso || '')) === '10');
-      const titleSuf = cursoIs10 ? ' (10° - Quím/Fís)' : '';
-      y = _drawSectionTitle(doc, 10, y, 'cap',
-        `Estudiantes - Curso ${c}${titleSuf}`);
-      y += 4;
-      const n = arr.length;
-      const avg = {
-        mat:  Math.round(arr.reduce((s,r)=>s+(+r.mat||0),0)/n),
-        lect: Math.round(arr.reduce((s,r)=>s+(+r.lect||0),0)/n),
-        soc:  Math.round(arr.reduce((s,r)=>s+(+r.soc||0),0)/n),
-        nat:  Math.round(arr.reduce((s,r)=>s+(+r.nat||0),0)/n),
-        ing:  Math.round(arr.reduce((s,r)=>s+(+r.ing||0),0)/n),
-        gen:  Math.round(arr.reduce((s,r)=>s+(+r.general||0),0)/n),
-      };
-      if (cursoIs10) {
-        avg.quim = avgSubset(arr, 'quim');
-        avg.fis  = avgSubset(arr, 'fis');
-        const stRows = arr.map((r,i) => [
-          i+1, (r.name || '—').slice(0, 26), r.id || '—',
-          r.mat, r.lect, r.soc,
-          r.quim ?? '—', r.fis ?? '—', r.nat,
-          r.ing, r.general,
-        ]);
-        const stAvg = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc,
-                       avg.quim, avg.fis, avg.nat, avg.ing, avg.gen];
-        _drawPdfTable(doc, 10, y,
-          ['#','Estudiante','ID','Mat','Lect','Soc','Quím','Fís','Prom','Ing','Gen'],
-          stRows, [8, 46, 18, 12, 12, 12, 12, 12, 12, 12, 39.9], stAvg,
-          {groupedHeader: [{from: 6, to: 8, label: 'Ciencias Naturales'}],
-           highlightCols: [6, 7, 8]});
-      } else {
-        const stRows = arr.map((r,i) => [
-          i+1, (r.name || '—').slice(0, 30), r.id || '—',
-          r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
-        ]);
-        const stAvg = ['', 'PROMEDIO', '', avg.mat, avg.lect, avg.soc, avg.nat, avg.ing, avg.gen];
-        _drawPdfTable(doc, 10, y,
-          ['#','Estudiante','ID','Mat','Lect','Soc','Nat','Ing','Gen'],
-          stRows, [10, 55, 20, 14, 14, 14, 14, 14, 40.9], stAvg);
+    // ══ PÁGINA 1 · PORTADA EJECUTIVA ══
+    let y = _drawReportHeader(doc, 'Análisis integral', `${simName} · ${scopeLabel}`);
+    const kw = (195.9 - 60 - 9) / 3;
+    _kpiCard(doc, 10, y, 60, 26, 'PROMEDIO GENERAL', `${general.avg} / 500`, null, true, general.avg / 500);
+    _kpiCard(doc, 73, y, kw, 26, 'ESTUDIANTES', general.n,
+             `${cursos.length} curso${cursos.length === 1 ? '' : 's'}`);
+    _kpiCard(doc, 73 + kw + 3, y, kw, 26, 'POSIBLES BECARIOS', becarios.length,
+             `${general.n ? Math.round(becarios.length / general.n * 100) : 0}% · 300 o más`);
+    _kpiCard(doc, 73 + 2 * (kw + 3), y, kw, 26, 'RANGO', `${general.min}–${general.max}`,
+             `mediana ${Math.round(general.median)} · desv. ${Math.round(general.std)}`);
+    y += 31;
+    y = _insightsBox(doc, y, _integralInsights(view, cursos, {jornadas: jornadasTxt}));
+
+    const areaCols = allG10
+      ? [{k: 'mat', s: 'Mat'}, {k: 'lect', s: 'Lect'}, {k: 'soc', s: 'Soc'}, {k: 'quim', s: 'Quím'},
+         {k: 'fis', s: 'Fís'}, {k: 'nat', s: 'Nat'}, {k: 'ing', s: 'Ing'}]
+      : INT_AREAS.map(a => ({k: a.k, s: a.s}));
+
+    if (cursos.length >= 2) {
+      y = _intSecTitle(doc, y, 'Mapa de desempeño por curso', 'Cada celda coloreada según el nivel ICFES del área');
+      const aw = allG10 ? 18 : 22;
+      const cols = [{label: 'Curso', w: 0, kind: 'text', medals: true},
+                    {label: 'Estud.', w: 16, kind: 'num'}]
+        .concat(areaCols.map(a => ({label: a.s, w: aw, kind: 'area', key: a.k})))
+        .concat([{label: 'General', w: 26, kind: 'gen'}]);
+      cols[0].w = 195.9 - cols.slice(1).reduce((s, c) => s + c.w, 0);
+      const rows = cursos.map(c => {
+        const arr = view.filter(r => (r.curso || '').trim() === c);
+        return [c, arr.length].concat(areaCols.map(a => _avgK(arr, a.k) ?? '—'))
+                              .concat([_avgK(arr, 'general') ?? 0]);
+      }).sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+      const avgRow = ['Promedio', general.n].concat(areaCols.map(a => _avgK(view, a.k) ?? '—'))
+                                            .concat([general.avg]);
+      y = _drawHeatTable(doc, y, cols, rows, {avgRow, rowH: 7.5});
+      y = _nivelLegend(doc, y + 1);
+    }
+
+    // ══ PÁGINA 2 · PANORAMA DEL GRUPO ══
+    doc.addPage('letter', 'p'); y = 20;
+    y = _intSecTitle(doc, y, 'Niveles de desempeño por área', 'Rangos oficiales ICFES Saber 11');
+    const barX = 52, barW = 205.9 - barX;
+    areaCols.forEach(a => {
+      const vals = view.map(r => r[a.k]).filter(v => v !== '' && v != null && !isNaN(Number(v)));
+      if (!vals.length) return;
+      const cnt = [0, 0, 0, 0, 0];
+      vals.forEach(v => { cnt[nivelIcfes(a.k, v)]++; });
+      const avg = _avgK(view, a.k);
+      const label = INT_AREAS.find(x => x.k === a.k)?.l || (a.k === 'quim' ? 'Química' : 'Física');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor(...INT_NAVY);
+      doc.text(label, 10, y + 3.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+      doc.text(`Prom. ${avg} · ${nombreNivel(a.k, nivelIcfes(a.k, avg))}`, 10, y + 7.2);
+      let x = barX;
+      [1, 2, 3, 4].forEach(nv => {
+        if (!cnt[nv]) return;
+        const w = barW * cnt[nv] / vals.length;
+        doc.setFillColor(...NIV_FUERTE[nv]); doc.rect(x, y, w, 8, 'F');
+        const pct = Math.round(cnt[nv] / vals.length * 100);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+        doc.setTextColor(nv === 3 ? 70 : 255, nv === 3 ? 50 : 255, nv === 3 ? 0 : 255);
+        if (w >= 20) doc.text(`${nombreNivel(a.k, nv, true)} · ${pct}%`, x + w / 2, y + 5.3, {align: 'center'});
+        else if (w >= 8) doc.text(`${pct}%`, x + w / 2, y + 5.3, {align: 'center'});
+        x += w;
+      });
+      y += 11.5;
+    });
+    y += 1;
+    // Rangos de referencia
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.2); doc.setTextColor(...INT_NAVY);
+    doc.text('Rangos de puntaje por nivel (ICFES)', 10, y + 3);
+    y += 5;
+    const rcols = [42, 38.5, 38.5, 38.5, 38.4];
+    let rx = 10;
+    ['Prueba', 'Nivel 1 / Pre A1', 'Nivel 2 / A1', 'Nivel 3 / A2', 'Nivel 4 / B1'].forEach((h, i) => {
+      if (i) doc.setFillColor(...NIV_FUERTE[i]); else doc.setFillColor(...INT_NAVY);
+      doc.rect(rx, y, rcols[i], 5.5, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8);
+      doc.setTextColor(i === 3 ? 70 : 255, i === 3 ? 50 : 255, i === 3 ? 0 : 255);
+      doc.text(h, rx + rcols[i] / 2, y + 3.8, {align: 'center'});
+      rx += rcols[i];
+    });
+    y += 5.5;
+    INT_AREAS.forEach((a, i) => {
+      if (i % 2) { doc.setFillColor(248, 250, 252); doc.rect(10, y, 195.9, 4.8, 'F'); }
+      rx = 10;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(50, 60, 75);
+      doc.text(a.l + (a.k === 'nat' && allG10 ? ' (y Quím/Fís)' : ''), rx + 2, y + 3.4);
+      rx += rcols[0];
+      [1, 2, 3, 4].forEach(nv => {
+        doc.text(rangoNivel(a.k, nv), rx + rcols[nv] / 2, y + 3.4, {align: 'center'});
+        rx += rcols[nv];
+      });
+      y += 4.8;
+    });
+    y += 6;
+
+    // Distribución del puntaje general (dibujada en el PDF: nítida y liviana)
+    y = _intSecTitle(doc, y, 'Distribución del puntaje general', `${general.n} estudiantes`);
+    {
+      const gs = view.map(r => +r.general || 0);
+      const BIN = 25;
+      let lo = Math.floor(Math.min(...gs) / BIN) * BIN;
+      let hi = Math.floor(Math.max(...gs) / BIN) * BIN + BIN;
+      if (lo > 275) lo = 275;
+      if (hi < 325) hi = 325;
+      const nb = Math.round((hi - lo) / BIN);
+      const counts = Array(nb).fill(0);
+      gs.forEach(g => { counts[Math.min(nb - 1, Math.max(0, Math.floor((g - lo) / BIN)))]++; });
+      const cx = 16, cw = 205.9 - cx, ch = 40, base0 = y + ch + 4;
+      const maxC = Math.max(1, ...counts);
+      const bw = cw / nb;
+      doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.25); doc.line(cx, base0, cx + cw, base0);
+      counts.forEach((c, i) => {
+        const h = ch * c / maxC;
+        const st = lo + i * BIN;
+        if (st >= 300) doc.setFillColor(...INT_GOLD); else doc.setFillColor(59, 91, 219);
+        if (c) doc.roundedRect(cx + i * bw + 0.8, base0 - h, bw - 1.6, h, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); doc.setTextColor(60, 70, 90);
+        if (c) doc.text(String(c), cx + i * bw + bw / 2, base0 - h - 1.2, {align: 'center'});
+      });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.2); doc.setTextColor(120, 130, 150);
+      for (let i = 0; i <= nb; i++) {
+        if (nb <= 16 || i % 2 === 0) doc.text(String(lo + i * BIN), cx + i * bw, base0 + 3.6, {align: 'center'});
       }
+      if (300 >= lo && 300 <= hi) {
+        const lx = cx + (300 - lo) / BIN * bw;
+        doc.setDrawColor(186, 117, 23); doc.setLineWidth(0.5);
+        try { doc.setLineDashPattern([1.2, 1], 0); } catch (e) {}
+        doc.line(lx, y - 1, lx, base0);
+        try { doc.setLineDashPattern([], 0); } catch (e) {}
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); doc.setTextColor(133, 79, 11);
+        doc.text('Meta becario: 300', lx + 1.5, y + 1.5);
+      }
+      y = base0 + 9;
+    }
+
+    // Perfil del grupo vs referencia
+    {
+      const labs = INT_AREAS.map(a => a.s === 'Lect' ? 'Lectura' : a.s === 'Mat' ? 'Matem.' : a.l);
+      const own = INT_AREAS.map(a => _avgK(view, a.k) || 0);
+      const refv = INT_AREAS.map(a => _avgK(ref, a.k) || 0);
+      const same = own.every((v, i) => v === refv[i]);
+      y = _intSecTitle(doc, y, 'Perfil del grupo',
+                       same ? scopeLabel : `${scopeLabel} frente a ${refLabel.toLowerCase()}`);
+      const groups = same ? [{name: scopeLabel, values: own}]
+                          : [{name: scopeLabel, values: own}, {name: refLabel, values: refv}];
+      const rc = drawRadarMultiCanvas(labs, groups, 100);
+      const rw = 84, rh = rw * rc.height / rc.width;
+      try { doc.addImage(rc.toDataURL('image/png'), 'PNG', 10, y, rw, rh, undefined, 'FAST'); } catch (e) {}
+      // Comparación numérica al lado
+      let ty = y + 6;
+      const cx2 = 102;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.4); doc.setTextColor(100, 116, 139);
+      doc.text('Área', cx2, ty); doc.text('Grupo', cx2 + 40, ty, {align: 'center'});
+      doc.text('Nivel ICFES', cx2 + 60, ty, {align: 'center'});
+      if (!same) { doc.text('Ref.', cx2 + 80, ty, {align: 'center'}); doc.text('Dif.', cx2 + 95, ty, {align: 'center'}); }
+      ty += 6;
+      INT_AREAS.forEach((a, i) => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.4); doc.setTextColor(30, 41, 59);
+        doc.text(a.l, cx2, ty);
+        const n = nivelIcfes(a.k, own[i]);
+        if (n) { doc.setFillColor(...NIV_TENUE[n]); doc.roundedRect(cx2 + 33, ty - 4, 14, 5.6, 1, 1, 'F'); doc.setTextColor(...NIV_TEXTO[n]); }
+        doc.setFont('helvetica', 'bold'); doc.text(String(own[i]), cx2 + 40, ty, {align: 'center'});
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.8);
+        if (n) doc.setTextColor(...NIV_TEXTO[n]);
+        doc.text(nombreNivel(INT_AREAS[i].k, n), cx2 + 60, ty, {align: 'center'});
+        doc.setFontSize(8.4);
+        if (!same) {
+          doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+          doc.text(String(refv[i]), cx2 + 80, ty, {align: 'center'});
+          const d = own[i] - refv[i];
+          doc.setFont('helvetica', 'bold');
+          if (d > 0) doc.setTextColor(27, 94, 32); else if (d < 0) doc.setTextColor(163, 45, 45); else doc.setTextColor(100, 116, 139);
+          doc.text((d > 0 ? '+' : '') + d, cx2 + 95, ty, {align: 'center'});
+        }
+        ty += 8;
+      });
+    }
+
+    // ══ PÁGINA 3 · COMPARATIVOS ══
+    doc.addPage('letter', 'p'); y = 20;
+    const gH = 195.9 * 460 / 900;
+    if (cursos.length >= 2) {
+      y = _intSecTitle(doc, y, 'Promedio y dispersión por curso', 'Puntaje general (0-500)');
+      const cc = drawBarBoxComboCanvas(cursos.map(c => ({
+        label: c, values: view.filter(r => (r.curso || '').trim() === c).map(r => +r.general || 0),
+      })), {title: '', max: 500});
+      try { doc.addImage(cc.toDataURL('image/png'), 'PNG', 10, y, 195.9, gH, undefined, 'FAST'); } catch (e) {}
+      y += gH + 6;
+    }
+    y = _intSecTitle(doc, y, 'Promedio y dispersión por área', 'Puntaje por área (0-100)');
+    const ac = drawBarBoxComboCanvas(INT_AREAS.map(a => ({
+      label: a.s === 'Lect' ? 'Lectura' : a.s === 'Mat' ? 'Matem.' : a.l,
+      values: view.map(r => +r[a.k] || 0),
+    })), {title: '', max: 100});
+    try { doc.addImage(ac.toDataURL('image/png'), 'PNG', 10, y, 195.9, gH, undefined, 'FAST'); } catch (e) {}
+
+    // ══ BECARIOS ══
+    doc.addPage('letter', 'p'); y = 20;
+    y = _intSecTitle(doc, y, 'Posibles becarios',
+                     `${becarios.length} estudiante${becarios.length === 1 ? '' : 's'} con 300 puntos o más`);
+    if (!becarios.length) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(120, 120, 120);
+      doc.text('Ningún estudiante alcanzó 300 puntos en este grupo.', 10, y + 6);
+    } else {
+      // Podio con los 3 primeros
+      const pod = becarios.slice(0, 3);
+      const pw3 = (195.9 - 6) / 3;
+      pod.forEach((r, i) => {
+        const px = 10 + i * (pw3 + 3);
+        doc.setFillColor(i === 0 ? 253 : 241, i === 0 ? 243 : 245, i === 0 ? 224 : 249);
+        doc.roundedRect(px, y, pw3, 26, 2.5, 2.5, 'F');
+        const m = _emojiPng(['🥇', '🥈', '🥉'][i]);
+        if (m) { try { doc.addImage(m, 'PNG', px + 3, y + 3, 9, 9, undefined, 'FAST'); } catch (e) {} }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...INT_NAVY);
+        doc.text(String(r.general), px + pw3 - 4, y + 10, {align: 'right'});
+        doc.setFontSize(8.2); doc.setTextColor(30, 41, 59);
+        const nm = doc.splitTextToSize(String(r.name || '—'), pw3 - 8).slice(0, 2);
+        nm.forEach((ln, k) => doc.text(ln, px + 4, y + 16.5 + k * 3.8));
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+        doc.text(`Curso ${r.curso || '—'}`, px + 4, y + 24);
+      });
+      y += 31;
+      const bcols = [{label: '#', w: 9, kind: 'num'}, {label: 'Estudiante', w: 0, kind: 'text'},
+                     {label: 'Curso', w: 15, kind: 'num'}]
+        .concat(INT_AREAS.map(a => ({label: a.s, w: 17, kind: 'area', key: a.k})))
+        .concat([{label: 'General', w: 22, kind: 'gen'}]);
+      bcols[1].w = 195.9 - bcols.filter((c, i) => i !== 1).reduce((s, c) => s + c.w, 0);
+      const brows = becarios.map((r, i) => [i + 1, r.name || '—', r.curso || '—']
+        .concat(INT_AREAS.map(a => r[a.k])).concat([r.general]));
+      y = _drawHeatTable(doc, y, bcols, brows);
+      y = _nivelLegend(doc, y + 1);
+    }
+
+    // ══ UNA FICHA POR CURSO ══
+    const rankCursos = cursos.map(c => ({c, avg: _avgK(view.filter(r => (r.curso || '').trim() === c), 'general') || 0}))
+                             .sort((a, b) => b.avg - a.avg);
+    cursos.forEach(c => {
+      doc.addPage('letter', 'p'); y = 20;
+      const arr = view.filter(r => (r.curso || '').trim() === c)
+                      .sort((a, b) => (+b.general || 0) - (+a.general || 0));
+      const is10 = arr.length > 0 && arr.every(r => String(gradoDeCurso(r.curso || '')) === '10');
+      const jor = _jornadaDe(c);
+      y = _intSecTitle(doc, y, `Curso ${c}`,
+        `${arr.length} estudiantes${jor ? ' · Jornada ' + (jor === 'manana' ? 'mañana' : 'tarde') : ''}`);
+      const cAvg = _avgK(arr, 'general') || 0;
+      const nbC = arr.filter(r => (+r.general || 0) >= 300).length;
+      const pos = rankCursos.findIndex(x => x.c === c) + 1;
+      const kw4 = (195.9 - 9) / 4;
+      _kpiCard(doc, 10, y, kw4, 26, 'PROMEDIO', `${cAvg}`, `de 500 puntos`, true, cAvg / 500);
+      _kpiCard(doc, 10 + (kw4 + 3), y, kw4, 26, 'MEJOR PUNTAJE', arr[0] ? arr[0].general : '—',
+               arr[0] ? _fitText(doc, arr[0].name || '', kw4 - 8) : '');
+      _kpiCard(doc, 10 + 2 * (kw4 + 3), y, kw4, 26, 'POSIBLES BECARIOS', nbC, '300 puntos o más');
+      _kpiCard(doc, 10 + 3 * (kw4 + 3), y, kw4, 26, 'POSICIÓN', cursos.length >= 2 ? `${pos} de ${cursos.length}` : '—',
+               'entre los cursos del grupo');
+      y += 30;
+      // Comparación con el grupo por área
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.2); doc.setTextColor(100, 116, 139);
+      doc.text('Frente al promedio del grupo:', 10, y + 3);
+      let cx3 = 50;
+      INT_AREAS.forEach(a => {
+        const d = (_avgK(arr, a.k) || 0) - (_avgK(view, a.k) || 0);
+        const t = `${a.s} ${d > 0 ? '+' : ''}${d}`;
+        doc.setFontSize(7.4);
+        const tw = doc.getTextWidth(t) + 5;
+        if (d > 0) doc.setFillColor(205, 233, 206); else if (d < 0) doc.setFillColor(248, 205, 205); else doc.setFillColor(226, 232, 240);
+        doc.roundedRect(cx3, y - 0.4, tw, 5, 2.5, 2.5, 'F');
+        if (d > 0) doc.setTextColor(27, 94, 32); else if (d < 0) doc.setTextColor(121, 31, 31); else doc.setTextColor(80, 90, 105);
+        doc.text(t, cx3 + 2.5, y + 3);
+        cx3 += tw + 2;
+      });
+      y += 9;
+      const cAreas = is10
+        ? [{k: 'mat', s: 'Mat'}, {k: 'lect', s: 'Lect'}, {k: 'soc', s: 'Soc'}, {k: 'quim', s: 'Quím'},
+           {k: 'fis', s: 'Fís'}, {k: 'nat', s: 'Nat'}, {k: 'ing', s: 'Ing'}]
+        : INT_AREAS.map(a => ({k: a.k, s: a.s}));
+      const aw = is10 ? 13 : 16;
+      const scols = [{label: '#', w: 8, kind: 'num'}, {label: 'Estudiante', w: 0, kind: 'text', medals: true},
+                     {label: 'ID', w: 21, kind: 'num'}]
+        .concat(cAreas.map(a => ({label: a.s, w: aw, kind: 'area', key: a.k})))
+        .concat([{label: 'General', w: 21, kind: 'gen'}]);
+      scols[1].w = 195.9 - scols.filter((x, i) => i !== 1).reduce((s, x) => s + x.w, 0);
+      const srows = arr.map((r, i) => [i + 1, r.name || '—', r.id || '—']
+        .concat(cAreas.map(a => (r[a.k] === '' || r[a.k] == null) ? '—' : r[a.k])).concat([r.general]));
+      const savg = ['', 'Promedio del curso', ''].concat(cAreas.map(a => _avgK(arr, a.k) ?? '—')).concat([cAvg]);
+      y = _drawHeatTable(doc, y, scols, srows, {avgRow: savg});
+      y = _nivelLegend(doc, y + 1);
     });
 
-    // ── Análisis por pregunta para el scope ──
+    // ══ ANÁLISIS POR PREGUNTA ══
     try {
       status.innerHTML = '<p style="color:var(--muted);">Cargando análisis por pregunta…</p>';
-      const qa = await _ensureQuestionAnalysis(simName);
-      doc.addPage('letter','p'); let y2 = 20;
+      const qa = _questionDataForJornada(await _ensureQuestionAnalysis(simName));
+      if (!qa || !((qa.questions || []).length || Object.keys(qa.grades_data || {}).length)) {
+        throw new Error('sin datos por pregunta');
+      }
+      doc.addPage('letter', 'p'); let y2 = 20;
       const groupBy  = cursoF ? 'curso' : 'grado';
       const groupKey = cursoF ? cursoF : gradeF;
-      y2 = _drawSectionTitle(doc, 10, y2, 'question', `Analisis por pregunta - ${scopeLabel}`);
-      y2 += 2;
-      doc.setFont('helvetica','italic'); doc.setFontSize(8);
-      doc.setTextColor(120,120,120);
-      doc.text('Preguntas ordenadas de menor a mayor % de aciertos (mas dificiles primero).', 10, y2);
-      y2 += 4;
+      y2 = _intSecTitle(doc, y2, 'Análisis por pregunta', scopeLabel);
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(110, 120, 140);
+      doc.text('Preguntas ordenadas de menor a mayor porcentaje de aciertos (las más difíciles primero).', 10, y2);
+      y2 += 8;
       _drawQuestionTablesInPdf(doc, y2, qa, groupBy, groupKey, '');
-    } catch(e) {
+    } catch (e) {
       console.warn('No se pudo incluir análisis por pregunta:', e);
     }
 
-    _drawReportFooter(doc, `Análisis integral · ${simName} · ${scopeLabel}`);
+    _drawIntegralFooter(doc, `Análisis integral · ${scopeLabel}`, `${simName} · ${scopeLabel}`);
     // Quitar tildes antes de limpiar ("mañana" -> "manana", no "ma_ana")
-    const safeScope = scopeLabel.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                                .replace(/[^a-z0-9]+/gi,'_');
-    const safeSim = simName.replace(/[^a-z0-9]+/gi,'_');
+    const safeScope = scopeLabel.normalize('NFD').replace(/[̀-ͯ]/g, '')
+                                .replace(/[^a-z0-9]+/gi, '_');
+    const safeSim = simName.replace(/[^a-z0-9]+/gi, '_');
     doc.save(`Analisis_Integral_${safeSim}_${safeScope}.pdf`);
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
-  } catch(e) {
+  } catch (e) {
     console.error(e);
     status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
   }
