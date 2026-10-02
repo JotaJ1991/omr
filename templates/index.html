@@ -1116,6 +1116,14 @@
 
       <!-- Filtros (aparecen tras generar) -->
       <div id="r-filter-bar" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:end;">
+        <div style="flex:1 1 100%;">
+          <label style="font-size:.78rem;color:var(--muted);" title="Mañana: cursos 01 a 05 · Tarde: cursos 06 a 10">🌓 Jornada</label>
+          <select id="r-jornada-select" onchange="onJornadaChange()">
+            <option value="">Todas</option>
+            <option value="manana">☀️ Mañana (01–05)</option>
+            <option value="tarde">🌙 Tarde (06–10)</option>
+          </select>
+        </div>
         <div style="flex:1;min-width:90px;">
           <label style="font-size:.78rem;color:var(--muted);">Grado</label>
           <select id="r-grade-select" onchange="onResultsFilterChange()">
@@ -2994,7 +3002,73 @@ function _refreshSimulacroSelect() {
 }
 
 // ── Lógica unificada del panel Resultados ─────────────────────────────
-let unifiedResults = null;
+let unifiedResults = null;      // vista activa (filtrada por jornada)
+let unifiedResultsAll = null;   // todos los estudiantes del simulacro
+
+// ── Jornada: mañana = cursos terminados en 01–05, tarde = 06–10 ──
+function _jornadaDe(curso) {
+  const m = /(\d{2})\s*$/.exec(String(curso || '').trim());
+  if (!m) return '';
+  const n = parseInt(m[1], 10);
+  if (n >= 1 && n <= 5)  return 'manana';
+  if (n >= 6 && n <= 10) return 'tarde';
+  return '';
+}
+function _jornadaSel() {
+  const el = document.getElementById('r-jornada-select');
+  return el ? el.value : '';
+}
+function _jornadaTexto() {
+  const j = _jornadaSel();
+  return j === 'manana' ? 'Jornada mañana' : j === 'tarde' ? 'Jornada tarde' : '';
+}
+// Aplica la jornada sobre los resultados completos: todas las vistas y
+// reportes (integral, cursos, materias, becarios, PDF) usan unifiedResults.
+function _applyJornada() {
+  const j = _jornadaSel();
+  const all = unifiedResultsAll || [];
+  unifiedResults = j ? all.filter(r => _jornadaDe(r.curso) === j) : all.slice();
+}
+function onJornadaChange() {
+  _applyJornada();
+  const cursoSel = document.getElementById('r-course-select');
+  if (cursoSel) cursoSel.value = '';
+  // Si el grado elegido no tiene estudiantes en esta jornada, elegir otro
+  const gradeSel = document.getElementById('r-grade-select');
+  if (gradeSel && gradeSel.value &&
+      !(unifiedResults || []).some(r => gradoDeCurso(r.curso) === gradeSel.value)) {
+    gradeSel.value = '';
+  }
+  _populateUnifiedCourseFilter();
+  _ensureDefaultGradeFilter();
+  onResultsFilterChange();
+}
+
+// Análisis por pregunta: recalcula los agregados (total, por grado) solo
+// con los cursos de la jornada elegida, a partir del detalle por curso.
+function _questionDataForJornada(data) {
+  const j = _jornadaSel();
+  if (!j || !data) return data;
+  const fixQ = (q) => {
+    const byC = {};
+    let n = 0, c = 0;
+    const byG = {};
+    Object.entries(q.by_curso || {}).forEach(([cu, e]) => {
+      if (_jornadaDe(cu) !== j) return;
+      byC[cu] = e;
+      n += e.n || 0; c += e.c || 0;
+      const g = gradoDeCurso(cu);
+      if (!byG[g]) byG[g] = {n: 0, c: 0};
+      byG[g].n += e.n || 0; byG[g].c += e.c || 0;
+    });
+    Object.values(byG).forEach(e => { e.pct = e.n ? Math.round(e.c / e.n * 100) : 0; });
+    return {...q, by_curso: byC, by_grade: byG,
+            total: n, correct: c, pct: n ? Math.round(c / n * 100) : 0};
+  };
+  const gd = {};
+  Object.entries(data.grades_data || {}).forEach(([g, qs]) => { gd[g] = (qs || []).map(fixQ); });
+  return {...data, questions: (data.questions || []).map(fixQ), grades_data: gd};
+}
 let unifiedSimulacro = null;
 // Caché de resultados por simulacro. Cada entrada: {results, ts}
 const _resultsCache = {};
@@ -3036,6 +3110,7 @@ function onResultsSimChange() {
 
   // Limpiar UI de salida
   unifiedResults = null;
+  unifiedResultsAll = null;
   document.getElementById('r-output').innerHTML = '';
   document.getElementById('r-status').innerHTML = '';
   document.getElementById('r-filter-bar').style.display = 'none';
@@ -3072,7 +3147,8 @@ function onResultsSimChange() {
   // Si hay caché para este simulacro, lo cargamos
   const cached = _resultsCache[unifiedSimulacro.nombre];
   if (cached && cached.results && cached.results.length) {
-    unifiedResults = cached.results;
+    unifiedResultsAll = cached.results;
+    _applyJornada();
     document.getElementById('r-status').innerHTML =
       `<p style="color:var(--muted);font-size:.82rem;">
        💾 Mostrando datos en caché (${_formatAgo(cached.ts)}).
@@ -3158,7 +3234,8 @@ function generateIntegralReport() {
   }
 
   const scopeType  = cursoF ? 'curso' : 'grado';
-  const scopeLabel = cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`;
+  const scopeLabel = (cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`) +
+                     (!cursoF && _jornadaTexto() ? ` · ${_jornadaTexto()}` : '');
   const cursos = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
   const general = _statsFor(view.map(r => +r.general || 0));
   const becarios = view.filter(r => (+r.general||0) >= 300)
@@ -3237,7 +3314,8 @@ async function downloadIntegralPdf() {
     let view = unifiedResults.slice();
     if (gradeF) view = view.filter(r => gradoDeCurso(r.curso) === gradeF);
     if (cursoF) view = view.filter(r => (r.curso||'').trim() === cursoF);
-    const scopeLabel = cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`;
+    const scopeLabel = (cursoF ? `Curso ${cursoF}` : `Grado ${gradeF}°`) +
+                       (!cursoF && _jornadaTexto() ? ` · ${_jornadaTexto()}` : '');
     const simName = unifiedSimulacro ? unifiedSimulacro.nombre : '';
     const cursos = [...new Set(view.map(r => (r.curso||'').trim()).filter(c => c))].sort();
     const general = _statsFor(view.map(r => +r.general || 0));
@@ -3475,7 +3553,9 @@ async function downloadIntegralPdf() {
     }
 
     _drawReportFooter(doc, `Análisis integral · ${simName} · ${scopeLabel}`);
-    const safeScope = scopeLabel.replace(/[^a-z0-9]+/gi,'_');
+    // Quitar tildes antes de limpiar ("mañana" -> "manana", no "ma_ana")
+    const safeScope = scopeLabel.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                                .replace(/[^a-z0-9]+/gi,'_');
     const safeSim = simName.replace(/[^a-z0-9]+/gi,'_');
     doc.save(`Analisis_Integral_${safeSim}_${safeScope}.pdf`);
     status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
@@ -3535,6 +3615,7 @@ function _qFmt(q) {
 }
 
 function renderQuestionAnalysis(data) {
+  data = _questionDataForJornada(data);
   const out = document.getElementById('r-output');
   const gradeF = document.getElementById('r-grade-select')?.value || '';
   const cursoF = document.getElementById('r-course-select')?.value || '';
@@ -3901,13 +3982,15 @@ async function downloadQuestionAnalysisPdf() {
   const status = document.getElementById('r-status');
   status.innerHTML = '<p style="color:var(--muted);">Generando PDF…</p>';
   try {
-    const data = await _ensureQuestionAnalysis(unifiedSimulacro.nombre);
+    const data = _questionDataForJornada(
+      await _ensureQuestionAnalysis(unifiedSimulacro.nombre));
     const gradeF = document.getElementById('r-grade-select')?.value || '';
     const cursoF = document.getElementById('r-course-select')?.value || '';
     const groupBy = cursoF ? 'curso' : (gradeF ? 'grado' : 'all');
     const groupKey = cursoF ? cursoF : gradeF;
-    const filterLabel = cursoF ? `Curso ${cursoF}` :
-                        gradeF ? `Grado ${gradeF}°` : 'General';
+    const filterLabel = (cursoF ? `Curso ${cursoF}` :
+                         gradeF ? `Grado ${gradeF}°` : 'General') +
+                        (!cursoF && _jornadaTexto() ? ` · ${_jornadaTexto()}` : '');
     await _loadLogo();
     const jsPDF = getJsPDF();
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
@@ -3960,9 +4043,10 @@ async function generateUnifiedResults() {
     }
     const data = await resp.json();
     if (data.success) {
-      unifiedResults = data.results || [];
+      unifiedResultsAll = data.results || [];
+      _applyJornada();
       _resultsCache[sim.nombre] = {
-        results: unifiedResults,
+        results: unifiedResultsAll,
         ts:      Date.now(),
       };
       const verb = isUpdate ? 'Actualizado' : 'Listo';
@@ -4376,12 +4460,13 @@ async function _generateUnifiedPdf(filtered, fname) {
   await _loadLogo();
   const jsPDF = getJsPDF();
   const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
-  const pcts = calcPercentiles(unifiedResults);
+  const base = unifiedResultsAll || unifiedResults;
+  const pcts = calcPercentiles(base);
   const label = unifiedSimulacro
                 ? `${unifiedSimulacro.nombre}${unifiedSimulacro.tipo === 'media' ? ' (Media)' : ''}`
                 : 'SIPAGRE';
   filtered.forEach((st, i) => {
-    const origIdx = unifiedResults.indexOf(st);
+    const origIdx = base.indexOf(st);
     const pctKey = st.id ? String(st.id) : `_idx${origIdx}`;
     renderStudentPage(doc, st, pcts[pctKey] || {}, i > 0, label);
   });
@@ -4438,8 +4523,9 @@ async function downloadUnifiedStudent(idx) {
     await _loadLogo();
     const jsPDF = getJsPDF();
     const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
-    const pcts = calcPercentiles(unifiedResults);
-    const pctKey = st.id ? String(st.id) : `_idx${idx}`;
+    const base = unifiedResultsAll || unifiedResults;
+    const pcts = calcPercentiles(base);
+    const pctKey = st.id ? String(st.id) : `_idx${base.indexOf(st)}`;
     const label = unifiedSimulacro
                   ? `${unifiedSimulacro.nombre}${unifiedSimulacro.tipo === 'media' ? ' (Media)' : ''}`
                   : 'SIPAGRE';
