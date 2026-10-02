@@ -3624,7 +3624,7 @@ async function downloadIntegralPdf() {
     if (cursos.length >= 2) {
       y = _intSecTitle(doc, y, 'Mapa de desempeño por curso', 'Cada celda coloreada según el nivel ICFES del área');
       const aw = allG10 ? 18 : 22;
-      const cols = [{label: 'Curso', w: 0, kind: 'text', medals: true},
+      const cols = [{label: 'Curso', w: 0, kind: 'text'},
                     {label: 'Estud.', w: 16, kind: 'num'}]
         .concat(areaCols.map(a => ({label: a.s, w: aw, kind: 'area', key: a.k})))
         .concat([{label: 'General', w: 26, kind: 'gen'}]);
