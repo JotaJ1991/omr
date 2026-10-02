@@ -1926,7 +1926,13 @@ def _extract_students(worksheet):
     all_rows = worksheet.get_all_values()
     if not all_rows:
         return {}
-    header = all_rows[0]
+    # Encabezado: normalmente la fila 1, pero si alguien ORDENÓ la hoja en
+    # Google Sheets queda en cualquier posición (p.ej. ordenada por nombre
+    # quedó en la fila 365 y la columna Curso "desaparecía"). Se busca.
+    def _is_header(r):
+        return (len(r) > 2 and (r[0] or '').strip() == 'Fecha'
+                and (r[2] or '').strip() == 'Nombre')
+    header = next((r for r in all_rows if _is_header(r)), all_rows[0])
     curso_col = -1
     for i, h in enumerate(header):
         if (h or '').strip().lower() == 'curso':
@@ -1934,7 +1940,7 @@ def _extract_students(worksheet):
             break
     students = {}
     for row_idx, row in enumerate(all_rows[2:]):
-        if not row or len(row) < 5:
+        if not row or len(row) < 5 or _is_header(row):
             continue
         name = row[2].strip() if len(row) > 2 else ''
         sid  = row[3].strip() if len(row) > 3 else ''
