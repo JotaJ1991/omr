@@ -199,7 +199,7 @@
   // Rangos y textos definidos por el docente; solo 3 niveles/iconos.
   function _medalFor(general) {
     if (general >= 300) return { e: '🏆',
-      msg: 'Con esfuerzo, disciplina, perseverancia y constancia puedes ser potencial BECARIO' };
+      msg: 'Con esfuerzo, disciplina, perseverancia y constancia podrás cumplir tus metas' };
     if (general >= 221) return { e: '💪',
       msg: 'La clave del éxito es enfocarse en metas, no en obstáculos' };
     return { e: '📈',
