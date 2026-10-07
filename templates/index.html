@@ -1312,6 +1312,32 @@
         </div>
         <div id="est-status" style="margin-top:8px;font-size:.85rem;"></div>
       </div>
+
+      <!-- Agregar un estudiante (sin Excel) -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:14px;">
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:10px;">➕ Agregar estudiante</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+          <div style="flex:1;min-width:140px;">
+            <label style="font-size:.78rem;color:var(--muted);">🪪 Documento</label>
+            <input type="text" inputmode="numeric" id="est-add-id" placeholder="Documento"
+                   oninput="onEstAddIdInput()">
+          </div>
+          <div style="flex:2;min-width:200px;">
+            <label style="font-size:.78rem;color:var(--muted);">👤 Apellidos y nombres</label>
+            <input type="text" id="est-add-nombre" placeholder="Apellidos y nombres">
+          </div>
+          <div style="flex:0 0 110px;">
+            <label style="font-size:.78rem;color:var(--muted);">🏫 Curso</label>
+            <input type="text" id="est-add-curso" list="est-add-cursos" placeholder="Ej: 807"
+                   onfocus="_estAddFillCursos()">
+            <datalist id="est-add-cursos"></datalist>
+          </div>
+          <button class="btn-primary" type="button" id="est-add-btn"
+                  onclick="addEstudiante()" style="flex:0 0 auto;">➕ Agregar</button>
+        </div>
+        <div id="est-add-status" style="margin-top:8px;font-size:.85rem;"></div>
+      </div>
     </div>
 
     <!-- ── Herramientas avanzadas (uso ocasional) ── -->
@@ -1994,6 +2020,80 @@ async function onEstFileChange(input) {
   } catch(e) {
     statusEl.innerHTML = `<span style="color:var(--danger);">
       ❌ Error de conexión: ${e.message}</span>`;
+  }
+}
+
+// ── Agregar un estudiante sin Excel ──
+const _escTxt = v => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function _estAddFillCursos() {
+  const dl = document.getElementById('est-add-cursos');
+  if (!dl || dl.options.length) return;
+  try {
+    if (!(_coursesCache && _coursesCache.length)) {
+      _coursesCache = ((await (await fetch('/courses')).json()).courses) || [];
+    }
+    dl.innerHTML = _coursesCache.map(c => `<option value="${_escTxt(c.name)}">`).join('');
+  } catch (e) { /* ignorar */ }
+}
+
+let _estAddTimer = null;
+function onEstAddIdInput() {
+  clearTimeout(_estAddTimer);
+  const st = document.getElementById('est-add-status');
+  const id = document.getElementById('est-add-id').value.replace(/[\s.\-]/g, '');
+  st.innerHTML = '';
+  if (id.length < 5) return;
+  _estAddTimer = setTimeout(async () => {
+    try {
+      const d = await (await fetch('/estudiantes/lookup?id=' + encodeURIComponent(id))).json();
+      if (document.getElementById('est-add-id').value.replace(/[\s.\-]/g, '') !== id) return;
+      if (d.found) {
+        st.innerHTML = `<span style="color:var(--warning);">⚠️ Ya registrado: <b>${_escTxt(d.nombre)}</b>` +
+          ` · curso ${_escTxt(d.curso || '—')}. Si guardas, se actualizará.</span>`;
+        const n = document.getElementById('est-add-nombre'), c = document.getElementById('est-add-curso');
+        if (!n.value.trim()) n.value = d.nombre || '';
+        if (!c.value.trim()) c.value = d.curso || '';
+      }
+    } catch (e) { /* ignorar */ }
+  }, 400);
+}
+
+async function addEstudiante() {
+  const st  = document.getElementById('est-add-status');
+  const btn = document.getElementById('est-add-btn');
+  const body = {
+    id:     document.getElementById('est-add-id').value.trim(),
+    nombre: document.getElementById('est-add-nombre').value.trim(),
+    curso:  document.getElementById('est-add-curso').value.trim(),
+  };
+  if (!body.id || !body.nombre || !body.curso) {
+    st.innerHTML = '<span style="color:var(--danger);">❌ Completa documento, nombre y curso.</span>';
+    return;
+  }
+  const known = (_coursesCache || []).some(c => String(c.name).toUpperCase() === body.curso.toUpperCase());
+  if (_coursesCache && _coursesCache.length && !known &&
+      !confirm(`El curso "${body.curso}" no está en la lista de cursos. ¿Agregar de todas formas?`)) return;
+  btn.disabled = true;
+  st.innerHTML = '<span style="color:var(--muted);">⏳ Guardando…</span>';
+  try {
+    const resp = await fetch('/estudiantes/add', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const d = await resp.json();
+    if (!d.success) {
+      st.innerHTML = `<span style="color:var(--danger);">❌ ${_escTxt(d.error || 'No se pudo guardar.')}</span>`;
+      return;
+    }
+    st.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ ${d.updated ? 'Actualizado' : 'Agregado'}: ` +
+      `${_escTxt(d.nombre)} · ${_escTxt(d.id)} · curso ${_escTxt(d.curso)}</span>`;
+    showToast(`${d.updated ? 'Actualizado' : 'Agregado'}: ${d.nombre}`, 'success');
+    ['est-add-id', 'est-add-nombre', 'est-add-curso'].forEach(i => document.getElementById(i).value = '');
+    _rosterCache = {};
+    _estLoadCount();
+  } catch (e) {
+    st.innerHTML = `<span style="color:var(--danger);">❌ Error de conexión: ${_escTxt(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
   }
 }
 

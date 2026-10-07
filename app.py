@@ -2,6 +2,7 @@
 OMR App  —  Calificador JMR  (multi-perfil)
 """
 import os
+import re
 import json
 import traceback
 import base64
@@ -868,6 +869,34 @@ def estudiantes_count():
     try:
         return jsonify({'success': True, 'count': count_estudiantes()})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/estudiantes/add', methods=['POST'])
+def estudiantes_add():
+    """Registra (o actualiza) UN estudiante en el roster general.
+    Body JSON: {id, nombre, curso}."""
+    data = request.get_json(silent=True) or {}
+    sid = re.sub(r'[\s.\-]', '', str(data.get('id') or '')).upper()
+    nombre = ' '.join(str(data.get('nombre') or '').split()).upper()
+    curso = str(data.get('curso') or '').strip().upper()
+    if not re.fullmatch(r'[A-Z0-9]{5,15}', sid):
+        return jsonify({'success': False,
+                        'error': 'Documento inválido (solo números, 5 a 15 dígitos).'}), 400
+    if len(nombre) < 5:
+        return jsonify({'success': False,
+                        'error': 'Escribe apellidos y nombres completos.'}), 400
+    if not curso:
+        return jsonify({'success': False, 'error': 'Elige el curso.'}), 400
+    try:
+        prev = get_student_global(sid)
+        result = save_estudiantes([{'id': sid, 'nombre': nombre, 'curso': curso}])
+        if not result.get('success'):
+            return jsonify(result), 500
+        return jsonify({'success': True, 'id': sid, 'nombre': nombre,
+                        'curso': curso, 'updated': bool(prev)})
+    except Exception as e:
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
