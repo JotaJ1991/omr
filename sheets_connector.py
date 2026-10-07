@@ -18,6 +18,7 @@ Columnas:
   FA  Porcentaje    (Correctas / total preguntas activas × 100)
 """
 
+import re
 import os
 import json
 import threading
@@ -2896,23 +2897,50 @@ def save_estudiantes(students: list, replace: bool = False) -> dict:
 
 
 def _get_estudiantes_indexed():
-    """Carga el roster general y lo indexa por ID. Cacheado 60s."""
+    """Carga el roster general y lo indexa por ID. Cacheado 60s.
+
+    Si Sheets falla LANZA la excepción (no se cachea un roster vacío): el
+    guardado exige que el estudiante esté registrado y un {} cacheado
+    rechazaría a todos durante un minuto."""
     def _load():
-        try:
-            ws = _ensure_estudiantes_sheet()
-            idx = {}
-            for r in ws.get_all_values()[1:]:
-                if r and (r[0] or '').strip():
-                    sid = (r[0] or '').strip()
-                    idx[sid] = {
-                        'id':     sid,
-                        'nombre': (r[1] or '').strip() if len(r) > 1 else '',
-                        'curso':  (r[2] or '').strip() if len(r) > 2 else '',
-                    }
-            return idx
-        except Exception:
-            return {}
+        ws = _ensure_estudiantes_sheet()
+        idx = {}
+        for r in ws.get_all_values()[1:]:
+            if r and (r[0] or '').strip():
+                sid = (r[0] or '').strip()
+                idx[sid] = {
+                    'id':     sid,
+                    'nombre': (r[1] or '').strip() if len(r) > 1 else '',
+                    'curso':  (r[2] or '').strip() if len(r) > 2 else '',
+                }
+        return idx
     return _cached_read('estudiantes:idx', _load)
+
+
+def _norm_doc(sid) -> str:
+    """Documento sin espacios, puntos ni guiones ("1.047.358 429" -> "1047358429")."""
+    return re.sub(r'[\s.\-]', '', str(sid or '')).upper()
+
+
+def find_registered_student(student_id: str):
+    """Estudiante registrado en el roster general con ese documento, o None.
+
+    LANZA RuntimeError si no se puede consultar el roster (cuota de Google,
+    sin red o lista vacía): quien llama debe tratarlo como "reintentar",
+    nunca como "no registrado"."""
+    sid = _norm_doc(student_id)
+    if not sid:
+        return None
+    idx = _get_estudiantes_indexed()
+    if not idx:
+        raise RuntimeError('La lista de estudiantes está vacía o no se pudo leer.')
+    hit = idx.get(sid)
+    if hit:
+        return hit
+    for k, v in idx.items():
+        if _norm_doc(k) == sid:
+            return v
+    return None
 
 
 def get_student_global(student_id: str) -> dict:

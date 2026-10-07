@@ -27,6 +27,7 @@ from sheets_connector import (
     get_student_results_all_simulacros,
     match_xlsx_to_results_sheet, apply_id_matches_to_sheet,
     save_estudiantes, get_student_global, count_estudiantes,
+    find_registered_student,
     _open_spreadsheet,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
@@ -402,13 +403,31 @@ def save():
     answers      = data.get('answers', [])
     sheet_name   = data.get('sheet_name', active_sheet())
 
-    if not student_name and not exam_id:
-        return jsonify({'success': False,
-                        'error': 'Ingresa al menos nombre o ID del estudiante.'}), 400
+    if not exam_id:
+        return jsonify({'success': False, 'not_registered': True,
+                        'error': 'Escribe el documento del estudiante.'}), 400
     n = len(answers)
     if n < 1 or n > 200:
         return jsonify({'success': False,
                         'error': 'Número de respuestas inválido.'}), 400
+
+    # Solo se guarda a estudiantes REGISTRADOS (hoja Estudiantes): un
+    # documento mal escrito crearía un estudiante fantasma y el real
+    # quedaría sin resultado. El nombre se toma del registro.
+    try:
+        reg = find_registered_student(exam_id)
+    except Exception as e:
+        print(f'[save] no se pudo verificar el registro de {exam_id}: {e}', flush=True)
+        return jsonify({'success': False,
+                        'error': 'No se pudo verificar si el estudiante está '
+                                 'registrado. Intenta de nuevo.'}), 503
+    if not reg:
+        return jsonify({'success': False, 'not_registered': True,
+                        'error': f'El documento {exam_id} no está registrado. '
+                                 'Revisa que esté bien escrito.'}), 422
+    exam_id      = reg['id']
+    student_name = reg.get('nombre') or student_name
+    curso        = curso or reg.get('curso', '')
 
     # check_duplicate=True: no sobrescribir en silencio; si el ID ya tiene
     # resultado en esa hoja, responder 409 para que la interfaz confirme.
@@ -833,13 +852,14 @@ def estudiantes_lookup():
     if not sid:
         return jsonify({'success': False, 'error': 'id requerido'}), 400
     try:
-        s = get_student_global(sid)
+        s = find_registered_student(sid)
         if not s:
             return jsonify({'success': False, 'found': False}), 200
         return jsonify({'success': True, 'found': True, **s})
     except Exception as e:
+        # No se pudo leer el registro: "desconocido", NO "no registrado"
         traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 503
 
 
 @app.route('/estudiantes/count', methods=['GET'])

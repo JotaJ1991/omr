@@ -263,7 +263,8 @@
            oninput="onIdInput()">
     <div style="height:10px;"></div>
     <label>👤 Nombre</label>
-    <input type="text" id="student-name" placeholder="Apellidos y nombres">
+    <input type="text" id="student-name" placeholder="Se completa con el documento" readonly
+           style="opacity:.85;">
     <div class="status" id="lookup-status"></div>
   </div>
 
@@ -313,6 +314,7 @@ const state = {
   answers: [], photoCount: 0,
   edited: new Set(),
   qrName: '',          // nombre que vino del QR/roster
+  reg: {sid: '', status: ''},   // registro del documento: ok | missing | unknown | pending
   reprocessed: false,  // evita bucle al re-procesar por sesión del QR
 };
 
@@ -504,6 +506,7 @@ async function handleQr(qr) {
     document.getElementById('student-name').value = qr.nombre;
     state.qrName = qr.nombre;
   }
+  onIdInput(true);           // verificar que el documento esté registrado
   if (qr.curso) {
     const sel = document.getElementById('curso-select');
     if (![...sel.options].some(o => o.value === qr.curso)) {
@@ -528,7 +531,7 @@ async function handleQr(qr) {
   setSt('qr-banner', 'ok',
         `📇 QR detectado: <b>${qr.nombre || qr.student_id}</b> · Curso <b>${qr.curso || '—'}</b>` +
         (qr.roster_matched === false
-          ? ' <br>⚠️ No está en el roster: escribe el nombre.' : ''));
+          ? ' <br>⚠️ Su documento no está registrado: no se podrá guardar.' : ''));
   updateSaveBtn();
 }
 
@@ -582,26 +585,52 @@ function setAns(i, v) {
 }
 
 // ── Estudiante: autocompletar nombre por ID ─────────────────────────────────
+// Solo se guarda a estudiantes REGISTRADOS: un documento mal escrito
+// crearía un estudiante fantasma (el servidor también lo verifica).
 let _lookupTimer = null;
-function onIdInput() {
-  updateSaveBtn();
+function onIdInput(now) {
   clearTimeout(_lookupTimer);
   const sid = document.getElementById('student-id').value.trim();
-  if (sid.length < 5) return;
+  const nameEl = document.getElementById('student-name');
+  if (state.reg.sid !== sid) {
+    state.reg = {sid, status: sid.length >= 5 ? 'pending' : ''};
+    if (!state.qrName) nameEl.value = '';
+  }
+  if (sid.length < 5) {
+    setSt('lookup-status', '', '');
+    updateSaveBtn();
+    return;
+  }
+  setSt('lookup-status', 'load', '<span class="spinner"></span>Verificando documento…');
+  updateSaveBtn();
   _lookupTimer = setTimeout(async () => {
+    let st = 'unknown', d = {};
     try {
       const r = await fetch('/estudiantes/lookup?id=' + encodeURIComponent(sid));
-      const d = await r.json();
-      if (d.success && d.found && d.nombre) {
-        document.getElementById('student-name').value = d.nombre;
-        setSt('lookup-status', 'ok', `✅ ${d.nombre} (curso ${d.curso || '—'})`);
-        updateSaveBtn();
-      } else { setSt('lookup-status', '', ''); }
-    } catch (e) { /* silencioso */ }
-  }, 450);
+      d = await r.json();
+      if (d.success && d.found) st = 'ok';
+      else if (r.ok && d.found === false) st = 'missing';
+    } catch (e) { /* sin red: lo decide el servidor al guardar */ }
+    if (document.getElementById('student-id').value.trim() !== sid) return;   // cambió
+    state.reg = {sid, status: st, data: d};
+    if (st === 'ok') {
+      nameEl.value = d.nombre || '';
+      const otro = d.curso && state.curso && d.curso !== state.curso;
+      setSt('lookup-status', otro ? 'warn' : 'ok',
+            `✅ ${_esc(d.nombre || '')} · curso ${_esc(d.curso || '—')}` +
+            (otro ? `<br>⚠️ Está registrado en <b>${_esc(d.curso)}</b>, no en ` +
+                    `<b>${_esc(state.curso)}</b>. ¿El documento está bien escrito?` : ''));
+    } else if (st === 'missing') {
+      nameEl.value = '';
+      setSt('lookup-status', 'error',
+            '❌ Documento <b>no registrado</b>. Revísalo en la hoja; ' +
+            'si está bien escrito, avisa al docente.');
+    } else {
+      setSt('lookup-status', 'warn', '📶 No se pudo verificar ahora; se verificará al guardar.');
+    }
+    updateSaveBtn();
+  }, now === true ? 0 : 450);
 }
-document.getElementById('student-name') && document.getElementById('student-name')
-  .addEventListener('input', updateSaveBtn);
 
 // ── Guardar ─────────────────────────────────────────────────────────────────
 function _targetSheet() {
@@ -613,10 +642,10 @@ function _targetSheet() {
 }
 
 function updateSaveBtn() {
-  const name = document.getElementById('student-name').value.trim();
-  const sid  = document.getElementById('student-id').value.trim();
+  const sid = document.getElementById('student-id').value.trim();
+  const regOk = state.reg.sid === sid && ['ok', 'unknown'].includes(state.reg.status);
   document.getElementById('btn-save').disabled =
-    !(state.answers.length && (name || sid) && _targetSheet());
+    !(state.answers.length && sid && regOk && _targetSheet());
 }
 
 const _esc = s => String(s == null ? '' : s)
@@ -685,6 +714,13 @@ async function saveResult(force) {
   if (res.status === 409 && res.data.exists) {
     showOverwritePrompt(res.data.existing || {});
     btn.disabled = false;
+    return;
+  }
+  if (res.data.not_registered) {
+    state.reg = {sid: payload.exam_id, status: 'missing'};
+    setSt('lookup-status', 'error', '❌ Documento <b>no registrado</b>. Revisa que esté bien escrito.');
+    setSt('save-status', 'error', '❌ ' + _esc(res.data.error || 'Documento no registrado.'));
+    updateSaveBtn();
     return;
   }
   if (_retryable(res)) {
@@ -850,6 +886,7 @@ function nextStudent() {
   resetScanState();
   document.getElementById('student-id').value = '';
   document.getElementById('student-name').value = '';
+  state.reg = {sid: '', status: ''};
   setSt('lookup-status', '', '');
   setSt('save-status', '', '');
   document.getElementById('btn-next').style.display = 'none';
