@@ -1117,11 +1117,11 @@
       <!-- Filtros (aparecen tras generar) -->
       <div id="r-filter-bar" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:end;">
         <div style="flex:1 1 100%;">
-          <label style="font-size:.78rem;color:var(--muted);" title="Mañana: cursos 01 a 05 · Tarde: cursos 06 a 10">🌓 Jornada</label>
+          <label style="font-size:.78rem;color:var(--muted);" title="Mañana: cursos 01 a 05 (9° y 10°: 01 a 04) · Tarde: el resto">🌓 Jornada</label>
           <select id="r-jornada-select" onchange="onJornadaChange()">
             <option value="">Todas</option>
-            <option value="manana">☀️ Mañana (01–05)</option>
-            <option value="tarde">🌙 Tarde (06–10)</option>
+            <option value="manana">☀️ Mañana</option>
+            <option value="tarde">🌙 Tarde</option>
           </select>
         </div>
         <div style="flex:1;min-width:90px;">
@@ -3105,13 +3105,18 @@ function _refreshSimulacroSelect() {
 let unifiedResults = null;      // vista activa (filtrada por jornada)
 let unifiedResultsAll = null;   // todos los estudiantes del simulacro
 
-// ── Jornada: mañana = cursos terminados en 01–05, tarde = 06–10 ──
+// ── Jornada según el número del curso ──
+//   6°, 7°, 8° (y demás): mañana = 01–05, tarde = 06–10
+//   9° y 10°:             mañana = 01–04, tarde = 05–10
+const _JORNADA_ULTIMO_MANANA = {'9': 4, '10': 4};
 function _jornadaDe(curso) {
-  const m = /(\d{2})\s*$/.exec(String(curso || '').trim());
+  const c = String(curso || '').trim();
+  const m = /(\d{2})\s*$/.exec(c);
   if (!m) return '';
   const n = parseInt(m[1], 10);
-  if (n >= 1 && n <= 5)  return 'manana';
-  if (n >= 6 && n <= 10) return 'tarde';
+  const ultimo = _JORNADA_ULTIMO_MANANA[String(gradoDeCurso(c))] || 5;
+  if (n >= 1 && n <= ultimo) return 'manana';
+  if (n > ultimo && n <= 10) return 'tarde';
   return '';
 }
 function _jornadaSel() {
