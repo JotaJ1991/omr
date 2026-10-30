@@ -1812,6 +1812,27 @@ def _compute_nat_subscores_grade10(ans, key, anuladas_set=None):
     return {'quim': block_score(61, 80), 'fis': block_score(81, 100)}
 
 
+def _quimfis_from_distribution(dist, answers_by_ses, keys_by_ses, anu_by_ses):
+    """10° en simulacro COMPLETO: Naturales viene en dos bloques, uno por
+    sesión (p.ej. 1S P92-P120 = Bioquímica, 2S P51-P79 = Física). Devuelve
+    {'quim', 'fis'} 0-100 con el bloque de la 1S y el de la 2S, o None si
+    la distribución no tiene exactamente un bloque de Naturales por sesión
+    (entonces aplica el desglose histórico de media jornada)."""
+    nat = [e for e in (dist or []) if e.get('materia') == 'Naturales']
+    by_ses = {}
+    for e in nat:
+        by_ses.setdefault((e.get('sesion') or '').upper(), []).append(e)
+    if set(by_ses) != {'1S', '2S'}:
+        return None
+    sub = {}
+    for ses, k in (('1S', 'quim'), ('2S', 'fis')):
+        sc = _score_student_with_distribution(
+            answers_by_ses, keys_by_ses, by_ses[ses],
+            anuladas_by_session=anu_by_ses)
+        sub[k] = sc['Naturales']
+    return sub
+
+
 def _score_student_with_distribution(answers_by_session, keys_by_session,
                                      distribucion, anuladas_by_session=None):
     """
@@ -2074,7 +2095,7 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
             anu_idx = {}
 
     sessions = [ses for ses, _ in session_sheets]
-    with_quimfis = (tipo == 'media')
+    with_quimfis = (tipo == 'media')   # en 'completo' se activa si hay 10°
     keys_by_grade = {}      # {grado: {ses: clave}}
     anuladas_by_grade = {}  # {grado: {ses: [preguntas]}}
 
@@ -2129,19 +2150,27 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
             'ing':      ing,
             'general':  general,
         }
-        if with_quimfis:
-            # Solo grado 10°: descomponer Naturales en Química (P61-P80) y
-            # Física (P81-P100). Para otros grados queda vacío.
-            quim, fis = '', ''
-            if str(grado) == '10':
+        # Solo grado 10°: descomponer Naturales en Química y Física.
+        # Completo: un bloque de Naturales por sesión (1S = Química/
+        # Bioquímica, 2S = Física). Media: P61-P80 y P81-P100.
+        quim, fis = '', ''
+        if str(grado) == '10':
+            sub = None
+            if tipo == 'completo':
+                sub = _quimfis_from_distribution(dist, answers_by_ses, kfor, anu_for)
+            elif with_quimfis:
                 sub = _compute_nat_subscores_grade10(
                     answers_by_ses[sessions[0]], kfor[sessions[0]],
                     set(anu_for[sessions[0]] or []))
+            if sub:
                 quim = _rh(sub['quim'])
                 fis  = _rh(sub['fis'])
+                with_quimfis = True
+        if with_quimfis or quim != '':
             entry['quim']  = quim
             entry['fis']   = fis
             entry['grado'] = grado
+        if tipo == 'media':
             # 'general' debe quedar después de ing en el orden histórico de
             # la fila, pero en el dict el orden no afecta la escritura.
             entry['type']  = 'M'
