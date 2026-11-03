@@ -12,7 +12,7 @@ import secrets
 from flask import Flask, request, jsonify, render_template, session, Response
 from werkzeug.utils import secure_filename
 from omr_processor import process_exam_image, _parse_qr_payload
-from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID
+from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID, profile_override
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet, generate_sipagre_results,
@@ -272,6 +272,21 @@ def process():
             traceback.print_exc()
             effective_total_q = None
 
+    # Formato físico especial para esta hoja (p.ej. 2.ª sesión de 10° de
+    # IETECI OCTUBRE 2026 impresa en el formato A-H): cambiar de perfil.
+    try:
+        from sheets_connector import _grade_from_course_name as _gfc
+        _ses = ((request.form.get('sesion') or '').strip().upper()
+                or {'1SSIPAGRE': '1S', '2SSIPAGRE': '2S'}.get(pid, ''))
+        _ov = profile_override(sim_req, _gfc(curso_req), _ses) if curso_req else ''
+        if _ov and _ov != pid:
+            print(f'[/process] formato especial: {pid} -> {_ov}', flush=True)
+            pid = _ov
+            profile = get_profile(pid)
+            total_q = profile['total_q']
+    except Exception:
+        traceback.print_exc()
+
     current_raw = request.form.get('current_answers', '')
     try:
         current = json.loads(current_raw) if current_raw else []
@@ -383,6 +398,7 @@ def process():
             'filled_qs':   filled[:20],
             'total_q':     total_q,
             'profile_id':  pid,
+            'options_per_q': _build_options_per_q(profile)[:total_q],
             'debug_image': img_b64,
             'qr':          qr_info,   # info del estudiante si la hoja tiene QR
         })

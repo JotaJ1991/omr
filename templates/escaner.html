@@ -461,6 +461,10 @@ async function processPhoto() {
       return;
     }
     state.answers = d.answers || [];
+    // El servidor puede usar otro formato (p.ej. hoja A-H): sus opciones
+    if (Array.isArray(d.options_per_q) && d.options_per_q.length) {
+      state.optionsPerQ = d.options_per_q;
+    }
     state.photoCount++;
     if (d.debug_image) {
       const img = document.getElementById('debug-img');

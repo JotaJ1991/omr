@@ -7249,6 +7249,10 @@ async function processPhoto() {
     }
 
     state.answers    = data.answers;
+    // El servidor puede usar otro formato físico (p.ej. hoja A-H)
+    if (Array.isArray(data.options_per_q) && data.options_per_q.length) {
+      state.optionsPerQ = data.options_per_q;
+    }
     state.confidence = data.confidence;
     state.photoCount++;
     state.lastNewFilled = isFirstPhoto ? [] : (data.filled_qs || []);

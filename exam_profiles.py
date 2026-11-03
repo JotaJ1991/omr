@@ -171,6 +171,52 @@ SIPAGRE_2S = {
 
 
 # ---------------------------------------------------------------------------
+# 2S SIPAGRE A-H  —  Hoja de la 2.ª sesión de 10° (IETECI OCTUBRE 2026)
+#   impresa por error con el formato de 140 burbujas:
+#   Col 1-2: A-D  |  Col 3-4: A-H  (P1-P140)
+# ---------------------------------------------------------------------------
+SIPAGRE_2S_AH = {
+    'id':    '2SSIPAGRE_AH',
+    'name':  '2S SIPAGRE A-H — 140 preguntas (col 3-4 A-H)',
+    'total_q': 140,
+    'work_w':  1275,
+    'work_h':  1650,
+
+    # Posiciones medidas sobre una foto real (Respuestas 10° S2, oct-2026):
+    # las columnas 3-4 son más anchas (8 opciones), así que las columnas
+    # 1-3 quedan más a la izquierda que en el 1S/2S SIPAGRE.
+    'columns': [
+        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.065, 0.090, 0.115, 0.140],
+         'timing_fx': 0.017},
+        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.281, 0.306, 0.330, 0.355],
+         'timing_fx': 0.233},
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.497, 0.522, 0.547, 0.571, 0.596, 0.621, 0.646, 0.671],
+         'timing_fx': 0.452},
+        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.794, 0.819, 0.845, 0.870, 0.895, 0.919, 0.944, 0.969],
+         'timing_fx': 0.746},
+    ],
+
+    'answers_top_f':    0.175,
+    'answers_bottom_f': 0.977,
+    'bubble_radius':     9,
+    'snap_range':        3,
+    'fill_threshold':   0.10,
+    'min_contrast':     0.06,
+    'binarize_block':   25,
+    'binarize_c':        6,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.75,
+    # Marca real: oscuridad >= 0.55 (marcas ~0.85; vacías <= 0.45)
+    'min_mark_dark':     0.55,
+}
+
+
+# ---------------------------------------------------------------------------
 # M SIPAGRE  —  Una sola jornada, 125 preguntas
 #   Geometría: 4 columnas. La columna 4 lee solo hasta P125.
 # ---------------------------------------------------------------------------
@@ -276,6 +322,7 @@ PROFILES = {
     SIPAGRE_1S['id']: SIPAGRE_1S,
     SIPAGRE_2S['id']: SIPAGRE_2S,
     M_SIPAGRE['id']:  M_SIPAGRE,
+    SIPAGRE_2S_AH['id']: SIPAGRE_2S_AH,
 }
 
 # Lista ordenada para la UI
@@ -283,7 +330,21 @@ PROFILE_LIST = [
     {'id': SIPAGRE_1S['id'], 'name': SIPAGRE_1S['name']},
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
+    {'id': SIPAGRE_2S_AH['id'], 'name': SIPAGRE_2S_AH['name']},
 ]
+
+# Formatos físicos distintos al habitual en un (simulacro, grado, sesión):
+# el servidor cambia el perfil solo, así los escáneres no eligen nada.
+FORMAT_OVERRIDES = {
+    # 2.ª sesión de 10° impresa por error en el formato A-H de 140 burbujas
+    ('IETECI OCTUBRE 2026', '10', '2S'): SIPAGRE_2S_AH['id'],
+}
+
+
+def profile_override(simulacro: str, grado: str, sesion: str) -> str:
+    """ID de perfil que reemplaza al habitual para esa hoja, o ''."""
+    return FORMAT_OVERRIDES.get(((simulacro or '').strip(), str(grado or '').strip(),
+                                 (sesion or '').strip().upper()), '')
 
 DEFAULT_PROFILE_ID = SIPAGRE_1S['id']
 

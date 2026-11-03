@@ -265,7 +265,64 @@ def _correct_perspective(gray, profile):
         if result is not None:
             return _warp(gray, result, W, H), True
 
+    # ── Estrategia 3: cuadrados anidados (fondo oscuro detrás de la hoja) ──
+    # Con un fondo negro (tabla, escritorio) el fondo forma un contorno que
+    # ENVUELVE la hoja y RETR_EXTERNAL no ve las guías. Se buscan cuadrados
+    # sólidos en TODOS los contornos y se toman los extremos de cada diagonal.
+    for mode in ('adaptive', 'otsu'):
+        if mode == 'otsu':
+            _, thr = cv2.threshold(blurred, 0, 255,
+                                   cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        else:
+            bs = max(31, (w // 10) | 1)
+            thr = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                        cv2.THRESH_BINARY_INV, bs, 18)
+        result = _find_fiducials_nested(thr, w, h)
+        if result is not None:
+            return _warp(gray, result, W, H), True
+
     return cv2.resize(gray, (W, H)), False
+
+
+def _find_fiducials_nested(binary, w, h):
+    """Guías = cuadrados sólidos (4 vértices, convexos) en cualquier nivel de
+    anidamiento; se eligen los más extremos de cada diagonal y se valida que
+    formen una hoja razonable. Devuelve [tl, tr, br, bl] (centros) o None."""
+    cnts, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    frame = w * h
+    min_a, max_a = frame * 0.00008, frame * 0.02
+    cands = []
+    for c in cnts:
+        a = cv2.contourArea(c)
+        if a < min_a or a > max_a:
+            continue
+        x, y, bw, bh = cv2.boundingRect(c)
+        if not bh or not 0.6 < bw / bh < 1.65 or a / float(bw * bh) <= 0.55:
+            continue
+        ap = cv2.approxPolyDP(c, 0.03 * cv2.arcLength(c, True), True)
+        if len(ap) == 4 and cv2.isContourConvex(ap):
+            cands.append((x + bw / 2.0, y + bh / 2.0, a))
+    if len(cands) < 4:
+        return None
+    tl = min(cands, key=lambda p: p[0] + p[1])
+    br = max(cands, key=lambda p: p[0] + p[1])
+    tr = max(cands, key=lambda p: p[0] - p[1])
+    bl = min(cands, key=lambda p: p[0] - p[1])
+    q = [tl, tr, br, bl]
+    if len(set(q)) < 4:
+        return None
+    areas = [p[2] for p in q]
+    if max(areas) / min(areas) > 5:
+        return None
+    poly = sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1]
+               for i in range(4))
+    if abs(poly) / 2 < frame * 0.10:
+        return None
+    d = lambda a, b: ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+    wT, wB, hL, hR = d(tl, tr), d(bl, br), d(tl, bl), d(tr, br)
+    if min(wT, wB) / max(wT, wB) < 0.6 or min(hL, hR) / max(hL, hR) < 0.6:
+        return None
+    return [(int(round(p[0])), int(round(p[1]))) for p in q]
 
 
 def _find_fiducials(binary, w, h):
@@ -527,6 +584,12 @@ def _read_answers(binary, gray, y_rows, profile):
                 fills.append(best_fill)
                 darks.append(best_dark)
             ans, conf = _pick_answer(fills, darks, options, threshold, min_contrast)
+            # Filtro opcional por oscuridad (perfiles con 8 opciones cuyo aro
+            # impreso infla el "fill" de burbujas vacías): una marca real debe
+            # ser oscura en la imagen en grises, no solo en la binaria.
+            min_dark = profile.get('min_mark_dark')
+            if min_dark and ans != '?' and darks[options.index(ans)] < min_dark:
+                ans, conf = '?', 0.0
             answers.append(ans)
             confs.append(conf)
 
