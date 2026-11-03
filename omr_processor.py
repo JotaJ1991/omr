@@ -539,6 +539,10 @@ def _read_answers(binary, gray, y_rows, profile):
     fill_radius  = max(1, int(radius * inner_ratio))
     edge_margin  = radius + 4
     circle_mask  = _make_circle_mask(radius, fill_radius)
+    gap          = profile.get('min_mark_gap')
+    # Núcleo de la burbuja (sin el aro impreso): ahí una vacía es papel
+    # blanco y cualquier marca, aun de lápiz suave, la oscurece.
+    core_mask    = _make_circle_mask(radius, max(3, int(radius * 0.5)))
 
     for col in profile['columns']:
         xs      = [int(fx * w) for fx in col['bubble_fx']]
@@ -559,6 +563,7 @@ def _read_answers(binary, gray, y_rows, profile):
             y = y_rows[row_idx]
             fills     = []
             darks     = []
+            cores     = []
             for x in xs:
                 best_fill = 0.0
                 best_dark = 0.0
@@ -583,17 +588,39 @@ def _read_answers(binary, gray, y_rows, profile):
                     best_dark = _measure_darkness(gray, x, y, radius, circle_mask)
                 fills.append(best_fill)
                 darks.append(best_dark)
+                if gap:
+                    cores.append(max(
+                        _measure_darkness(gray, x + dx, y + dy, radius, core_mask)
+                        for dy in (-2, 0, 2) for dx in (-2, 0, 2)))
             ans, conf = _pick_answer(fills, darks, options, threshold, min_contrast)
-            # Filtro opcional por oscuridad (perfiles con 8 opciones cuyo aro
-            # impreso infla el "fill" de burbujas vacías): una marca real debe
-            # ser oscura en la imagen en grises, no solo en la binaria.
-            min_dark = profile.get('min_mark_dark')
-            if min_dark and ans != '?' and darks[options.index(ans)] < min_dark:
-                ans, conf = '?', 0.0
+            # Validación opcional por oscuridad RELATIVA del núcleo (perfiles con 8
+            # opciones cuyo aro impreso infla el "fill" de burbujas vacías).
+            # Se compara contra la mediana de la fila — no contra un umbral
+            # fijo — para que no dependa de la luz de la foto ni de qué tan
+            # fuerte marcó el estudiante (lápiz suave vs. lapicero).
+            if gap:
+                ans, conf = _check_dark_gap(cores, options, ans, conf, gap)
             answers.append(ans)
             confs.append(conf)
 
     return answers, confs
+
+
+def _check_dark_gap(cores, options, ans, conf, gap):
+    """Decide por la oscuridad del NÚCLEO de cada burbuja, relativa a su
+    fila: la marcada debe ser al menos `gap` más oscura que la mediana (las
+    vacías) y sobresalir también de la segunda más oscura (si no, es un
+    degradé de luz o una doble marca). Así se aceptan marcas de lápiz suave
+    que la binarización no vio y se descartan aros impresos y sombras."""
+    med = float(np.median(cores))
+    order = sorted(range(len(cores)), key=lambda k: -cores[k])
+    d1, d2 = cores[order[0]], cores[order[1]]
+    if d1 - med < gap or d1 - d2 < gap * 0.6:
+        return '?', 0.0
+    best = options[order[0]]
+    if best == ans:
+        return ans, conf
+    return best, round(min(90.0, (d1 - med) / gap * 20), 1)
 
 
 def _z_score(values, idx):

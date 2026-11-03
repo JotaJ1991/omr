@@ -211,8 +211,10 @@ SIPAGRE_2S_AH = {
     'clahe_clip':        2.5,
     'clahe_grid':       (8, 8),
     'mask_inner_ratio':  0.75,
-    # Marca real: oscuridad >= 0.55 (marcas ~0.85; vacías <= 0.45)
-    'min_mark_dark':     0.55,
+    # Marca real: núcleo >= 0.08 más oscuro que la mediana de su fila
+    # (relativo a la foto: marcas fuertes ~+0.45, lápiz suave ~+0.10;
+    # filas vacías <= +0.06 aun con foto oscura o con sombra)
+    'min_mark_gap':      0.08,
 }
 
 
