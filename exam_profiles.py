@@ -182,7 +182,8 @@ SIPAGRE_2S_AH = {
     'work_w':  1275,
     'work_h':  1650,
 
-    # Posiciones medidas sobre una foto real (Respuestas 10° S2, oct-2026):
+    # Posiciones medidas sobre una foto real (Respuestas 10° S2, oct-2026)
+    # y ajustadas a mano por el docente con el calibrador visual:
     # las columnas 3-4 son más anchas (8 opciones), así que las columnas
     # 1-3 quedan más a la izquierda que en el 1S/2S SIPAGRE.
     'columns': [
@@ -196,13 +197,13 @@ SIPAGRE_2S_AH = {
          'bubble_fx': [0.497, 0.522, 0.547, 0.571, 0.596, 0.621, 0.646, 0.671],
          'timing_fx': 0.452},
         {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D','E','F','G','H'],
-         'bubble_fx': [0.794, 0.819, 0.845, 0.870, 0.895, 0.919, 0.944, 0.969],
+         'bubble_fx': [0.7948, 0.8198, 0.8458, 0.8708, 0.8958, 0.9198, 0.9448, 0.9698],
          'timing_fx': 0.746},
     ],
 
-    'answers_top_f':    0.175,
-    'answers_bottom_f': 0.977,
-    'bubble_radius':     9,
+    'answers_top_f':    0.1726,
+    'answers_bottom_f': 0.9776,
+    'bubble_radius':    11,
     'snap_range':        3,
     'fill_threshold':   0.10,
     'min_contrast':     0.06,
