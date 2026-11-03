@@ -188,7 +188,7 @@ SIPAGRE_2S_AH = {
     # 1-3 quedan más a la izquierda que en el 1S/2S SIPAGRE.
     'columns': [
         {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
-         'bubble_fx': [0.065, 0.090, 0.115, 0.140],
+         'bubble_fx': [0.0658, 0.0908, 0.1158, 0.1408],
          'timing_fx': 0.017},
         {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D'],
          'bubble_fx': [0.281, 0.306, 0.330, 0.355],
