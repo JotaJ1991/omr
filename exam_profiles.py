@@ -220,6 +220,49 @@ SIPAGRE_2S_AH = {
 
 
 # ---------------------------------------------------------------------------
+# 2S SIPAGRE 9° — formato impreso por error en la 2.ª sesión de 9°
+#   (IETECI OCTUBRE 2026): columnas 1 y 4 A-D, columnas 2 y 3 A-H.
+#   Geometría medida sobre el PDF original (HOJA DE RESPUESTA 9° 2 SESION)
+#   pasado por el mismo enderezado que las fotos.
+# ---------------------------------------------------------------------------
+SIPAGRE_2S_AH9 = {
+    'id':    '2SSIPAGRE_AH9',
+    'name':  '2S SIPAGRE 9° — 140 preguntas (col 2-3 A-H)',
+    'total_q': 140,
+    'work_w':  1275,
+    'work_h':  1650,
+
+    'columns': [
+        {'q_start':   1, 'q_end':  35, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.0694, 0.0937, 0.1188, 0.1431],
+         'timing_fx': 0.0165},
+        {'q_start':  36, 'q_end':  70, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.2851, 0.3094, 0.3345, 0.3588, 0.3839, 0.4082, 0.4325, 0.4576],
+         'timing_fx': 0.2322},
+        {'q_start':  71, 'q_end': 105, 'options': ['A','B','C','D','E','F','G','H'],
+         'bubble_fx': [0.5753, 0.6004, 0.6247, 0.6498, 0.6741, 0.6992, 0.7235, 0.7486],
+         'timing_fx': 0.5184},
+        {'q_start': 106, 'q_end': 140, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.8663, 0.8914, 0.9157, 0.9408],
+         'timing_fx': 0.8141},
+    ],
+
+    'answers_top_f':    0.1756,
+    'answers_bottom_f': 0.9777,
+    'bubble_radius':    11,
+    'snap_range':        3,
+    'fill_threshold':   0.10,
+    'min_contrast':     0.06,
+    'binarize_block':   25,
+    'binarize_c':        6,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.75,
+    'min_mark_gap':      0.08,   # igual que el A-H de 10°
+}
+
+
+# ---------------------------------------------------------------------------
 # M SIPAGRE  —  Una sola jornada, 125 preguntas
 #   Geometría: 4 columnas. La columna 4 lee solo hasta P125.
 # ---------------------------------------------------------------------------
@@ -326,6 +369,7 @@ PROFILES = {
     SIPAGRE_2S['id']: SIPAGRE_2S,
     M_SIPAGRE['id']:  M_SIPAGRE,
     SIPAGRE_2S_AH['id']: SIPAGRE_2S_AH,
+    SIPAGRE_2S_AH9['id']: SIPAGRE_2S_AH9,
 }
 
 # Lista ordenada para la UI
@@ -334,6 +378,7 @@ PROFILE_LIST = [
     {'id': SIPAGRE_2S['id'], 'name': SIPAGRE_2S['name']},
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
     {'id': SIPAGRE_2S_AH['id'], 'name': SIPAGRE_2S_AH['name']},
+    {'id': SIPAGRE_2S_AH9['id'], 'name': SIPAGRE_2S_AH9['name']},
 ]
 
 # Formatos físicos distintos al habitual en un (simulacro, grado, sesión):
@@ -341,6 +386,8 @@ PROFILE_LIST = [
 FORMAT_OVERRIDES = {
     # 2.ª sesión de 10° impresa por error en el formato A-H de 140 burbujas
     ('IETECI OCTUBRE 2026', '10', '2S'): SIPAGRE_2S_AH['id'],
+    # 2.ª sesión de 9°: columnas 2 y 3 A-H (1 y 4 A-D)
+    ('IETECI OCTUBRE 2026', '9', '2S'): SIPAGRE_2S_AH9['id'],
 }
 
 
