@@ -220,14 +220,14 @@ SIPAGRE_2S_AH = {
 
 
 # ---------------------------------------------------------------------------
-# 2S SIPAGRE 9° — formato impreso por error en la 2.ª sesión de 9°
+# 2S SIPAGRE 6°/9° — formato impreso por error en la 2.ª sesión de 6° y 9°
 #   (IETECI OCTUBRE 2026): columnas 1 y 4 A-D, columnas 2 y 3 A-H.
 #   Geometría medida sobre el PDF original (HOJA DE RESPUESTA 9° 2 SESION)
 #   pasado por el mismo enderezado que las fotos.
 # ---------------------------------------------------------------------------
 SIPAGRE_2S_AH9 = {
     'id':    '2SSIPAGRE_AH9',
-    'name':  '2S SIPAGRE 9° — 140 preguntas (col 2-3 A-H)',
+    'name':  '2S SIPAGRE 6°/9° — 140 preguntas (col 2-3 A-H)',
     'total_q': 140,
     'work_w':  1275,
     'work_h':  1650,
@@ -386,7 +386,8 @@ PROFILE_LIST = [
 FORMAT_OVERRIDES = {
     # 2.ª sesión de 10° impresa por error en el formato A-H de 140 burbujas
     ('IETECI OCTUBRE 2026', '10', '2S'): SIPAGRE_2S_AH['id'],
-    # 2.ª sesión de 9°: columnas 2 y 3 A-H (1 y 4 A-D)
+    # 2.ª sesión de 6° y 9°: columnas 2 y 3 A-H (1 y 4 A-D)
+    ('IETECI OCTUBRE 2026', '6', '2S'): SIPAGRE_2S_AH9['id'],
     ('IETECI OCTUBRE 2026', '9', '2S'): SIPAGRE_2S_AH9['id'],
 }
 
