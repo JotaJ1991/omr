@@ -263,6 +263,49 @@ SIPAGRE_2S_AH9 = {
 
 
 # ---------------------------------------------------------------------------
+# PRIMARIA 60 — hoja para primaria: 60 preguntas A-D en 3 columnas de 20,
+#   burbujas de 7 mm con la letra dentro (templates_latex/primaria_60.tex).
+#   Geometría medida sobre el PDF pasado por el enderezado de las fotos.
+# ---------------------------------------------------------------------------
+PRIMARIA_60 = {
+    'id':    'PRIMARIA60',
+    'name':  'Primaria — 60 preguntas (burbuja grande)',
+    'total_q': 60,
+    'work_w':  1275,
+    'work_h':  1650,
+
+    'columns': [
+        {'q_start':  1, 'q_end': 20, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.1204, 0.1745, 0.2294, 0.2843],
+         'timing_fx': 0.0173},
+        {'q_start': 21, 'q_end': 40, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.4608, 0.5157, 0.5698, 0.6247],
+         'timing_fx': 0.3576},
+        {'q_start': 41, 'q_end': 60, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.8020, 0.8561, 0.9110, 0.9659],
+         'timing_fx': 0.6988},
+    ],
+
+    'answers_top_f':    0.1951,
+    'answers_bottom_f': 0.9619,
+    'bubble_radius':    16,      # la burbuja real mide ~22 px; se lee el interior
+    'snap_range':        3,
+    'fill_threshold':   0.10,
+    'min_contrast':     0.06,
+    'binarize_block':   25,
+    'binarize_c':        6,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.75,
+    # Niños: marcas pequeñas, descentradas o garabateadas → buscar el núcleo
+    # más oscuro en toda la burbuja (±8 px). Umbral más alto que en
+    # bachillerato para que un borrón no se lea como respuesta.
+    'core_search':       8,
+    'min_mark_gap':      0.16,
+}
+
+
+# ---------------------------------------------------------------------------
 # M SIPAGRE  —  Una sola jornada, 125 preguntas
 #   Geometría: 4 columnas. La columna 4 lee solo hasta P125.
 # ---------------------------------------------------------------------------
@@ -370,6 +413,7 @@ PROFILES = {
     M_SIPAGRE['id']:  M_SIPAGRE,
     SIPAGRE_2S_AH['id']: SIPAGRE_2S_AH,
     SIPAGRE_2S_AH9['id']: SIPAGRE_2S_AH9,
+    PRIMARIA_60['id']: PRIMARIA_60,     # aún sin listar en la UI
 }
 
 # Lista ordenada para la UI

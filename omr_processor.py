@@ -543,6 +543,11 @@ def _read_answers(binary, gray, y_rows, profile):
     # Núcleo de la burbuja (sin el aro impreso): ahí una vacía es papel
     # blanco y cualquier marca, aun de lápiz suave, la oscurece.
     core_mask    = _make_circle_mask(radius, max(3, int(radius * 0.5)))
+    # Cuánto se busca el núcleo más oscuro alrededor del centro (px). En
+    # burbujas grandes (primaria) una marca pequeña o descentrada no cae en
+    # el centro exacto: 'core_search' amplía la búsqueda dentro de la burbuja.
+    cs           = int(profile.get('core_search', 2))
+    core_shifts  = sorted({-cs, -cs // 2, 0, cs // 2, cs}) if cs > 2 else (-2, 0, 2)
 
     for col in profile['columns']:
         xs      = [int(fx * w) for fx in col['bubble_fx']]
@@ -591,7 +596,7 @@ def _read_answers(binary, gray, y_rows, profile):
                 if gap:
                     cores.append(max(
                         _measure_darkness(gray, x + dx, y + dy, radius, core_mask)
-                        for dy in (-2, 0, 2) for dx in (-2, 0, 2)))
+                        for dy in core_shifts for dx in core_shifts))
             ans, conf = _pick_answer(fills, darks, options, threshold, min_contrast)
             # Validación opcional por oscuridad RELATIVA del núcleo (perfiles con 8
             # opciones cuyo aro impreso infla el "fill" de burbujas vacías).

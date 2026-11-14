@@ -1,0 +1,141 @@
+% ─────────────────────────────────────────────────────────────────────────────
+% HOJA DE RESPUESTAS — PRIMARIA · 60 preguntas A-D
+%
+% Todo se dibuja con coordenadas ABSOLUTAS en mm desde la esquina superior
+% izquierda de la hoja carta (215.9 x 279.4 mm), con "y" hacia abajo. Así la
+% geometría es exacta y el perfil OMR ('PRIMARIA60' en exam_profiles.py) se
+% mide directamente de este PDF.
+%
+% Guías OMR (las mismas de las hojas SIPAGRE):
+%   · 4 cuadros negros de 8 mm en las esquinas (enderezan la foto)
+%   · 1 marca negra por fila a la izquierda de cada columna (ubican las filas)
+%
+% Compilar 2 veces:  pdflatex primaria_60.tex
+% ─────────────────────────────────────────────────────────────────────────────
+\documentclass[letterpaper]{article}
+\usepackage[margin=0pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{helvet}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\renewcommand{\familydefault}{\sfdefault}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+% ── Geometría (mm) ───────────────────────────────────────────────────────────
+\def\Brad{3.5}        % radio de la burbuja  → 7 mm de diámetro
+\def\RowPitch{9.5}    % distancia entre filas
+\def\OptPitch{10.5}   % distancia entre opciones A-B-C-D
+\def\RowOne{65}       % y del centro de la fila 1
+\def\BoxTop{52.5}     % borde superior de las cajas de respuestas
+\def\BoxBot{252}      % borde inferior
+\def\BoxW{61}         % ancho de cada caja
+\def\LetY{58}         % y de las letras A B C D sobre cada columna
+
+% Caja de 20 preguntas.  #1 = x del borde izquierdo,  #2 = primera pregunta
+\newcommand{\Columna}[2]{%
+  \draw[rounded corners=3mm, line width=0.9pt, black!75]
+        (#1,\BoxTop) rectangle (#1+\BoxW,\BoxBot);
+  % letras de encabezado
+  \foreach \opt/\k in {A/0,B/1,C/2,D/3}{
+    \node[font=\bfseries\fontsize{13}{13}\selectfont]
+         at (#1+23+\k*\OptPitch,\LetY) {\opt};
+  }
+  \foreach \r in {0,...,19}{
+    \pgfmathsetmacro{\yy}{\RowOne+\r*\RowPitch}
+    \pgfmathtruncatemacro{\num}{#2+\r}
+    % marca de fila (timing mark): 3.5 x 4.5 mm
+    \fill[black] (#1+3,\yy-2.25) rectangle (#1+6.5,\yy+2.25);
+    % número de pregunta
+    \node[anchor=east, inner sep=0pt, font=\bfseries\fontsize{12}{12}\selectfont]
+         at (#1+17,\yy) {\num.};
+    % burbujas con su letra en gris claro
+    \foreach \opt/\k in {A/0,B/1,C/2,D/3}{
+      \draw[line width=0.75pt, black!75, fill=white]
+           (#1+23+\k*\OptPitch,\yy) circle (\Brad);
+      \node[inner sep=0pt, text=black!27,
+            font=\bfseries\fontsize{10}{10}\selectfont]
+           at (#1+23+\k*\OptPitch,\yy) {\opt};
+    }
+  }
+  % separador cada 5 preguntas (ayuda a no perder la fila)
+  \foreach \g in {5,10,15}{
+    \pgfmathsetmacro{\ys}{\RowOne+(\g-0.5)*\RowPitch}
+    \draw[line width=0.5pt, black!40] (#1+8.5,\ys) -- (#1+\BoxW-2.5,\ys);
+  }
+}
+
+\begin{document}
+\begin{tikzpicture}[remember picture, overlay]
+\begin{scope}[shift={(current page.north west)}, x=1mm, y=-1mm]
+
+  % ── 4 CUADROS DE ESQUINA (no mover: los usa el escáner) ──────────────────
+  \fill[black] (8,8)       rectangle (16,16);
+  \fill[black] (199.9,8)   rectangle (207.9,16);
+  \fill[black] (8,255.4)   rectangle (16,263.4);
+  \fill[black] (199.9,255.4) rectangle (207.9,263.4);
+
+  % ── ENCABEZADO ───────────────────────────────────────────────────────────
+  \draw[rounded corners=3mm, line width=1.2pt] (20,8) rectangle (196,41);
+  \node[inner sep=0pt] at (34,24.5)
+       {\includegraphics[width=25mm]{../static/sipagre_logo_sm.png}};
+  \node[anchor=west, inner sep=0pt, font=\bfseries\fontsize{13.5}{14}\selectfont]
+       at (50,14.2) {SIPAGRE · SIMULACRO PARA GRANDES RETOS};
+  % insignia PRIMARIA
+  \fill[black, rounded corners=2.2mm] (163,10.4) rectangle (193,18);
+  \node[text=white, inner sep=0pt, font=\bfseries\fontsize{11.5}{12}\selectfont]
+       at (178,14.2) {PRIMARIA};
+
+  % líneas para escribir (altas, para letra de niño)
+  \draw[line width=0.8pt] (50,27) -- (193,27);
+  \node[anchor=north west, inner sep=0pt, font=\bfseries\fontsize{7.5}{8}\selectfont]
+       at (50,28) {NOMBRES Y APELLIDOS};
+  \draw[line width=0.8pt] (50,36.5) -- (118,36.5);
+  \node[anchor=north west, inner sep=0pt, font=\bfseries\fontsize{7.5}{8}\selectfont]
+       at (50,37.5) {DOCUMENTO DE IDENTIDAD};
+  \draw[line width=0.8pt] (124,36.5) -- (152,36.5);
+  \node[anchor=north west, inner sep=0pt, font=\bfseries\fontsize{7.5}{8}\selectfont]
+       at (124,37.5) {CURSO};
+  \draw[line width=0.8pt] (158,36.5) -- (193,36.5);
+  \node[anchor=north west, inner sep=0pt, font=\bfseries\fontsize{7.5}{8}\selectfont]
+       at (158,37.5) {FECHA};
+
+  % ── INSTRUCCIÓN CON EJEMPLOS ─────────────────────────────────────────────
+  \node[anchor=west, inner sep=0pt, font=\fontsize{10.5}{11}\selectfont]
+       at (13,47) {\textbf{Rellena TODO el círculo} con lápiz. Si te equivocas, borra muy bien.};
+  \node[anchor=east, inner sep=0pt, font=\bfseries\fontsize{10.5}{11}\selectfont]
+       at (139,47) {Así sí:};
+  \fill[black!88] (144,47) circle (2.6);
+  \node[anchor=east, inner sep=0pt, font=\bfseries\fontsize{10.5}{11}\selectfont]
+       at (166,47) {Así no:};
+  % ✗
+  \draw[line width=0.6pt, black!75] (171,47) circle (2.6);
+  \draw[line width=0.9pt] (169.3,45.3) -- (172.7,48.7) (169.3,48.7) -- (172.7,45.3);
+  % ✓
+  \draw[line width=0.6pt, black!75] (179,47) circle (2.6);
+  \draw[line width=0.9pt] (177.3,47.2) -- (178.6,48.7) -- (181.2,45.2);
+  % punto pequeño
+  \draw[line width=0.6pt, black!75] (187,47) circle (2.6);
+  \fill[black!88] (187,47) circle (0.9);
+  % a medias
+  \draw[line width=0.6pt, black!75] (195,47) circle (2.6);
+  \begin{scope}
+    \clip (195,47) circle (2.6);
+    \fill[black!88] (192,47) rectangle (198,50);
+  \end{scope}
+
+  % ── RESPUESTAS: 3 columnas x 20 preguntas ────────────────────────────────
+  \Columna{12}{1}
+  \Columna{77.5}{21}
+  \Columna{143}{41}
+
+  % ── PIE ──────────────────────────────────────────────────────────────────
+  \node[inner sep=0pt, font=\fontsize{8.5}{9}\selectfont, text=black!80]
+       at (107.95,259.4)
+       {No dobles ni arrugues la hoja \,·\, No rayes los cuadros negros ni las marcas de cada fila};
+
+\end{scope}
+\end{tikzpicture}
+\end{document}
