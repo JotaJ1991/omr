@@ -301,7 +301,9 @@ PRIMARIA_60 = {
     # más oscuro en toda la burbuja (±8 px). Umbral más alto que en
     # bachillerato para que un borrón no se lea como respuesta.
     'core_search':       8,
-    'min_mark_gap':      0.16,
+    'min_mark_gap':      0.14,
+    # Filas por el centro exacto de cada marca de fila (ver omr_processor)
+    'timing_rows':       True,
 }
 
 

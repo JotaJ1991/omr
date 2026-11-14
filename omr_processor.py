@@ -83,7 +83,7 @@ def process_exam_image(image_path: str,
     binary         = _binarize(warped,
                                profile['binarize_block'],
                                profile['binarize_c'])
-    y_rows, n_rows = _detect_rows(binary, profile)
+    y_rows, n_rows = _detect_rows(binary, profile, warped)
     try:
         answers, confs = _read_answers(binary, warped, y_rows, profile)
     except ValueError as e:
@@ -404,7 +404,62 @@ def _warp(gray, corners, W, H):
 # DETECCIÓN DE FILAS (timing marks)
 # ===========================================================================
 
-def _detect_rows(binary, profile):
+def _rows_from_timing_marks(gray, profile):
+    """Filas a partir del CENTRO de cada marca de fila (perfiles con
+    'timing_rows': True, p.ej. primaria).
+
+    En cada columna se umbraliza la franja de las marcas en grises (no en la
+    binaria adaptativa: una marca grande queda "hueca" y su pico cae en un
+    borde, ~10 px fuera del centro), se toman los tramos oscuros y se ajusta
+    una recta y = a + b·fila por mínimos cuadrados. Tolera marcas tapadas o
+    manchas: basta la mitad de las marcas de una columna. Devuelve
+    (filas, n_marcas) o (None, 0) si ninguna columna sirve.
+    """
+    h, w     = gray.shape
+    y_top    = int(profile['answers_top_f']    * h)
+    y_bottom = int(profile['answers_bottom_f'] * h)
+    n        = max(c['q_end'] - c['q_start'] + 1 for c in profile['columns'])
+    pitch    = (y_bottom - y_top) / n          # paso de diseño entre filas
+    fits     = []
+    for col in profile['columns']:
+        x_tm  = int(col['timing_fx'] * w)
+        strip = gray[y_top:y_bottom, max(0, x_tm - 3):min(w, x_tm + 18)]
+        if strip.size == 0:
+            continue
+        lo, hi = float(strip.min()), float(strip.max())
+        if hi - lo < 60:                       # franja sin contraste: no hay marcas
+            continue
+        dark = (strip < (lo + hi) / 2).mean(axis=1) > 0.6
+        runs, start = [], None
+        for i, d in enumerate(list(dark) + [False]):
+            if d and start is None:
+                start = i
+            elif not d and start is not None:
+                runs.append((start, i - 1)); start = None
+        # una marca mide ~0.47 del paso; descartar líneas finas y manchas largas
+        runs = [(a, b) for a, b in runs if 0.25 * pitch <= b - a + 1 <= 0.8 * pitch]
+        if len(runs) < max(3, n // 2):
+            continue
+        cy  = np.array([y_top + (a + b) / 2.0 for a, b in runs])
+        # índice de fila de cada marca según el diseño (centro = (i + 0.5)·paso)
+        idx = np.round((cy - y_top) / pitch - 0.5).astype(int)
+        ok  = (idx >= 0) & (idx < n)
+        if ok.sum() < max(3, n // 2) or len(set(idx[ok])) != ok.sum():
+            continue
+        b_, a_ = np.polyfit(idx[ok], cy[ok], 1)
+        if abs(b_ - pitch) > 0.08 * pitch:     # paso incoherente con la hoja
+            continue
+        fits.append((int(ok.sum()), a_, b_))
+    if not fits:
+        return None, 0
+    best = max(f[0] for f in fits)
+    good = [f for f in fits if f[0] >= best - 2]
+    a_   = float(np.mean([f[1] for f in good]))
+    b_   = float(np.mean([f[2] for f in good]))
+    return [int(round(a_ + b_ * i)) for i in range(n)], min(best, n)
+
+
+def _detect_rows(binary, profile, gray=None):
     """
     Detecta las Y de cada fila usando los timing marks.
 
@@ -425,6 +480,16 @@ def _detect_rows(binary, profile):
 
     max_rows = max(col['q_end'] - col['q_start'] + 1
                    for col in profile['columns'])
+
+    # Perfiles nuevos: centro exacto de cada marca de fila. Si no se ven
+    # (tapadas, hoja recortada), se usan las posiciones de diseño:
+    # [y_top, y_bottom] abarca medio paso por fuera de la 1.ª y la última fila.
+    if profile.get('timing_rows') and gray is not None:
+        rows, n_marks = _rows_from_timing_marks(gray, profile)
+        if rows is None:
+            step = (y_bottom - y_top) / max_rows
+            rows = [int(round(y_top + step * (i + 0.5))) for i in range(max_rows)]
+        return rows, n_marks
 
     best_peaks = []
     best_count = 0
