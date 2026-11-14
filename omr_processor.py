@@ -76,10 +76,10 @@ def process_exam_image(image_path: str,
         warped, n_mk, sharp = _correct_perspective_aruco(gray, profile)
         if warped is None:
             return {'success': False, 'retake': True,
-                    'error': ('No se ven las esquinas de la hoja '
-                              f'({n_mk} de 4). Toma la foto de nuevo con '
-                              'toda la hoja dentro del cuadro y sin tapar '
-                              'las esquinas.')}
+                    'error': ('No se reconocen las esquinas de la hoja '
+                              f'({n_mk} de 4). Puede estar movida, borrosa, '
+                              'cortada o con una esquina tapada. Toma la '
+                              'foto de nuevo con toda la hoja a la vista.')}
         min_sharp = profile.get('min_sharpness', 0)
         if min_sharp and sharp < min_sharp:
             return {'success': False, 'retake': True,

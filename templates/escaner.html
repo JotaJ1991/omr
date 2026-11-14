@@ -384,15 +384,21 @@ async function loadCursos() {
   }
 }
 
+// Primaria (1° a 5°): hoja de 60 preguntas con marcadores en las esquinas
+const PERFIL_PRIMARIA = 'PRIMARIA60V2';
+const _esPrimaria = g => ['1', '2', '3', '4', '5'].includes(String(g));
+
 function _deriveProfile() {
   if (!SIM) return '';
   if (SIM.tipo === 'completo') {
     const ses = document.querySelector('input[name="ses"]:checked');
     state.sesion = ses ? ses.value : '';
     if (!state.sesion) return '';
+    if (_esPrimaria(state.grado)) return PERFIL_PRIMARIA;
     return state.sesion === '1S' ? '1SSIPAGRE' : '2SSIPAGRE';
   }
   state.sesion = 'M';
+  if (_esPrimaria(state.grado)) return PERFIL_PRIMARIA;
   // Media: 6/7/8 usan el formato físico 1S SIPAGRE; 9/10 el M SIPAGRE
   return ['6', '7', '8'].includes(state.grado) ? '1SSIPAGRE' : 'MSIPAGRE';
 }
@@ -406,7 +412,12 @@ async function onCursoChange() {
   const pid = _deriveProfile();
   const ready = !!(state.curso && pid);
   document.getElementById('btn-cam').disabled = !ready;
-  document.getElementById('btn-guide').disabled = !ready;
+  // La cámara guiada recorta por los cuadros negros de las hojas de
+  // bachillerato; la hoja de primaria usa otros marcadores y se endereza
+  // sola en el servidor: ahí va la foto normal del teléfono.
+  const primaria = pid === PERFIL_PRIMARIA;
+  document.getElementById('btn-guide').disabled = !ready || primaria;
+  document.getElementById('btn-guide').style.display = primaria ? 'none' : '';
   if (!state.curso) { setSt('setup-status', '', ''); return; }
   if (!pid) { setSt('setup-status', 'warn', 'Elige la sesión de la hoja (1S o 2S).'); return; }
 
@@ -422,7 +433,9 @@ async function onCursoChange() {
     resetScanState();
   }
   setSt('setup-status', 'ok',
-        `✅ <b>${state.curso}</b> · ${state.grado}° · ${pid.replace('SIPAGRE', ' SIPAGRE')}`);
+        `✅ <b>${state.curso}</b> · ${state.grado}° · ` +
+        (primaria ? 'Primaria (60 preguntas) · toma la foto con toda la hoja y sus 4 esquinas'
+                  : pid.replace('SIPAGRE', ' SIPAGRE')));
 }
 
 // ── Procesamiento ───────────────────────────────────────────────────────────

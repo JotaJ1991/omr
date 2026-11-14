@@ -480,7 +480,12 @@ PROFILE_LIST = [
     {'id': M_SIPAGRE['id'],  'name': M_SIPAGRE['name']},
     {'id': SIPAGRE_2S_AH['id'], 'name': SIPAGRE_2S_AH['name']},
     {'id': SIPAGRE_2S_AH9['id'], 'name': SIPAGRE_2S_AH9['name']},
+    {'id': PRIMARIA_60_V2['id'], 'name': PRIMARIA_60_V2['name']},
 ]
+
+# Primaria (1° a 5°): siempre la hoja de 60 preguntas con marcadores, en
+# cualquier simulacro y sesión.
+PRIMARIA_GRADOS = {'1', '2', '3', '4', '5'}
 
 # Formatos físicos distintos al habitual en un (simulacro, grado, sesión):
 # el servidor cambia el perfil solo, así los escáneres no eligen nada.
@@ -495,6 +500,8 @@ FORMAT_OVERRIDES = {
 
 def profile_override(simulacro: str, grado: str, sesion: str) -> str:
     """ID de perfil que reemplaza al habitual para esa hoja, o ''."""
+    if str(grado or '').strip() in PRIMARIA_GRADOS:
+        return PRIMARIA_60_V2['id']
     return FORMAT_OVERRIDES.get(((simulacro or '').strip(), str(grado or '').strip(),
                                  (sesion or '').strip().upper()), '')
 
