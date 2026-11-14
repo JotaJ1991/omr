@@ -69,7 +69,25 @@ def process_exam_image(image_path: str,
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     del img  # liberar la copia BGR cuanto antes
 
-    warped, p_ok = _correct_perspective(gray, profile)
+    if profile.get('aruco'):
+        # Hojas con marcadores de identidad en las esquinas: si no se ven al
+        # menos 3, o la foto está borrosa, se pide repetirla — nunca se
+        # devuelven respuestas leídas "a ciegas".
+        warped, n_mk, sharp = _correct_perspective_aruco(gray, profile)
+        if warped is None:
+            return {'success': False, 'retake': True,
+                    'error': ('No se ven las esquinas de la hoja '
+                              f'({n_mk} de 4). Toma la foto de nuevo con '
+                              'toda la hoja dentro del cuadro y sin tapar '
+                              'las esquinas.')}
+        min_sharp = profile.get('min_sharpness', 0)
+        if min_sharp and sharp < min_sharp:
+            return {'success': False, 'retake': True,
+                    'error': ('La foto salió borrosa o movida. Toma la foto '
+                              'de nuevo, con buena luz y el celular quieto.')}
+        p_ok = True
+    else:
+        warped, p_ok = _correct_perspective(gray, profile)
 
     # ── DETECCIÓN DEL QR (hojas personalizadas IETAGRO) ──
     qr_info = _detect_student_qr(warped)
@@ -282,6 +300,81 @@ def _correct_perspective(gray, profile):
             return _warp(gray, result, W, H), True
 
     return cv2.resize(gray, (W, H)), False
+
+
+_ARUCO_DETECTORS = {}
+
+
+def _aruco_detector(dict_name):
+    det = _ARUCO_DETECTORS.get(dict_name)
+    if det is None:
+        d = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, dict_name))
+        params = cv2.aruco.DetectorParameters()
+        params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        det = cv2.aruco.ArucoDetector(d, params)
+        _ARUCO_DETECTORS[dict_name] = det
+    return det
+
+
+def _correct_perspective_aruco(gray, profile):
+    """Endereza la hoja con sus marcadores ArUco de esquina.
+
+    Cada marcador tiene un id y una posición conocida en la hoja, así que:
+      · la foto puede venir al revés o de lado (el id dice qué esquina es),
+      · bastan 3 de los 4 (cada uno aporta 4 puntos a la homografía),
+      · nada más en la foto puede confundirse con una esquina.
+    Devuelve (warped, n_marcadores, nitidez) o (None, n_marcadores, 0).
+    """
+    cfg  = profile['aruco']
+    W, H = profile['work_w'], profile['work_h']
+    sx   = (W - 1) / cfg['span_mm'][0]
+    sy   = (H - 1) / cfg['span_mm'][1]
+    size = cfg['size_mm']
+    det  = _aruco_detector(cfg.get('dict', 'DICT_4X4_50'))
+
+    found = {}
+    # 2.º intento con más contraste: fotos oscuras o lavadas
+    for attempt in (gray, _apply_clahe(gray, 3.0, (8, 8))):
+        corners, ids, _ = det.detectMarkers(attempt)
+        if ids is not None:
+            for c, i in zip(corners, ids.flatten()):
+                if int(i) in cfg['markers'] and int(i) not in found:
+                    found[int(i)] = c.reshape(4, 2)
+        if len(found) >= 4:
+            break
+    if len(found) < 3:
+        return None, len(found), 0.0
+
+    src, dst = [], []
+    for mid, pts in found.items():
+        mx, my = cfg['markers'][mid]            # esquina sup-izq del marcador (mm)
+        quad = [(mx, my), (mx + size, my), (mx + size, my + size), (mx, my + size)]
+        src.extend(pts.tolist())
+        dst.extend([(x * sx, y * sy) for x, y in quad])
+    M, _ = cv2.findHomography(np.float32(src), np.float32(dst), 0)
+    if M is None:
+        return None, len(found), 0.0
+    warped = cv2.warpPerspective(gray, M, (W, H), flags=cv2.INTER_LINEAR,
+                                 borderValue=255)
+
+    # Nitidez: pendiente de los bordes de los marcadores (negro/blanco puro)
+    # relativa a su contraste. No depende de la luz ni de cuánto se marcó.
+    vals = []
+    for mid in found:
+        mx, my = cfg['markers'][mid]
+        x0, y0 = int(mx * sx), int(my * sy)
+        x1, y1 = int((mx + size) * sx), int((my + size) * sy)
+        roi = warped[max(0, y0):min(H, y1), max(0, x0):min(W, x1)].astype(np.float32)
+        if roi.size < 100:
+            continue
+        contrast = float(np.percentile(roi, 95) - np.percentile(roi, 5))
+        if contrast < 30:
+            continue
+        gx = cv2.Sobel(roi, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(roi, cv2.CV_32F, 0, 1, ksize=3)
+        vals.append(float(np.percentile(np.hypot(gx, gy), 97)) / contrast)
+    sharp = float(np.median(vals)) if vals else 0.0
+    return warped, len(found), round(sharp, 3)
 
 
 def _find_fiducials_nested(binary, w, h):

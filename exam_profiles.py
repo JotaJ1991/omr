@@ -308,6 +308,60 @@ PRIMARIA_60 = {
 
 
 # ---------------------------------------------------------------------------
+# PRIMARIA 60 v2 — misma distribución que PRIMARIA60, con marcadores ArUco
+#   en las esquinas (templates_latex/primaria_60_v2.tex). La geometría NO se
+#   mide: se calcula de las medidas en mm del .tex (origen = esquina exterior
+#   del marcador superior izquierdo; el lienzo abarca 199.9 x 258.7 mm).
+# ---------------------------------------------------------------------------
+PRIMARIA_60_V2 = {
+    'id':    'PRIMARIA60V2',
+    'name':  'Primaria v2 — 60 preguntas (esquinas con identidad)',
+    'total_q': 60,
+    'work_w':  1275,
+    'work_h':  1650,
+
+    # Marcadores de esquina: id → esquina superior izquierda del marcador (mm)
+    'aruco': {
+        'dict':    'DICT_4X4_50',
+        'size_mm': 12,
+        'span_mm': (199.9, 258.7),
+        'markers': {0: (0.0, 0.0), 1: (187.9, 0.0), 2: (187.9, 246.7), 3: (0.0, 246.7)},
+    },
+
+    'columns': [
+        {'q_start':  1, 'q_end': 20, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.135, 0.1874, 0.2399, 0.2924],
+         'timing_fx': 0.0358},
+        {'q_start': 21, 'q_end': 40, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.4624, 0.5149, 0.5673, 0.6198],
+         'timing_fx': 0.3632},
+        {'q_start': 41, 'q_end': 60, 'options': ['A','B','C','D'],
+         'bubble_fx': [0.7898, 0.8423, 0.8947, 0.9472],
+         'timing_fx': 0.6906},
+    ],
+
+    'answers_top_f':    0.2,
+    'answers_bottom_f': 0.9301,
+    'bubble_radius':    16,
+    'snap_range':        3,
+    'fill_threshold':   0.10,
+    'min_contrast':     0.06,
+    'binarize_block':   25,
+    'binarize_c':        6,
+    'clahe_clip':        2.5,
+    'clahe_grid':       (8, 8),
+    'mask_inner_ratio':  0.75,
+    'core_search':       8,
+    'min_mark_gap':      0.14,
+    'timing_rows':       True,
+    # Nitidez mínima (pendiente de borde de los marcadores / contraste):
+    # foto nítida ~4.0, 480 px ~1.9, desenfoque fuerte ~1.1. Por calibrar
+    # con fotos reales de celular.
+    'min_sharpness':     1.3,
+}
+
+
+# ---------------------------------------------------------------------------
 # M SIPAGRE  —  Una sola jornada, 125 preguntas
 #   Geometría: 4 columnas. La columna 4 lee solo hasta P125.
 # ---------------------------------------------------------------------------
@@ -416,6 +470,7 @@ PROFILES = {
     SIPAGRE_2S_AH['id']: SIPAGRE_2S_AH,
     SIPAGRE_2S_AH9['id']: SIPAGRE_2S_AH9,
     PRIMARIA_60['id']: PRIMARIA_60,     # aún sin listar en la UI
+    PRIMARIA_60_V2['id']: PRIMARIA_60_V2,
 }
 
 # Lista ordenada para la UI
