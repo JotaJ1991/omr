@@ -356,6 +356,8 @@ def _correct_perspective_aruco(gray, profile):
         return None, len(found), 0.0
     warped = cv2.warpPerspective(gray, M, (W, H), flags=cv2.INTER_LINEAR,
                                  borderValue=255)
+    if cfg.get('timing'):
+        warped = _refine_with_timing_marks(gray, M, warped, cfg['timing'], W, H, sx, sy)
 
     # Nitidez: pendiente de los bordes de los marcadores (negro/blanco puro)
     # relativa a su contraste. No depende de la luz ni de cuánto se marcó.
@@ -375,6 +377,50 @@ def _correct_perspective_aruco(gray, profile):
         vals.append(float(np.percentile(np.hypot(gx, gy), 97)) / contrast)
     sharp = float(np.median(vals)) if vals else 0.0
     return warped, len(found), round(sharp, 3)
+
+
+def _refine_with_timing_marks(gray, M, warped, t, W, H, sx, sy):
+    """Corrige el enderezado con las marcas de fila, que cubren toda la hoja.
+
+    Los marcadores de esquina son pequeños: con solo 3 visibles (o la hoja
+    algo curvada) la inclinación queda mal estimada lejos de ellos y las
+    filas de abajo se corren media fila. Aquí se ubican las marcas de fila
+    en la imagen ya enderezada, se emparejan con su posición de diseño y se
+    calcula una homografía de corrección (RANSAC). Dos pasadas: la segunda,
+    ya casi alineada, empareja con una tolerancia menor.
+    """
+    exp = np.float32([(x * sx, (t['y0_mm'] + i * t['pitch_mm']) * sy)
+                      for x in t['x_mm'] for i in range(t['rows'])])
+    bw, bh = t['w_mm'] * sx, t['h_mm'] * sy
+    pitch = t['pitch_mm'] * sy
+    for tol in (0.45, 0.25):
+        blk = int(bh * 3) | 1
+        b = cv2.adaptiveThreshold(warped, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                  cv2.THRESH_BINARY_INV, blk, 15)
+        n, _lab, st, cen = cv2.connectedComponentsWithStats(b)
+        ok = ((st[:, 2] >= 0.55 * bw) & (st[:, 2] <= 1.7 * bw) &
+              (st[:, 3] >= 0.55 * bh) & (st[:, 3] <= 1.7 * bh) &
+              (st[:, 4] >= 0.6 * st[:, 2] * st[:, 3]))
+        ok[0] = False
+        cands = cen[ok]
+        if len(cands) < 12:
+            break
+        obs, des, used = [], [], set()
+        for e in exp:
+            d = np.hypot(cands[:, 0] - e[0], cands[:, 1] - e[1])
+            k = int(np.argmin(d))
+            if d[k] <= tol * pitch and k not in used:
+                used.add(k)
+                obs.append(cands[k]); des.append(e)
+        if len(obs) < 12:
+            break
+        H2, inl = cv2.findHomography(np.float32(obs), np.float32(des), cv2.RANSAC, 4.0)
+        if H2 is None or inl is None or int(inl.sum()) < 12:
+            break
+        M = H2 @ M
+        warped = cv2.warpPerspective(gray, M, (W, H), flags=cv2.INTER_LINEAR,
+                                     borderValue=255)
+    return warped
 
 
 def _find_fiducials_nested(binary, w, h):
@@ -514,7 +560,7 @@ def _rows_from_timing_marks(gray, profile):
     n        = max(c['q_end'] - c['q_start'] + 1 for c in profile['columns'])
     pitch    = (y_bottom - y_top) / n          # paso de diseño entre filas
     fits     = []
-    for col in profile['columns']:
+    for ci, col in enumerate(profile['columns']):
         x_tm  = int(col['timing_fx'] * w)
         strip = gray[y_top:y_bottom, max(0, x_tm - 3):min(w, x_tm + 18)]
         if strip.size == 0:
@@ -542,14 +588,25 @@ def _rows_from_timing_marks(gray, profile):
         b_, a_ = np.polyfit(idx[ok], cy[ok], 1)
         if abs(b_ - pitch) > 0.08 * pitch:     # paso incoherente con la hoja
             continue
-        fits.append((int(ok.sum()), a_, b_))
+        # Filas de ESTA columna: el centro de su marca donde se ve (si no se
+        # aleja del ajuste) y el ajuste lineal donde falta o está tapada.
+        seen = {int(i): float(c) for i, c in zip(idx[ok], cy[ok])}
+        rows_c = []
+        for i in range(n):
+            fit = a_ + b_ * i
+            c = seen.get(i)
+            rows_c.append(int(round(c if c is not None and abs(c - fit) <= 0.3 * pitch else fit)))
+        fits.append((int(ok.sum()), a_, b_, ci, rows_c))
     if not fits:
         return None, 0
     best = max(f[0] for f in fits)
     good = [f for f in fits if f[0] >= best - 2]
     a_   = float(np.mean([f[1] for f in good]))
     b_   = float(np.mean([f[2] for f in good]))
-    return [int(round(a_ + b_ * i)) for i in range(n)], min(best, n)
+    common = [int(round(a_ + b_ * i)) for i in range(n)]
+    # Una lista de filas por columna (la común si la columna no tiene marcas útiles)
+    per_col = {f[3]: f[4] for f in fits}
+    return [per_col.get(ci, common) for ci in range(len(profile['columns']))], min(best, n)
 
 
 def _detect_rows(binary, profile, gray=None):
@@ -685,6 +742,14 @@ def _measure_darkness(gray, cx, cy, radius, circle_mask):
     return 1.0 - float(np.mean(pixels)) / 255.0
 
 
+def _rows_of_column(y_rows, ci):
+    """Filas de la columna ci: y_rows es una lista común a todas las columnas
+    o, con 'timing_rows', una lista por columna."""
+    if y_rows and isinstance(y_rows[0], (list, tuple)):
+        return y_rows[ci] if ci < len(y_rows) else y_rows[-1]
+    return y_rows
+
+
 def _read_answers(binary, gray, y_rows, profile):
     h, w         = binary.shape
     answers      = []
@@ -707,23 +772,24 @@ def _read_answers(binary, gray, y_rows, profile):
     cs           = int(profile.get('core_search', 2))
     core_shifts  = sorted({-cs, -cs // 2, 0, cs // 2, cs}) if cs > 2 else (-2, 0, 2)
 
-    for col in profile['columns']:
+    for ci, col in enumerate(profile['columns']):
         xs      = [int(fx * w) for fx in col['bubble_fx']]
         options = col['options']
         n_rows  = col['q_end'] - col['q_start'] + 1
+        ys_col  = _rows_of_column(y_rows, ci)
 
         # Si la detección entregó menos filas de las que esta columna necesita,
         # abortar con error claro: leer en y=0 produciría respuestas
         # incorrectas SILENCIOSAS (burbujas medidas en el encabezado).
-        if n_rows > len(y_rows):
+        if n_rows > len(ys_col):
             raise ValueError(
                 f'No se detectó la cuadrícula completa: la columna '
                 f'{col.get("q_start","?")}-{col.get("q_end","?")} necesita '
-                f'{n_rows} filas pero solo se ubicaron {len(y_rows)}. '
+                f'{n_rows} filas pero solo se ubicaron {len(ys_col)}. '
                 f'Re-toma la foto encuadrando toda la hoja.')
 
         for row_idx in range(n_rows):
-            y = y_rows[row_idx]
+            y = ys_col[row_idx]
             fills     = []
             darks     = []
             cores     = []
@@ -872,18 +938,19 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path,
     if effective_total_q is not None and 0 < effective_total_q < total_q:
         total_q = effective_total_q
     q_idx     = 0
-    for col in profile['columns']:
+    for ci, col in enumerate(profile['columns']):
         if q_idx >= total_q:
             break
         xs      = [int(fx * w) for fx in col['bubble_fx']]
         options = col['options']
         n_rows  = col['q_end'] - col['q_start'] + 1
+        ys_col  = _rows_of_column(y_rows, ci)
 
         for row_idx in range(n_rows):
             if q_idx >= total_q:
                 break
             ans = answers[q_idx] if q_idx < len(answers) else '?'
-            y   = y_rows[row_idx] if row_idx < len(y_rows) else 0
+            y   = ys_col[row_idx] if row_idx < len(ys_col) else 0
 
             for oi, x in enumerate(xs):
                 opt = options[oi]

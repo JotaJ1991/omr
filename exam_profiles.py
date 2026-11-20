@@ -326,6 +326,9 @@ PRIMARIA_60_V2 = {
         'size_mm': 12,
         'span_mm': (199.9, 258.7),
         'markers': {0: (0.0, 0.0), 1: (187.9, 0.0), 2: (187.9, 246.7), 3: (0.0, 246.7)},
+        # Marcas de fila (centro), para refinar el enderezado con toda la hoja
+        'timing': {'x_mm': [8.75, 74.25, 139.75], 'y0_mm': 56.5,
+                   'pitch_mm': 9.45, 'rows': 20, 'w_mm': 3.5, 'h_mm': 4.5},
     },
 
     'columns': [
