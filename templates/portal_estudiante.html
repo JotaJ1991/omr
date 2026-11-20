@@ -577,6 +577,7 @@ function renderSimSection(r, idx) {
   const p = r.puntajes || {};
   const avgC = r.avg_curso || {};
   const isG10 = String(r.grado) === '10';
+  const esPrim = ['1', '2', '3', '4', '5'].includes(String(r.grado));
   const gen = p.gen != null ? Number(p.gen) : null;
 
   // Posición en el curso (dato real del backend)
@@ -610,7 +611,7 @@ function renderSimSection(r, idx) {
     return `
       <div class="subject-row${isBest ? ' best' : ''}">
         <span class="subject-icon">${SUBJECT_ICONS[k] || ''}</span>
-        <div class="subject-name">${SUBJECT_LABELS[k] || k}${isBest ? ' ⭐<span class="best-tag">tu mejor prueba</span>' : ''}</div>
+        <div class="subject-name">${(k === 'lect' && esPrim) ? 'Lenguaje' : (SUBJECT_LABELS[k] || k)}${isBest ? ' ⭐<span class="best-tag">tu mejor prueba</span>' : ''}</div>
         <div class="subject-track">
           <div class="subject-fill" data-w="${Math.max(0, Math.min(100, v))}"
                style="background:${color};"></div>
@@ -769,8 +770,9 @@ function _pdfStudentFor(sim) {
     name:    student.nombre || '',
     id:      student.id     || '',
     curso:   sim.curso      || student.curso || '',
-    mat:     p.mat || 0, lect: p.lect || 0, soc: p.soc || 0,
-    nat:     p.nat || 0, ing: p.ing || 0, general: p.gen || 0,
+    // Área no evaluada (p.ej. Inglés en primaria) = '' → el PDF no la muestra
+    mat:  p.mat ?? '', lect: p.lect ?? '', soc: p.soc ?? '',
+    nat:  p.nat ?? '', ing: p.ing ?? '', general: p.gen || 0,
   };
 }
 

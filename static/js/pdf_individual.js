@@ -30,11 +30,13 @@
   function setGradoResolver(fn) { _gradoResolver = fn; }
 
   function gradoDeCurso(curso) {
-    const c = String(curso || '').trim();
+    // Cursos de sede ("CV-301"): el prefijo de la sede no cuenta para el grado
+    const raw = String(curso || '').trim();
+    const c = raw.replace(/^[A-Za-z]{1,4}-/, '');
     if (!c) return '';
     if (_gradoResolver) {
       try {
-        const g = _gradoResolver(c);
+        const g = _gradoResolver(raw);
         if (g) return String(g);
       } catch (e) { /* caer al default */ }
     }
@@ -42,6 +44,78 @@
     if (/^\d{3}/.test(c)) return c.slice(0, 1);   // 601  → 6
     const m = c.match(/^(\d{1,2})/);              // 11A  → 11
     return m ? m[1] : '';
+  }
+
+  // ── Primaria (1° a 5°) ──
+  // El reporte muestra solo las áreas que evalúa el grado (las demás llegan
+  // vacías), el área de lectura se llama "Lenguaje" y en lugar del percentil
+  // se muestra el nivel de desempeño ICFES de cada área.
+  function esPrimaria(curso) {
+    const g = parseInt(gradoDeCurso(curso), 10);
+    return g >= 1 && g <= 5;
+  }
+  // Cortes 0-100 (tope de cada nivel) — los mismos del panel de resultados.
+  const ICFES_CORTES = {
+    mat: [35, 50, 70], lect: [35, 50, 65], soc: [40, 55, 70],
+    nat: [40, 55, 70], ing: [36, 57, 70],
+  };
+  const NIVEL_NOMBRES = ['Insuficiente', 'Mínimo', 'Satisfactorio', 'Avanzado'];
+  const NIVEL_FUERTE = [null, [226, 75, 74], [239, 159, 39], [234, 190, 40], [76, 175, 80]];
+  const NIVEL_TENUE  = [null, [248, 205, 205], [251, 222, 178], [252, 238, 180], [205, 233, 206]];
+  const NIVEL_TEXTO  = [null, [121, 31, 31], [110, 60, 5], [100, 74, 5], [27, 94, 32]];
+  function nivelIcfes(key, score) {
+    const c = ICFES_CORTES[key];
+    if (!c || score === '' || score == null || isNaN(Number(score))) return 0;
+    const v = Number(score);
+    return v <= c[0] ? 1 : v <= c[1] ? 2 : v <= c[2] ? 3 : 4;
+  }
+  function rangoNivel(key, n) {
+    const c = ICFES_CORTES[key];
+    if (!c || !n) return '';
+    return `${n === 1 ? 0 : c[n - 2] + 1}-${n === 4 ? 100 : c[n - 1]}`;
+  }
+  const _evaluada = v => v !== '' && v != null && !isNaN(Number(v));
+
+  // Escalera de 4 niveles con el del estudiante resaltado
+  function _drawNivelCell(doc, x, y, w, h, key, score) {
+    const n = nivelIcfes(key, score);
+    const segW = Math.min(4.2, (w * 0.42 - 3) / 4), segH = 2.6;
+    const ladderW = segW * 4 + 1.5 * 3;
+    const lx0 = x + w - ladderW - 1;
+    for (let k = 1; k <= 4; k++) {
+      const c = k === n ? NIVEL_FUERTE[k] : k < n ? NIVEL_TENUE[k] : [226, 232, 240];
+      doc.setFillColor(...c);
+      doc.roundedRect(lx0 + (k - 1) * (segW + 1.5), y + h / 2 - segH / 2, segW, segH, 0.8, 0.8, 'F');
+    }
+    if (!n) return;
+    const pillW = lx0 - x - 2.5;
+    doc.setFillColor(...NIVEL_TENUE[n]);
+    doc.roundedRect(x, y + 1, pillW, h - 2, 2, 2, 'F');
+    doc.setTextColor(...NIVEL_TEXTO[n]);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+    doc.text(NIVEL_NOMBRES[n - 1], x + pillW / 2, y + h / 2 + 0.2, {align: 'center'});
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8);
+    doc.text(`Nivel ${n} · ${rangoNivel(key, n)} puntos`, x + pillW / 2, y + h / 2 + 3.3, {align: 'center'});
+  }
+
+  // Tarjeta con la explicación de los 4 niveles (reemplaza al percentil)
+  function _drawNivelesCard(doc, x, y, w, h) {
+    doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3);
+    doc.roundedRect(x, y, w, h, 3, 3, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60, 52, 137);
+    doc.text('NIVELES DE DESEMPEÑO ICFES', x + w / 2, y + 6.5, {align: 'center'});
+    const desc = ['Aún no alcanza lo básico del área.', 'Logra lo básico del área.',
+                  'Logra lo esperado para el grado.', 'Supera lo esperado para el grado.'];
+    const rowH = (h - 11) / 4;
+    for (let k = 4; k >= 1; k--) {
+      const ry = y + 9.5 + (4 - k) * rowH;
+      doc.setFillColor(...NIVEL_FUERTE[k]);
+      doc.roundedRect(x + 4, ry + rowH / 2 - 2.2, 4.4, 4.4, 1, 1, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.8); doc.setTextColor(...NIVEL_TEXTO[k]);
+      doc.text(`${NIVEL_NOMBRES[k - 1]}`, x + 11, ry + rowH / 2 - 0.4);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.3); doc.setTextColor(100, 116, 139);
+      doc.text(desc[k - 1], x + 11, ry + rowH / 2 + 2.9);
+    }
   }
 
   // Percentiles POR GRADO
@@ -542,6 +616,9 @@
 
     const general = Number(student.general)||0;
     const pctGen  = (pcts||{}).general||0;
+    const primaria = esPrimaria(student.curso);
+    // Primaria: solo las áreas que evalúa el grado (las demás llegan vacías)
+    const subjects = primaria ? SUBJECTS.filter(s => _evaluada(student[s.key])) : SUBJECTS;
     const medal   = _medalFor(general);
 
     // Medidor un poco más compacto (110→92) para dar espacio al mensaje
@@ -551,14 +628,18 @@
     const gH = gW * (gaugeCanvas.height/gaugeCanvas.width);
     doc.addImage(gaugeCanvas.toDataURL('image/png'), 'PNG', 10, y, gW, gH, undefined, 'FAST');
 
-    const donutCanvas = drawDonutCanvas(pctGen, 'PERCENTIL', '#6366f1');
-    const dSize = Math.min(gH, pw - gW - 8);
-    const dx = 10 + gW + 8 + (pw - gW - 8 - dSize) / 2;
-    doc.addImage(donutCanvas.toDataURL('image/png'), 'PNG', dx, y + (gH - dSize)/2, dSize, dSize, undefined, 'FAST');
+    if (primaria) {
+      _drawNivelesCard(doc, 10 + gW + 8, y + 2, pw - gW - 8, gH - 4);
+    } else {
+      const donutCanvas = drawDonutCanvas(pctGen, 'PERCENTIL', '#6366f1');
+      const dSize = Math.min(gH, pw - gW - 8);
+      const dx = 10 + gW + 8 + (pw - gW - 8 - dSize) / 2;
+      doc.addImage(donutCanvas.toDataURL('image/png'), 'PNG', dx, y + (gH - dSize)/2, dSize, dSize, undefined, 'FAST');
 
-    doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
-    doc.text('Posicion respecto a los evaluados', dx + dSize/2, y + (gH + dSize)/2 + 2.5, {align:'center'});
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Posicion respecto a los evaluados', dx + dSize/2, y + (gH + dSize)/2 + 2.5, {align:'center'});
+    }
 
     y += gH + 3;
 
@@ -573,31 +654,37 @@
 
     // ── RESULTADOS POR PRUEBA ──
     _drawSectionHeader(doc, 10, y, pw, 'RESULTADOS POR PRUEBA');
-    // Leyenda del percentil (dentro de la franja, a la derecha)
-    doc.setFont('helvetica','normal'); doc.setFontSize(6.2);
-    doc.setTextColor(232, 236, 255);
-    const lgT1 = 'Percentil: 0 ', lgT2 = ' 100';
-    const lgW = doc.getTextWidth(lgT1) + 2.6 + doc.getTextWidth(lgT2);
-    let lgX = 10 + pw - 4 - lgW;
-    const lgY = y + 6;
-    doc.text(lgT1, lgX, lgY);
-    lgX += doc.getTextWidth(lgT1);
-    doc.setFillColor(232, 236, 255);
-    doc.triangle(lgX, lgY - 2.6, lgX + 2.6, lgY - 2.6, lgX + 1.3, lgY - 0.3, 'F');
-    doc.text(lgT2, lgX + 2.6, lgY);
+    if (!primaria) {
+      // Leyenda del percentil (dentro de la franja, a la derecha)
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.2);
+      doc.setTextColor(232, 236, 255);
+      const lgT1 = 'Percentil: 0 ', lgT2 = ' 100';
+      const lgW = doc.getTextWidth(lgT1) + 2.6 + doc.getTextWidth(lgT2);
+      let lgX = 10 + pw - 4 - lgW;
+      const lgY = y + 6;
+      doc.text(lgT1, lgX, lgY);
+      lgX += doc.getTextWidth(lgT1);
+      doc.setFillColor(232, 236, 255);
+      doc.triangle(lgX, lgY - 2.6, lgX + 2.6, lgY - 2.6, lgX + 1.3, lgY - 0.3, 'F');
+      doc.text(lgT2, lgX + 2.6, lgY);
+    }
     y += 13;
 
     // Vértices del radar: iconos de asignatura (bandera dibujada para Inglés)
-    const labels = SUBJECTS.map(s => SUBJECT_ICONS[s.key] || '');
-    const values = SUBJECTS.map(s => Number(student[s.key])||0);
-    const radarCanvas = drawRadarCanvas(labels, values, 100);
-    const rW = 75, rH = 75;
-    doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y + 2, rW, rH, undefined, 'FAST');
+    // El radar necesita al menos 3 áreas (3° y 4° de primaria tienen 2)
+    const conRadar = subjects.length >= 3;
+    const rW = conRadar ? 75 : 0, rH = 75;
+    if (conRadar) {
+      const labels = subjects.map(s => SUBJECT_ICONS[s.key] || '');
+      const values = subjects.map(s => Number(student[s.key])||0);
+      const radarCanvas = drawRadarCanvas(labels, values, 100);
+      doc.addImage(radarCanvas.toDataURL('image/png'), 'PNG', 10, y + 2, rW, rH, undefined, 'FAST');
+    }
 
-    const lx = 10 + rW + 5;
-    const lw = pw - rW - 7;
+    const lx = conRadar ? 10 + rW + 5 : 10;
+    const lw = conRadar ? pw - rW - 7 : pw;
     let ly = y;
-    const rowH = (rH + 2) / SUBJECTS.length;
+    const rowH = Math.min(18, (rH + 2) / subjects.length);
     const colNameW   = lw * 0.30;
     const colScoreW  = lw * 0.16;
     const colBarW    = lw - colNameW - colScoreW - 3;
@@ -606,11 +693,12 @@
     doc.setTextColor(99,102,241);
     doc.text('PRUEBA',     lx + 1,                                  ly - 1);
     doc.text('PUNTAJE',    lx + colNameW + colScoreW/2,             ly - 1, {align:'center'});
-    doc.text('PERCENTIL',  lx + colNameW + colScoreW + 2 + colBarW/2, ly - 1, {align:'center'});
+    doc.text(primaria ? 'NIVEL DE DESEMPEÑO ICFES' : 'PERCENTIL',
+             lx + colNameW + colScoreW + 2 + colBarW/2, ly - 1, {align:'center'});
 
     const shortNames = {
       'Matematicas':           'Matemáticas',
-      'Lectura Critica':       'Lectura Crítica',
+      'Lectura Critica':       primaria ? 'Lenguaje' : 'Lectura Crítica',
       'Sociales y Ciudadanas': 'Sociales',
       'Ciencias Naturales':    'Naturales',
       'Ingles':                'Inglés',
@@ -618,13 +706,13 @@
 
     // "Tu mejor prueba": la asignatura con mayor puntaje se resalta con ⭐
     let bestIdx = -1, bestScore = -1;
-    SUBJECTS.forEach((s, i) => {
+    subjects.forEach((s, i) => {
       const v = Number(student[s.key]) || 0;
       if (v > bestScore) { bestScore = v; bestIdx = i; }
     });
     if (bestScore <= 0) bestIdx = -1;
 
-    SUBJECTS.forEach((subj, idx) => {
+    subjects.forEach((subj, idx) => {
       const score = Number(student[subj.key])||0;
       const pct   = (pcts||{})[subj.key]||0;
       const displayName = shortNames[subj.name] || subj.name;
@@ -676,12 +764,17 @@
       const badgeX = lx + colNameW + 0.5;
       _drawScoreBadge(doc, badgeX, ly + 1.5, badgeW, badgeH, score, 'PUNTAJE');
 
-      const barCanvas = drawPercentileBarCanvas(pct);
-      const barW = colBarW;
-      const barH = barW * (barCanvas.height/barCanvas.width);
-      const barX = lx + colNameW + colScoreW + 2;
-      const barY = ly + (rowH - barH)/2;
-      doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', barX, barY, barW, barH, undefined, 'FAST');
+      if (primaria) {
+        _drawNivelCell(doc, lx + colNameW + colScoreW + 2, ly + 0.8, colBarW - 1, rowH - 1.6,
+                       subj.key, score);
+      } else {
+        const barCanvas = drawPercentileBarCanvas(pct);
+        const barW = colBarW;
+        const barH = barW * (barCanvas.height/barCanvas.width);
+        const barX = lx + colNameW + colScoreW + 2;
+        const barY = ly + (rowH - barH)/2;
+        doc.addImage(barCanvas.toDataURL('image/png'), 'PNG', barX, barY, barW, barH, undefined, 'FAST');
+      }
 
       ly += rowH;
     });

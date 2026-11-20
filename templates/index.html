@@ -3553,11 +3553,13 @@ function invalidateAnalysisCache(silent) {
 
 function _renderCurrentView() {
   if (!unifiedResults) return;
-  if (_currentView === 'asign')    return generateSubjectReport();
-  if (_currentView === 'becarios') return generateBecariosReport();
-  if (_currentView === 'pregunta') return generateQuestionReport();
-  if (_currentView === 'integral') return generateIntegralReport();
-  return renderUnifiedTable();   // por defecto: tabla
+  const r = _currentView === 'asign'    ? generateSubjectReport()
+          : _currentView === 'becarios' ? generateBecariosReport()
+          : _currentView === 'pregunta' ? generateQuestionReport()
+          : _currentView === 'integral' ? generateIntegralReport()
+          : renderUnifiedTable();   // por defecto: tabla
+  _ocultarColumnasVacias(document.getElementById('r-output'));
+  return r;
 }
 
 // ── ANÁLISIS INTEGRAL ──────────────────────────────────────────────────
@@ -3916,6 +3918,38 @@ function _drawIntegralFooter(doc, label, runHead) {
     doc.text(label, 108, 273.6, {align: 'center'});
     doc.text(`Página ${p} de ${pages}`, 205.9, 273.6, {align: 'right'});
   }
+}
+
+// ── Primaria: columnas de áreas no evaluadas ──
+// Una columna cuyas celdas (sin contar la de promedio) están todas vacías es
+// un área que el grado no evalúa (p.ej. Sociales en 3°): se oculta para no
+// confundir con un 0.
+const _celdaVacia = v => v === '' || v == null || ['—', '-', 'NaN', 'null', 'undefined'].includes(String(v).trim());
+function _ocultarColumnasVacias(root) {
+  if (!_modoPrimaria || !root) return;
+  root.querySelectorAll('table').forEach(t => {
+    const filas = [...t.querySelectorAll('tbody tr')].filter(tr => !tr.classList.contains('avg-row'));
+    if (!filas.length) return;
+    const n = Math.max(...filas.map(tr => tr.children.length));
+    for (let i = n - 1; i >= 0; i--) {
+      if (!filas.every(tr => tr.children.length === n && _celdaVacia(tr.children[i].textContent))) continue;
+      t.querySelectorAll('tr').forEach(tr => {
+        if (tr.children.length === n && tr.children[i]) tr.children[i].style.display = 'none';
+      });
+    }
+  });
+}
+function _quitarColumnasVaciasPdf(d) {
+  if (!_modoPrimaria || !d.headers || !d.rows || !d.rows.length || (d.tableOpts && d.tableOpts.highlightCols)) return d;
+  const keep = d.headers.map((_, i) => !d.rows.every(r => _celdaVacia(r[i])));
+  if (keep.every(Boolean)) return d;
+  const pick = a => a ? a.filter((_, i) => keep[i]) : a;
+  let cw = pick(d.colWidths);
+  if (cw && d.colWidths) {
+    const tot = d.colWidths.reduce((a, b) => a + b, 0), kept = cw.reduce((a, b) => a + b, 0);
+    cw = cw.map(w => w * tot / kept);
+  }
+  return {...d, headers: pick(d.headers), rows: d.rows.map(pick), avgRow: pick(d.avgRow), colWidths: cw};
 }
 
 // ══ INFORME GENERAL DE SEDES ═══════════════════════════════════════════════
@@ -5012,11 +5046,11 @@ function renderUnifiedTable() {
   const n = view.length;
   const num = v => (v === '' || v == null) ? null : (+v || 0);
   const avg = {
-    mat:  Math.round(view.reduce((s,r) => s + (+r.mat ||0), 0) / n),
-    lect: Math.round(view.reduce((s,r) => s + (+r.lect||0), 0) / n),
-    soc:  Math.round(view.reduce((s,r) => s + (+r.soc ||0), 0) / n),
-    nat:  Math.round(view.reduce((s,r) => s + (+r.nat ||0), 0) / n),
-    ing:  Math.round(view.reduce((s,r) => s + (+r.ing ||0), 0) / n),
+    mat:  _avgK(view, 'mat') ?? '—',
+    lect: _avgK(view, 'lect') ?? '—',
+    soc:  _avgK(view, 'soc') ?? '—',
+    nat:  _avgK(view, 'nat') ?? '—',
+    ing:  _avgK(view, 'ing') ?? '—',
     gen:  Math.round(view.reduce((s,r) => s + (+r.general||0), 0) / n),
   };
   if (allG10) {
@@ -5147,7 +5181,7 @@ function _renderTableGroupedByCurso(view, gradeF) {
   const rows = cursos.map(c => {
     const arr = groups[c];
     const n = arr.length;
-    const avg = (k) => Math.round(arr.reduce((s,r) => s + (+r[k] || 0), 0) / n);
+    const avg = (k) => avgSubset(arr, k);   // área vacía (no evaluada) → '—'
     const base = {
       curso: c, n,
       mat: avg('mat'), lect: avg('lect'), soc: avg('soc'),
@@ -5161,7 +5195,7 @@ function _renderTableGroupedByCurso(view, gradeF) {
   });
   // Promedio del grado completo
   const gN = view.length;
-  const gAvg = (k) => Math.round(view.reduce((s,r) => s + (+r[k] || 0), 0) / gN);
+  const gAvg = (k) => avgSubset(view, k);
   const totalRow = {
     n: gN,
     mat: gAvg('mat'), lect: gAvg('lect'), soc: gAvg('soc'),
@@ -6337,7 +6371,8 @@ function _drawSummaryCards(doc, x, y, items) {
   return cy + cellH + 4;
 }
 
-async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths, fileName, extra, tableOpts}) {
+async function _saveReportPdf(data) {
+  let {title, subtitle, headers, rows, avgRow, colWidths, fileName, extra, tableOpts} = _quitarColumnasVaciasPdf(data);
   await _loadLogo();
   const jsPDF = getJsPDF();
   const doc = new jsPDF({orientation:'p', unit:'mm', format:'letter'});
@@ -6669,11 +6704,11 @@ async function downloadTablePdfReport() {
     return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : '—';
   };
   const avg = {
-    mat:  Math.round(sorted.reduce((s,r)=>s+(+r.mat||0),0)/n),
-    lect: Math.round(sorted.reduce((s,r)=>s+(+r.lect||0),0)/n),
-    soc:  Math.round(sorted.reduce((s,r)=>s+(+r.soc||0),0)/n),
-    nat:  Math.round(sorted.reduce((s,r)=>s+(+r.nat||0),0)/n),
-    ing:  Math.round(sorted.reduce((s,r)=>s+(+r.ing||0),0)/n),
+    mat:  _avgK(sorted, 'mat') ?? '—',
+    lect: _avgK(sorted, 'lect') ?? '—',
+    soc:  _avgK(sorted, 'soc') ?? '—',
+    nat:  _avgK(sorted, 'nat') ?? '—',
+    ing:  _avgK(sorted, 'ing') ?? '—',
     gen:  Math.round(sorted.reduce((s,r)=>s+(+r.general||0),0)/n),
   };
   let headers, rows, avgRow, colWidths, tableOpts;
