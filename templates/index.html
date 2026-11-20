@@ -1020,7 +1020,7 @@
           <label style="font-size:.78rem;color:var(--muted);">Asignatura</label>
           <select id="anu-mat" style="width:100%;" onchange="_updateAnuPreview()">
             <option value="Matematica">Matemáticas</option>
-            <option value="Lectura Critica">Lectura Crítica</option>
+            <option value="Lectura Critica">Lectura Crítica / Lenguaje (primaria)</option>
             <option value="Sociales">Sociales</option>
             <option value="Naturales">Naturales</option>
             <option value="Ingles">Inglés</option>
@@ -3374,6 +3374,10 @@ function _applyJornada() {
   const j = _jornadaSel();
   const sd = _sedeSel();
   let all = unifiedResultsAll || [];
+  _modoPrimaria = all.length > 0 && all.every(r => {
+    const g = parseInt(gradoDeCurso(r.curso), 10);
+    return g >= 1 && g <= 5;
+  });
   if (sd !== null) all = all.filter(r => sedeDeCurso(r.curso) === sd);
   unifiedResults = j ? all.filter(r => _jornadaDe(r.curso) === j) : all.slice();
 }
@@ -3685,9 +3689,14 @@ function rangoNivel(key, n) {
 const NIV_FUERTE = [null, [226, 75, 74], [239, 159, 39], [234, 190, 40], [76, 175, 80]];
 const NIV_TENUE  = [null, [248, 205, 205], [251, 222, 178], [252, 238, 180], [205, 233, 206]];
 const NIV_TEXTO  = [null, [121, 31, 31], [110, 60, 5], [100, 74, 5], [27, 94, 32]];
+// En primaria el área de lectura (Lectura Critica en la distribución) es
+// "Lenguaje": _modoPrimaria se activa cuando todo el simulacro es de 1° a 5°.
+let _modoPrimaria = false;
+const _lblLect  = () => _modoPrimaria ? 'Lenguaje' : 'Lectura Crítica';
+const _lblLectS = () => _modoPrimaria ? 'Leng' : 'Lect';
 const INT_AREAS = [
   {k: 'mat',  l: 'Matemáticas',     s: 'Mat'},
-  {k: 'lect', l: 'Lectura Crítica', s: 'Lect'},
+  {k: 'lect', get l() { return _lblLect(); }, get s() { return _lblLectS(); }},
   {k: 'soc',  l: 'Sociales',        s: 'Soc'},
   {k: 'nat',  l: 'Naturales',       s: 'Nat'},
   {k: 'ing',  l: 'Inglés',          s: 'Ing'},
@@ -4518,7 +4527,7 @@ function renderQuestionAnalysis(data) {
 
   const labels = {
     'Matematica': 'Matemáticas',
-    'Lectura Critica': 'Lectura Crítica',
+    'Lectura Critica': _lblLect(),
     'Sociales': 'Sociales',
     'Naturales': 'Naturales',
     'Ingles': 'Inglés',
@@ -4661,7 +4670,7 @@ async function _ensureQuestionAnalysis(simNombre) {
 // Construye datos de tabla para una asignatura usando el filtro de grupo
 function _questionRowsForSubject(questions, subject, groupBy, groupKey) {
   const subjLabel = ({
-    'Matematica':'Matemáticas','Lectura Critica':'Lectura Crítica',
+    'Matematica':'Matemáticas','Lectura Critica':_lblLect(),
     'Sociales':'Sociales','Naturales':'Naturales','Ingles':'Inglés',
   })[subject] || subject;
   const stOf = (q) => {
@@ -4748,7 +4757,7 @@ function _drawQuestionTablesInPdf(doc, startY, data, groupBy, groupKey, headerTe
 // Versión que devuelve los items con stats completos para usar barras
 function _questionRowsForSubjectFull(questions, subject, groupBy, groupKey) {
   const subjLabel = ({
-    'Matematica':'Matemáticas','Lectura Critica':'Lectura Crítica',
+    'Matematica':'Matemáticas','Lectura Critica':_lblLect(),
     'Sociales':'Sociales','Naturales':'Naturales','Ingles':'Inglés',
   })[subject] || subject;
   const stOf = (q) => {
@@ -5060,7 +5069,7 @@ function renderUnifiedTable() {
           <th rowspan="2">Estudiante</th>
           <th rowspan="2">Curso</th>
           <th rowspan="2">Mat</th>
-          <th rowspan="2">Lect</th>
+          <th rowspan="2">${_lblLectS()}</th>
           <th rowspan="2">Soc</th>
           <th colspan="3" style="${NAT_GROUP_TH}">🔬 Ciencias Naturales</th>
           <th rowspan="2">Ing</th>
@@ -5074,7 +5083,7 @@ function renderUnifiedTable() {
         </tr>
        </thead>`
     : `<thead><tr>
-        <th>Estudiante</th><th>Curso</th><th>Mat</th><th>Lect</th><th>Soc</th>
+        <th>Estudiante</th><th>Curso</th><th>Mat</th><th>${_lblLectS()}</th><th>Soc</th>
         <th>Nat</th>
         <th>Ing</th><th>General</th><th></th>
        </tr></thead>`;
@@ -5182,7 +5191,7 @@ function _renderTableGroupedByCurso(view, gradeF) {
           <th rowspan="2">Curso</th>
           <th rowspan="2">Estudiantes</th>
           <th rowspan="2">Mat</th>
-          <th rowspan="2">Lect</th>
+          <th rowspan="2">${_lblLectS()}</th>
           <th rowspan="2">Soc</th>
           <th colspan="3" style="${NAT_GROUP_TH}">🔬 Ciencias Naturales</th>
           <th rowspan="2">Ing</th>
@@ -5196,7 +5205,7 @@ function _renderTableGroupedByCurso(view, gradeF) {
        </thead>`
     : `<thead><tr>
         <th>Curso</th><th>Estudiantes</th>
-        <th>Mat</th><th>Lect</th><th>Soc</th>
+        <th>Mat</th><th>${_lblLectS()}</th><th>Soc</th>
         <th>Nat</th>
         <th>Ing</th><th>General</th>
        </tr></thead>`;
@@ -5287,7 +5296,7 @@ function _renderTableGroupedByCurso(view, gradeF) {
       highlightCols: [5, 6, 7],
     };
   } else {
-    headers = ['Curso', 'Estudiantes', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'General'];
+    headers = ['Curso', 'Estudiantes', 'Mat', _lblLectS(), 'Soc', 'Nat', 'Ing', 'General'];
     pdfRows = rows.map(r => [r.curso, r.n, r.mat, r.lect, r.soc, r.nat, r.ing, r.general]);
     avgRow  = [`PROMEDIO ${gradeF}°`, totalRow.n, totalRow.mat, totalRow.lect,
                totalRow.soc, totalRow.nat, totalRow.ing, totalRow.general];
@@ -6386,7 +6395,7 @@ async function _saveReportPdf({title, subtitle, headers, rows, avgRow, colWidths
 // ══ REPORTES ════════════════════════════════════════════════════════════════
 const REP_SUBJECTS = [
   {key:'mat',  label:'Matemáticas'},
-  {key:'lect', label:'Lectura Crítica'},
+  {key:'lect', get label() { return _lblLect(); }},
   {key:'soc',  label:'Sociales'},
   {key:'nat',  label:'Naturales'},
   {key:'ing',  label:'Inglés'},
@@ -6686,7 +6695,7 @@ async function downloadTablePdfReport() {
       highlightCols: [6, 7, 8],
     };
   } else {
-    headers = ['#', 'Estudiante', 'Curso', 'Mat', 'Lect', 'Soc', 'Nat', 'Ing', 'Gen'];
+    headers = ['#', 'Estudiante', 'Curso', 'Mat', _lblLectS(), 'Soc', 'Nat', 'Ing', 'Gen'];
     rows = sorted.map((r, i) => [
       i+1, (r.name || '—').slice(0, 28), r.curso || '—',
       r.mat, r.lect, r.soc, r.nat, r.ing, r.general,
