@@ -365,7 +365,10 @@ function gradoDeCurso(c) {
 
 // fetch JSON con caché en localStorage (stale-while-revalidate): sirve al
 // instante lo guardado y refresca en segundo plano. Ideal para celulares.
-async function _cachedJson(url, key, maxAgeMs) {
+// onUpdate (opcional): si se sirvió lo guardado y el servidor responde con
+// datos distintos, se llama con los nuevos (p.ej. cursos recién creados no
+// deben esperar a que venza la caché para aparecer).
+async function _cachedJson(url, key, maxAgeMs, onUpdate) {
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
   const fresh = fetch(url).then(r => r.json()).then(d => {
@@ -373,7 +376,9 @@ async function _cachedJson(url, key, maxAgeMs) {
     return d;
   });
   if (cached && (Date.now() - cached.ts) < maxAgeMs) {
-    fresh.catch(() => {});
+    fresh.then(d => {
+      if (onUpdate && JSON.stringify(d) !== JSON.stringify(cached.d)) onUpdate(d);
+    }).catch(() => {});
     return cached.d;
   }
   try { return await fresh; }
@@ -405,7 +410,34 @@ function onSedeChange() {
 async function loadCursos() {
   if (!SIM) return;
   try {
-    const d = await _cachedJson('/courses', 'esc:courses', 10 * 60 * 1000);
+    const d = await _cachedJson('/courses', 'esc:courses', 10 * 60 * 1000, _onCursosActualizados);
+    await _aplicarCursos(d);
+  } catch (e) {
+    setSt('setup-status', 'error', 'No se pudieron cargar los cursos. Recarga la página.');
+  }
+  if (SIM && SIM.tipo === 'completo') {
+    document.getElementById('ses-wrap').style.display = 'block';
+  }
+}
+
+// La lista del servidor cambió (cursos o sedes nuevos): volver a armar los
+// selectores conservando la sede y el curso que ya estaban elegidos.
+async function _onCursosActualizados(d) {
+  const sedeSel = document.getElementById('sede-select');
+  const cursoSel = document.getElementById('curso-select');
+  const prevSede = sedeSel.value, prevCurso = cursoSel.value;
+  try { localStorage.removeItem('esc:sedes'); } catch (e) {}
+  await _aplicarCursos(d);
+  if (prevSede && [...sedeSel.options].some(o => o.value === prevSede)) {
+    sedeSel.value = prevSede;
+    _renderCursos();
+  }
+  if (prevCurso && [...cursoSel.options].some(o => o.value === prevCurso)) cursoSel.value = prevCurso;
+  if (cursoSel.value !== prevCurso) onCursoChange();
+}
+
+async function _aplicarCursos(d) {
+  {
     _cursosSim = (d.courses || []).filter(c => {
       const g = c.grado || gradoDeCurso(c.name);
       return !SIM.grados || !SIM.grados.length || SIM.grados.includes(String(g));
@@ -434,11 +466,6 @@ async function loadCursos() {
       wrap.style.display = 'none';
     }
     _renderCursos();
-  } catch (e) {
-    setSt('setup-status', 'error', 'No se pudieron cargar los cursos. Recarga la página.');
-  }
-  if (SIM && SIM.tipo === 'completo') {
-    document.getElementById('ses-wrap').style.display = 'block';
   }
 }
 
