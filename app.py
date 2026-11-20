@@ -17,7 +17,8 @@ from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
     list_sheets, create_sheet, generate_sipagre_results,
     generate_msipagre_results,
-    list_courses, add_course, delete_course,
+    list_courses, add_course, add_courses_bulk, list_sedes, add_sede, delete_sede,
+    SEDE_PRINCIPAL, course_name_for_sede, sede_of_course, delete_course,
     list_simulacros, add_simulacro, delete_simulacro,
     uppercase_all_student_names,
     analyze_simulacro_questions,
@@ -506,8 +507,9 @@ def courses_add():
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
     grado = (data.get('grado') or '').strip()
+    sede = (data.get('sede') or '').strip()
     try:
-        result = add_course(name, grado)
+        result = add_course(name, grado, sede)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -521,6 +523,55 @@ def courses_delete():
     try:
         result = delete_course(name)
         return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ─── Sedes ──────────────────────────────────────────────────────────────
+@app.route('/sedes', methods=['GET'])
+def sedes_list():
+    """Sedes con sus cursos: la principal primero (código '')."""
+    try:
+        courses = list_courses()
+        out = []
+        for s in [SEDE_PRINCIPAL] + list_sedes():
+            cs = [c for c in courses if c.get('sede', '') == s['codigo']]
+            out.append({**s, 'cursos': [c['name'] for c in cs],
+                        'grados': sorted({c['grado'] for c in cs if c['grado']},
+                                         key=lambda g: int(g) if g.isdigit() else 99)})
+        return jsonify({'success': True, 'sedes': out})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e), 'sedes': []}), 500
+
+
+@app.route('/sedes', methods=['POST'])
+def sedes_add():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(add_sede(data.get('nombre'), data.get('codigo')))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/sedes', methods=['DELETE'])
+def sedes_delete():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(delete_sede(data.get('codigo')))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/sedes/cursos', methods=['POST'])
+def sedes_add_courses():
+    """Crea los cursos de una sede: {sede, counts: {grado: n_grupos}}."""
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(add_courses_bulk(data.get('sede'), data.get('counts') or {}))
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -930,6 +981,21 @@ def estudiantes_upload():
         parsed = parse_roster_xlsx(f.read())
         if not parsed.get('success'):
             return jsonify(parsed), 400
+        # Listado de una sede: sus cursos llevan el prefijo de la sede
+        # ("301" -> "CV-301"). No se permite reemplazar todo el registro
+        # desde el listado de una sola sede.
+        sede = (request.form.get('sede') or '').strip().upper()
+        if sede:
+            if sede not in {s['codigo'] for s in list_sedes()}:
+                return jsonify({'success': False,
+                                'error': f'La sede "{sede}" no existe.'}), 400
+            if replace:
+                return jsonify({'success': False,
+                                'error': ('Con una sede elegida solo se puede '
+                                          'agregar o actualizar, no reemplazar todo.')}), 400
+            for st in parsed['students']:
+                if st.get('curso'):
+                    st['curso'] = course_name_for_sede(sede, st['curso'])
         result = save_estudiantes(parsed['students'], replace=replace)
         if not result.get('success'):
             return jsonify(result), 500

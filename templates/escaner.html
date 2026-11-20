@@ -207,6 +207,14 @@
   <!-- Paso 1: curso (y sesión si el simulacro es completo) -->
   <div class="card">
     <h2>1️⃣ Curso del estudiante</h2>
+    <div class="row" id="sede-wrap" style="display:none;margin-bottom:10px;">
+      <div>
+        <label>Sede</label>
+        <select id="sede-select" onchange="onSedeChange()">
+          <option value="">— selecciona la sede —</option>
+        </select>
+      </div>
+    </div>
     <div class="row">
       <div>
         <label>Curso</label>
@@ -340,8 +348,15 @@ async function pinLogin() {
 }
 
 // ── Setup: cursos + perfil ──────────────────────────────────────────────────
+// Cursos de una sede: "CV-301" (código de la sede + curso). Sin prefijo =
+// sede principal.
+function sedeDeCurso(c) {
+  const m = /^([A-Za-z]{1,4})-/.exec(String(c || '').trim());
+  return m ? m[1].toUpperCase() : '';
+}
+
 function gradoDeCurso(c) {
-  c = String(c || '').trim();
+  c = String(c || '').trim().replace(/^[A-Za-z]{1,4}-/, '');
   if (/^\d{4}/.test(c)) return c.slice(0, 2);
   if (/^\d{3}/.test(c)) return c.slice(0, 1);
   const m = c.match(/^(\d{1,2})/);
@@ -365,17 +380,60 @@ async function _cachedJson(url, key, maxAgeMs) {
   catch (e) { if (cached) return cached.d; throw e; }
 }
 
+let _cursosSim = [];     // cursos de los grados del simulacro (todas las sedes)
+let _sedesSim  = [];     // [{codigo, nombre}] con cursos en este simulacro
+
+function _renderCursos() {
+  const sel = document.getElementById('curso-select');
+  const sedeSel = document.getElementById('sede-select');
+  const multi = _sedesSim.length >= 2;
+  const sede = multi ? sedeSel.value : null;
+  const lista = multi ? (sede === '' ? [] : _cursosSim.filter(c => (c.sede || sedeDeCurso(c.name)) ===
+                                                       (sede === '__principal__' ? '' : sede)))
+                      : _cursosSim;
+  sel.innerHTML = '<option value="">' + (multi && sede === '' ? '— primero elige la sede —' : '— selecciona —') + '</option>' +
+    lista.map(c => `<option value="${c.name}" data-grado="${c.grado || ''}">${c.name}</option>`).join('');
+  sel.disabled = multi && sede === '';
+}
+
+function onSedeChange() {
+  try { localStorage.setItem('esc:sede:' + (SIM ? SIM.nombre : ''), document.getElementById('sede-select').value); } catch (e) {}
+  _renderCursos();
+  onCursoChange();
+}
+
 async function loadCursos() {
   if (!SIM) return;
   try {
     const d = await _cachedJson('/courses', 'esc:courses', 10 * 60 * 1000);
-    const cursos = (d.courses || []).filter(c => {
+    _cursosSim = (d.courses || []).filter(c => {
       const g = c.grado || gradoDeCurso(c.name);
       return !SIM.grados || !SIM.grados.length || SIM.grados.includes(String(g));
     });
-    const sel = document.getElementById('curso-select');
-    sel.innerHTML = '<option value="">— selecciona —</option>' +
-      cursos.map(c => `<option value="${c.name}" data-grado="${c.grado || ''}">${c.name}</option>`).join('');
+    // Sedes con cursos en este simulacro: si hay más de una, se elige primero la sede
+    const cods = [...new Set(_cursosSim.map(c => c.sede || sedeDeCurso(c.name)))];
+    let nombres = {};
+    if (cods.length >= 2) {
+      try {
+        const s = await _cachedJson('/sedes', 'esc:sedes', 10 * 60 * 1000);
+        (s.sedes || []).forEach(x => { nombres[x.codigo] = x.nombre; });
+      } catch (e) { /* sin nombres: se muestra el código */ }
+    }
+    _sedesSim = cods.map(c => ({codigo: c, nombre: nombres[c] || (c ? 'Sede ' + c : 'Sede principal')}))
+                    .sort((a, b) => a.codigo === '' ? -1 : b.codigo === '' ? 1 : a.nombre.localeCompare(b.nombre));
+    const wrap = document.getElementById('sede-wrap');
+    const sedeSel = document.getElementById('sede-select');
+    if (_sedesSim.length >= 2) {
+      wrap.style.display = '';
+      sedeSel.innerHTML = '<option value="">— selecciona la sede —</option>' +
+        _sedesSim.map(s => `<option value="${s.codigo || '__principal__'}">${s.nombre}</option>`).join('');
+      let prev = '';
+      try { prev = localStorage.getItem('esc:sede:' + SIM.nombre) || ''; } catch (e) {}
+      if (prev && [...sedeSel.options].some(o => o.value === prev)) sedeSel.value = prev;
+    } else {
+      wrap.style.display = 'none';
+    }
+    _renderCursos();
   } catch (e) {
     setSt('setup-status', 'error', 'No se pudieron cargar los cursos. Recarga la página.');
   }

@@ -941,6 +941,11 @@
           <label style="font-size:.78rem;color:var(--muted);">Grado</label>
           <select id="kg-grado" onchange="_onKgChange()">
             <option value="">—</option>
+            <option value="1">1°</option>
+            <option value="2">2°</option>
+            <option value="3">3°</option>
+            <option value="4">4°</option>
+            <option value="5">5°</option>
             <option value="6">6°</option>
             <option value="7">7°</option>
             <option value="8">8°</option>
@@ -993,6 +998,11 @@
           <label style="font-size:.78rem;color:var(--muted);">Grado</label>
           <select id="anu-grado" onchange="_onAnuChange()">
             <option value="">—</option>
+            <option value="1">1°</option>
+            <option value="2">2°</option>
+            <option value="3">3°</option>
+            <option value="4">4°</option>
+            <option value="5">5°</option>
             <option value="6">6°</option>
             <option value="7">7°</option>
             <option value="8">8°</option>
@@ -1116,6 +1126,18 @@
 
       <!-- Filtros (aparecen tras generar) -->
       <div id="r-filter-bar" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:end;">
+        <div id="r-sede-wrap" style="flex:1 1 100%;display:none;">
+          <label style="font-size:.78rem;color:var(--muted);">🏫 Sede</label>
+          <div style="display:flex;gap:8px;">
+            <select id="r-sede-select" onchange="onJornadaChange()" style="flex:1;"></select>
+            <button id="btn-r-sedes" type="button" onclick="downloadSedesPdf()"
+                    title="PDF que compara todas las sedes del simulacro"
+                    style="padding:8px 12px;font-size:.8rem;background:linear-gradient(135deg,#7c3aed,#4f46e5);
+                           color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;white-space:nowrap;">
+              🏫 Informe de sedes
+            </button>
+          </div>
+        </div>
         <div style="flex:1 1 100%;">
           <label style="font-size:.78rem;color:var(--muted);" title="Mañana: cursos 01 a 05 (9° y 10°: 01 a 04) · Tarde: el resto">🌓 Jornada</label>
           <select id="r-jornada-select" onchange="onJornadaChange()">
@@ -1266,6 +1288,53 @@
       <div id="personalize-result" style="margin-top:12px;"></div>
     </div>
 
+    <!-- ── Sedes ── -->
+    <div class="card">
+      <h2>🏫 Sedes</h2>
+      <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px;">
+        Cada sede tiene sus cursos con su código como prefijo (p.ej. <code>CV-301</code> es el
+        curso 301 de la sede CV). Al escanear se elige la sede y en Resultados se puede
+        filtrar por sede o descargar el informe general de todas las sedes.
+      </p>
+      <div id="sedes-list" style="margin-bottom:12px;"></div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:10px;">📚 Crear los cursos de una sede</div>
+        <select id="sede-bulk-sede" onchange="_sedeBulkPreview()" style="margin-bottom:8px;">
+          <option value="">— elige la sede —</option>
+        </select>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px;">Número de grupos por grado:</div>
+        <div id="sede-bulk-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
+          <label style="font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:2px;">1°<input type="number" min="0" max="20" data-grado="1" oninput="_sedeBulkPreview()" placeholder="0" style="width:100%;text-align:center;"></label>
+          <label style="font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:2px;">2°<input type="number" min="0" max="20" data-grado="2" oninput="_sedeBulkPreview()" placeholder="0" style="width:100%;text-align:center;"></label>
+          <label style="font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:2px;">3°<input type="number" min="0" max="20" data-grado="3" oninput="_sedeBulkPreview()" placeholder="0" style="width:100%;text-align:center;"></label>
+          <label style="font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:2px;">4°<input type="number" min="0" max="20" data-grado="4" oninput="_sedeBulkPreview()" placeholder="0" style="width:100%;text-align:center;"></label>
+          <label style="font-size:.78rem;display:flex;flex-direction:column;align-items:center;gap:2px;">5°<input type="number" min="0" max="20" data-grado="5" oninput="_sedeBulkPreview()" placeholder="0" style="width:100%;text-align:center;"></label>
+        </div>
+        <div id="sede-bulk-preview" style="font-size:.75rem;color:var(--muted);margin:8px 0;"></div>
+        <button class="btn-primary" type="button" onclick="addSedeCourses()">📚 Crear cursos</button>
+        <div id="sede-bulk-status" style="margin-top:8px;font-size:.85rem;"></div>
+      </div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid var(--card-border);
+                  border-radius:10px;padding:14px;">
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:10px;">➕ Nueva sede</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;">
+          <div style="flex:2;min-width:180px;">
+            <label style="font-size:.78rem;color:var(--muted);">Nombre</label>
+            <input type="text" id="sede-add-nombre" placeholder="Ej: Catalino Varela">
+          </div>
+          <div style="flex:0 0 100px;">
+            <label style="font-size:.78rem;color:var(--muted);">Código</label>
+            <input type="text" id="sede-add-codigo" maxlength="4" placeholder="CV" style="text-transform:uppercase;">
+          </div>
+          <button class="btn-primary" type="button" onclick="addSede()">➕ Crear</button>
+        </div>
+        <div id="sede-add-status" style="margin-top:8px;font-size:.85rem;"></div>
+      </div>
+    </div>
+
     <!-- ── Roster general de estudiantes (autocompletar nombre al teclear ID) ── -->
     <div class="card">
       <h2>👥 Roster general de estudiantes</h2>
@@ -1309,6 +1378,12 @@
           <span id="est-file-name" style="font-size:.78rem;color:var(--muted);">
             Ningún archivo seleccionado
           </span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+          <label for="est-sede" style="font-size:.78rem;color:var(--muted);">🏫 Sede del listado</label>
+          <select id="est-sede" style="flex:1;min-width:200px;">
+            <option value="">Sede principal / el Excel ya trae el prefijo</option>
+          </select>
         </div>
         <div id="est-status" style="margin-top:8px;font-size:.85rem;"></div>
       </div>
@@ -1485,6 +1560,11 @@
       <div style="flex:1;min-width:90px;">
         <label>Grado</label>
         <select id="distrib-grado">
+          <option value="1">1°</option>
+          <option value="2">2°</option>
+          <option value="3">3°</option>
+          <option value="4">4°</option>
+          <option value="5">5°</option>
           <option value="6">6°</option>
           <option value="7">7°</option>
           <option value="8">8°</option>
@@ -1555,9 +1635,16 @@
            placeholder="Ej: 701, 1001, 1102…"
            oninput="_autoFillGradeFromCourse()"
            onkeydown="if(event.key==='Enter') createNewCourse()">
+    <label>Sede</label>
+    <select id="new-course-sede"><option value="">Sede principal</option></select>
     <label>Grado</label>
     <select id="new-course-grade">
       <option value="">— selecciona grado —</option>
+      <option value="1">1°</option>
+      <option value="2">2°</option>
+      <option value="3">3°</option>
+      <option value="4">4°</option>
+      <option value="5">5°</option>
       <option value="6">6°</option>
       <option value="7">7°</option>
       <option value="8">8°</option>
@@ -1629,6 +1716,7 @@ let state = {
   await loadSheets();
   await loadProfile();
   await loadCourses();
+  await loadSedes();
   await loadSimulacros();
   await loadDistribuciones();
   await _midLoadSheets();
@@ -1882,16 +1970,21 @@ async function loadCourses() {
     const sel  = document.getElementById('student-curso');
     if (!sel) return;
     const prev = sel.value;
-    // Agrupar por grado para visualizacion
+    // Agrupar por sede y grado para visualizacion
     const grouped = {};
     _coursesCache.forEach(c => {
-      const g = c.grado || 'Otros';
+      const g = (c.sede || '') + '|' + (c.grado || 'Otros');
       if (!grouped[g]) grouped[g] = [];
       grouped[g].push(c);
     });
     let html = '<option value="">— sin curso —</option>';
-    Object.keys(grouped).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99)).forEach(g => {
-      const label = g === 'Otros' ? 'Otros' : `Grado ${g}°`;
+    const _gk = k => { const [sd, g] = k.split('|'); return [sd, parseInt(g) || 99]; };
+    Object.keys(grouped).sort((a, b) => {
+      const [sa, ga] = _gk(a), [sb, gb] = _gk(b);
+      return sa === sb ? ga - gb : (sa === '' ? -1 : sb === '' ? 1 : sa.localeCompare(sb));
+    }).forEach(k => {
+      const [sd, g] = k.split('|');
+      const label = (sd ? `${nombreSede(sd)} · ` : '') + (g === 'Otros' ? 'Otros' : `Grado ${g}°`);
       html += `<optgroup label="${label}">`;
       grouped[g].forEach(c => {
         html += `<option value="${c.name}">${c.name}</option>`;
@@ -1913,7 +2006,7 @@ function _autoFillGradeFromCourse() {
     if (name.length === 4)      grado = name.slice(0, 2);  // 1001 -> 10
     else if (name.length === 3) grado = name.slice(0, 1);  // 701  -> 7
   }
-  if (['6','7','8','9','10','11'].includes(grado)) sel.value = grado;
+  if (/^([1-9]|10|11)$/.test(grado)) sel.value = grado;
 }
 
 function showNewCourseModal() {
@@ -1940,7 +2033,7 @@ async function createNewCourse() {
     const resp = await fetch('/courses', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({name, grado})
+      body: JSON.stringify({name, grado, sede: document.getElementById('new-course-sede')?.value || ''})
     });
     const data = await resp.json();
     if (data.success) {
@@ -1957,6 +2050,149 @@ async function createNewCourse() {
   } finally {
     btn.disabled = false; btn.textContent = '✅ Agregar';
   }
+}
+
+// ══ SEDES ══════════════════════════════════════════════════════════════════
+// Los cursos de una sede llevan su código como prefijo ("CV-301"); los que no
+// tienen prefijo son de la sede principal.
+let _sedesCache = [];   // [{codigo, nombre, cursos:[...], grados:[...]}] (principal = '')
+
+function sedeDeCurso(curso) {
+  const m = /^([A-Za-z]{1,4})-/.exec(String(curso || '').trim());
+  return m ? m[1].toUpperCase() : '';
+}
+function nombreSede(cod) {
+  const s = _sedesCache.find(x => x.codigo === (cod || ''));
+  return s ? s.nombre : (cod ? `Sede ${cod}` : 'Sede principal');
+}
+function _sedesEnResultados(arr) {
+  const cods = [...new Set((arr || []).map(r => sedeDeCurso(r.curso)))];
+  return cods.map(c => ({codigo: c, nombre: nombreSede(c)}))
+             .sort((a, b) => (a.codigo === '' ? -1 : b.codigo === '' ? 1 : a.nombre.localeCompare(b.nombre)));
+}
+
+async function loadSedes() {
+  try {
+    const d = await (await fetch('/sedes')).json();
+    _sedesCache = d.sedes || [];
+  } catch (e) { _sedesCache = []; }
+  _renderSedesConfig();
+  _fillSedeSelects();
+}
+
+// Selects de sede de otros formularios (curso nuevo, Excel del roster, cursos masivos)
+function _fillSedeSelects() {
+  const extra = _sedesCache.filter(s => s.codigo);
+  const opts = extra.map(s => `<option value="${s.codigo}">${_escTxt(s.nombre)} (${s.codigo})</option>`).join('');
+  [['new-course-sede', '<option value="">Sede principal</option>'],
+   ['est-sede', '<option value="">Sede principal / el Excel ya trae el prefijo</option>'],
+   ['sede-bulk-sede', '<option value="">— elige la sede —</option>']].forEach(([id, first]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const prev = el.value;
+    el.innerHTML = first + opts;
+    if (prev && extra.some(s => s.codigo === prev)) el.value = prev;
+  });
+}
+
+function _renderSedesConfig() {
+  const box = document.getElementById('sedes-list');
+  if (!box) return;
+  if (!_sedesCache.length) { box.innerHTML = '<p style="color:var(--muted);">No se pudieron cargar las sedes.</p>'; return; }
+  box.innerHTML = _sedesCache.map(s => {
+    const n = s.cursos.length;
+    const gr = s.grados.length ? s.grados.map(g => g + '°').join(', ') : 'sin cursos';
+    const del = s.codigo && !n
+      ? `<button class="btn-secondary" title="Eliminar sede (solo si no tiene cursos)" style="flex:0 0 auto;width:auto;padding:4px 10px;font-size:.75rem;" onclick="deleteSede('${s.codigo}')">🗑️</button>` : '';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+                 border:1px solid var(--card-border);border-radius:8px;margin-bottom:6px;
+                 background:rgba(255,255,255,.03);">
+      <div style="min-width:44px;text-align:center;font-weight:800;color:var(--primary-light);">${s.codigo || '—'}</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:.88rem;">${_escTxt(s.nombre)}</div>
+        <div style="font-size:.75rem;color:var(--muted);">${n} curso${n === 1 ? '' : 's'} · ${gr}</div>
+      </div>${del}</div>`;
+  }).join('');
+}
+
+async function addSede() {
+  const st = document.getElementById('sede-add-status');
+  const nombre = document.getElementById('sede-add-nombre').value.trim();
+  const codigo = document.getElementById('sede-add-codigo').value.trim().toUpperCase();
+  try {
+    const d = await (await fetch('/sedes', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({nombre, codigo})})).json();
+    if (!d.success) { st.innerHTML = `<span style="color:var(--danger);">❌ ${_escTxt(d.error)}</span>`; return; }
+    st.innerHTML = `<span style="color:var(--success);">✅ Sede ${_escTxt(d.sede.nombre)} creada.</span>`;
+    document.getElementById('sede-add-nombre').value = '';
+    document.getElementById('sede-add-codigo').value = '';
+    await loadSedes();
+  } catch (e) { st.innerHTML = '<span style="color:var(--danger);">❌ Error de conexión.</span>'; }
+}
+
+async function deleteSede(codigo) {
+  if (!confirm(`¿Eliminar la sede ${nombreSede(codigo)}?`)) return;
+  const d = await (await fetch('/sedes', {method: 'DELETE', headers: {'Content-Type': 'application/json'},
+                                          body: JSON.stringify({codigo})})).json();
+  if (!d.success) alert(d.error || 'No se pudo eliminar.');
+  await loadSedes();
+}
+
+function _sedeBulkPreview() {
+  const cod = document.getElementById('sede-bulk-sede').value;
+  const pv = document.getElementById('sede-bulk-preview');
+  if (!cod) { pv.textContent = ''; return; }
+  const names = [];
+  document.querySelectorAll('#sede-bulk-grid input').forEach(inp => {
+    const n = Math.max(0, Math.min(20, parseInt(inp.value || '0', 10) || 0));
+    for (let k = 1; k <= n; k++) names.push(`${cod}-${inp.dataset.grado}${String(k).padStart(2, '0')}`);
+  });
+  pv.textContent = names.length ? `Se crearán: ${names.join(', ')}` : '';
+}
+
+async function addSedeCourses() {
+  const st = document.getElementById('sede-bulk-status');
+  const sede = document.getElementById('sede-bulk-sede').value;
+  if (!sede) { st.innerHTML = '<span style="color:var(--danger);">❌ Elige la sede.</span>'; return; }
+  const counts = {};
+  document.querySelectorAll('#sede-bulk-grid input').forEach(inp => {
+    const n = parseInt(inp.value || '0', 10) || 0;
+    if (n > 0) counts[inp.dataset.grado] = n;
+  });
+  if (!Object.keys(counts).length) { st.innerHTML = '<span style="color:var(--danger);">❌ Indica cuántos grupos tiene cada grado.</span>'; return; }
+  st.innerHTML = '<span style="color:var(--muted);">⏳ Creando cursos…</span>';
+  try {
+    const d = await (await fetch('/sedes/cursos', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                   body: JSON.stringify({sede, counts})})).json();
+    if (!d.success) { st.innerHTML = `<span style="color:var(--danger);">❌ ${_escTxt(d.error)}</span>`; return; }
+    st.innerHTML = `<span style="color:var(--success);">✅ ${d.created.length} curso(s) creados` +
+      (d.skipped.length ? ` · ${d.skipped.length} ya existían` : '') + '.</span>';
+    document.querySelectorAll('#sede-bulk-grid input').forEach(inp => { inp.value = ''; });
+    _sedeBulkPreview();
+    await loadCourses();
+    await loadSedes();
+  } catch (e) { st.innerHTML = '<span style="color:var(--danger);">❌ Error de conexión.</span>'; }
+}
+
+// ── Filtro de sede en Resultados ──
+function _sedeSel() {
+  const el = document.getElementById('r-sede-select');
+  if (!el || !el.value) return null;            // todas las sedes
+  return el.value === '__principal__' ? '' : el.value;
+}
+function _populateSedeFilter() {
+  const wrap = document.getElementById('r-sede-wrap');
+  const sel = document.getElementById('r-sede-select');
+  const btn = document.getElementById('btn-r-sedes');
+  if (!wrap || !sel) return;
+  const sedes = _sedesEnResultados(unifiedResultsAll || []);
+  const prev = sel.value;
+  wrap.style.display = sedes.length >= 2 ? '' : 'none';
+  if (btn) btn.style.display = sedes.length >= 2 ? '' : 'none';
+  sel.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s =>
+    `<option value="${s.codigo || '__principal__'}">${_escTxt(s.nombre)}</option>`).join('');
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  if (sedes.length < 2) sel.value = '';
 }
 
 // ══ SIMULACROS ════════════════════════════════════════════════════════════
@@ -1999,6 +2235,8 @@ async function onEstFileChange(input) {
   const fd = new FormData();
   fd.append('roster', f);
   fd.append('replace', replace);
+  const sedeEst = document.getElementById('est-sede')?.value || '';
+  if (sedeEst) fd.append('sede', sedeEst);
   try {
     const resp = await fetch('/estudiantes/upload', {method:'POST', body: fd});
     const data = await resp.json();
@@ -3111,6 +3349,7 @@ let unifiedResultsAll = null;   // todos los estudiantes del simulacro
 const _JORNADA_ULTIMO_MANANA = {'9': 4, '10': 4};
 function _jornadaDe(curso) {
   const c = String(curso || '').trim();
+  if (sedeDeCurso(c)) return '';        // las sedes no se dividen por jornada
   const m = /(\d{2})\s*$/.exec(c);
   if (!m) return '';
   const n = parseInt(m[1], 10);
@@ -3125,13 +3364,17 @@ function _jornadaSel() {
 }
 function _jornadaTexto() {
   const j = _jornadaSel();
-  return j === 'manana' ? 'Jornada mañana' : j === 'tarde' ? 'Jornada tarde' : '';
+  const sd = _sedeSel();
+  const jt = j === 'manana' ? 'Jornada mañana' : j === 'tarde' ? 'Jornada tarde' : '';
+  return [sd !== null ? nombreSede(sd) : '', jt].filter(Boolean).join(' · ');
 }
 // Aplica la jornada sobre los resultados completos: todas las vistas y
 // reportes (integral, cursos, materias, becarios, PDF) usan unifiedResults.
 function _applyJornada() {
   const j = _jornadaSel();
-  const all = unifiedResultsAll || [];
+  const sd = _sedeSel();
+  let all = unifiedResultsAll || [];
+  if (sd !== null) all = all.filter(r => sedeDeCurso(r.curso) === sd);
   unifiedResults = j ? all.filter(r => _jornadaDe(r.curso) === j) : all.slice();
 }
 function onJornadaChange() {
@@ -3153,13 +3396,15 @@ function onJornadaChange() {
 // con los cursos de la jornada elegida, a partir del detalle por curso.
 function _questionDataForJornada(data) {
   const j = _jornadaSel();
-  if (!j || !data) return data;
+  const sd = _sedeSel();
+  if ((!j && sd === null) || !data) return data;
   const fixQ = (q) => {
     const byC = {};
     let n = 0, c = 0;
     const byG = {};
     Object.entries(q.by_curso || {}).forEach(([cu, e]) => {
-      if (_jornadaDe(cu) !== j) return;
+      if (j && _jornadaDe(cu) !== j) return;
+      if (sd !== null && sedeDeCurso(cu) !== sd) return;
       byC[cu] = e;
       n += e.n || 0; c += e.c || 0;
       const g = gradoDeCurso(cu);
@@ -3253,6 +3498,7 @@ function onResultsSimChange() {
   const cached = _resultsCache[unifiedSimulacro.nombre];
   if (cached && cached.results && cached.results.length) {
     unifiedResultsAll = cached.results;
+    _populateSedeFilter();
     _applyJornada();
     document.getElementById('r-status').innerHTML =
       `<p style="color:var(--muted);font-size:.82rem;">
@@ -3663,6 +3909,160 @@ function _drawIntegralFooter(doc, label, runHead) {
   }
 }
 
+// ══ INFORME GENERAL DE SEDES ═══════════════════════════════════════════════
+// Compara todas las sedes del simulacro (todos los grados): promedio por
+// sede y por área, sede × grado, dispersión y una ficha por sede.
+async function downloadSedesPdf() {
+  const all = (unifiedResultsAll || []).filter(r => (r.curso || '').trim());
+  const status = document.getElementById('r-status');
+  const sedes = _sedesEnResultados(all);
+  if (sedes.length < 2) {
+    status.innerHTML = '<p style="color:var(--warning);">Este simulacro tiene estudiantes de una sola sede.</p>';
+    return;
+  }
+  status.innerHTML = '<p style="color:var(--muted);">Generando informe general de sedes…</p>';
+  try {
+    await _loadLogo();
+    const jsPDF = getJsPDF();
+    const doc = new jsPDF({orientation: 'p', unit: 'mm', format: 'letter'});
+    const simName = unifiedSimulacro ? unifiedSimulacro.nombre : '';
+    const de = cod => all.filter(r => sedeDeCurso(r.curso) === cod);
+    const areas = INT_AREAS.filter(a => _avgK(all, a.k) != null);
+    const grados = [...new Set(all.map(r => gradoDeCurso(r.curso)).filter(Boolean))]
+                     .sort((a, b) => (+a) - (+b));
+    const general = _statsFor(all.map(r => +r.general || 0));
+    const cursosTot = new Set(all.map(r => r.curso.trim())).size;
+    const filaSede = s => {
+      const arr = de(s.codigo);
+      return [s.nombre, arr.length].concat(areas.map(a => _avgK(arr, a.k) ?? '—'))
+                                   .concat([_avgK(arr, 'general') ?? 0]);
+    };
+    const rank = sedes.map(s => ({...s, avg: _avgK(de(s.codigo), 'general') || 0, n: de(s.codigo).length}))
+                      .sort((a, b) => b.avg - a.avg);
+
+    // ══ PORTADA ══
+    let y = _drawReportHeader(doc, 'Informe general de sedes', `${simName} · ${sedes.length} sedes`);
+    const kw = (195.9 - 60 - 9) / 3;
+    _kpiCard(doc, 10, y, 60, 26, 'PROMEDIO GENERAL', `${general.avg} / 500`, null, true, general.avg / 500);
+    _kpiCard(doc, 73, y, kw, 26, 'ESTUDIANTES', general.n, `${cursosTot} cursos`);
+    _kpiCard(doc, 73 + kw + 3, y, kw, 26, 'SEDES', sedes.length,
+             `${grados.length} grado${grados.length === 1 ? '' : 's'}: ${grados.map(g => g + '°').join(', ')}`);
+    _kpiCard(doc, 73 + 2 * (kw + 3), y, kw, 26, 'DIFERENCIA ENTRE SEDES',
+             `${rank[0].avg - rank[rank.length - 1].avg} pts`, 'mejor vs. más baja');
+    y += 31;
+
+    const ins = [];
+    ins.push(`${rank[0].nombre} obtiene el mejor promedio (${rank[0].avg} puntos); ` +
+             `${rank[rank.length - 1].nombre} el más bajo (${rank[rank.length - 1].avg}).`);
+    sedes.forEach(s => {
+      const arr = de(s.codigo);
+      const as = areas.map(a => ({...a, avg: _avgK(arr, a.k)})).filter(a => a.avg != null);
+      if (!as.length) return;
+      const w = as.reduce((p, q) => q.avg < p.avg ? q : p);
+      if (ins.length < 6) ins.push(`${s.nombre}: área a reforzar ${w.l} (${w.avg}).`);
+    });
+    if (areas.length) {
+      const brecha = areas.map(a => {
+        const v = sedes.map(s => _avgK(de(s.codigo), a.k)).filter(x => x != null);
+        return {a, d: v.length ? Math.max(...v) - Math.min(...v) : 0};
+      }).sort((p, q) => q.d - p.d)[0];
+      if (brecha && brecha.d) ins.push(`La mayor brecha entre sedes está en ${brecha.a.l}: ${brecha.d} puntos.`);
+    }
+    y = _insightsBox(doc, y, ins.slice(0, 6));
+
+    y = _intSecTitle(doc, y, 'Comparativo por sede', 'Promedio por área (0-100) y general (0-500)');
+    const cols = [{label: 'Sede', w: 0, kind: 'text'}, {label: 'Estud.', w: 16, kind: 'num'}]
+      .concat(areas.map(a => ({label: a.s, w: 20, kind: 'area', key: a.k})))
+      .concat([{label: 'General', w: 24, kind: 'gen'}]);
+    cols[0].w = 195.9 - cols.slice(1).reduce((s, c) => s + c.w, 0);
+    const rows = sedes.map(filaSede).sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+    const avgRow = ['Todas las sedes', general.n].concat(areas.map(a => _avgK(all, a.k) ?? '—'))
+                                                 .concat([general.avg]);
+    y = _drawHeatTable(doc, y, cols, rows, {avgRow, rowH: 7.5});
+    y = _nivelLegend(doc, y + 1);
+
+    // Sede × grado (puntaje general)
+    if (grados.length >= 2) {
+      if (y > 200) { doc.addPage('letter', 'p'); y = 20; }
+      y += 7;
+      y = _intSecTitle(doc, y, 'Puntaje general por sede y grado', 'Promedio 0-500 · (n) = estudiantes');
+      const gw = Math.min(26, (195.9 - 60) / grados.length);
+      const gcols = [{label: 'Sede', w: 195.9 - gw * grados.length, kind: 'text'}]
+        .concat(grados.map(g => ({label: `${g}°`, w: gw, kind: 'num'})));
+      const cell = arr => arr.length ? `${_avgK(arr, 'general')} (${arr.length})` : '—';
+      const grows = sedes.map(s => [s.nombre].concat(grados.map(g =>
+        cell(de(s.codigo).filter(r => gradoDeCurso(r.curso) === g)))));
+      const gavg = ['Todas las sedes'].concat(grados.map(g => cell(all.filter(r => gradoDeCurso(r.curso) === g))));
+      y = _drawHeatTable(doc, y, gcols, grows, {avgRow: gavg, rowH: 7.5});
+    }
+
+    // ══ DISPERSIÓN ══
+    doc.addPage('letter', 'p'); y = 20;
+    const gH = 195.9 * 460 / 900;
+    y = _intSecTitle(doc, y, 'Promedio y dispersión por sede', 'Puntaje general (0-500)');
+    const cc = drawBarBoxComboCanvas(sedes.map(s => ({
+      label: s.nombre.length > 18 ? s.nombre.slice(0, 17) + '…' : s.nombre,
+      values: de(s.codigo).map(r => +r.general || 0),
+    })), {title: '', max: 500});
+    try { doc.addImage(cc.toDataURL('image/png'), 'PNG', 10, y, 195.9, gH, undefined, 'FAST'); } catch (e) {}
+    y += gH + 6;
+    y = _intSecTitle(doc, y, 'Promedio y dispersión por área', 'Todas las sedes · puntaje 0-100');
+    const ac = drawBarBoxComboCanvas(areas.map(a => ({
+      label: a.s === 'Lect' ? 'Lectura' : a.s === 'Mat' ? 'Matem.' : a.l,
+      values: all.map(r => r[a.k]).filter(v => v !== '' && v != null).map(Number),
+    })), {title: '', max: 100});
+    try { doc.addImage(ac.toDataURL('image/png'), 'PNG', 10, y, 195.9, gH, undefined, 'FAST'); } catch (e) {}
+
+    // ══ FICHA POR SEDE ══
+    sedes.forEach(s => {
+      const arr = de(s.codigo);
+      if (!arr.length) return;
+      doc.addPage('letter', 'p'); y = 20;
+      const st = _statsFor(arr.map(r => +r.general || 0));
+      const cursos = [...new Set(arr.map(r => r.curso.trim()))].sort();
+      y = _intSecTitle(doc, y, s.nombre, `${arr.length} estudiantes · ${cursos.length} cursos`);
+      const kw2 = (195.9 - 9) / 4;
+      _kpiCard(doc, 10, y, kw2, 24, 'PROMEDIO', `${st.avg} / 500`, null, true, st.avg / 500);
+      _kpiCard(doc, 10 + (kw2 + 3), y, kw2, 24, 'PUESTO', `${rank.findIndex(r => r.codigo === s.codigo) + 1}° de ${sedes.length}`,
+               `todas: ${general.avg}`);
+      _kpiCard(doc, 10 + 2 * (kw2 + 3), y, kw2, 24, 'RANGO', `${st.min}–${st.max}`, `mediana ${Math.round(st.median)}`);
+      const nb = arr.filter(r => (+r.general || 0) >= 300).length;
+      _kpiCard(doc, 10 + 3 * (kw2 + 3), y, kw2, 24, '300 O MÁS', nb, `${Math.round(nb / arr.length * 100)}% de la sede`);
+      y += 30;
+
+      const gs = [...new Set(arr.map(r => gradoDeCurso(r.curso)).filter(Boolean))].sort((a, b) => (+a) - (+b));
+      y = _intSecTitle(doc, y, 'Por grado', 'Promedio por área y general');
+      const c2 = [{label: 'Grado', w: 0, kind: 'text'}, {label: 'Estud.', w: 16, kind: 'num'}]
+        .concat(areas.map(a => ({label: a.s, w: 20, kind: 'area', key: a.k})))
+        .concat([{label: 'General', w: 24, kind: 'gen'}]);
+      c2[0].w = 195.9 - c2.slice(1).reduce((t, c) => t + c.w, 0);
+      const r2 = gs.map(g => {
+        const ga = arr.filter(r => gradoDeCurso(r.curso) === g);
+        return [`${g}°`, ga.length].concat(areas.map(a => _avgK(ga, a.k) ?? '—')).concat([_avgK(ga, 'general') ?? 0]);
+      });
+      y = _drawHeatTable(doc, y, c2, r2, {rowH: 7.2});
+      y += 3;
+      y = _intSecTitle(doc, y, 'Por curso', 'Ordenados por puntaje general');
+      const c3 = [{label: 'Curso', w: 0, kind: 'text'}, {label: 'Estud.', w: 16, kind: 'num'}]
+        .concat(areas.map(a => ({label: a.s, w: 20, kind: 'area', key: a.k})))
+        .concat([{label: 'General', w: 24, kind: 'gen'}]);
+      c3[0].w = 195.9 - c3.slice(1).reduce((t, c) => t + c.w, 0);
+      const r3 = cursos.map(c => {
+        const ca = arr.filter(r => r.curso.trim() === c);
+        return [c, ca.length].concat(areas.map(a => _avgK(ca, a.k) ?? '—')).concat([_avgK(ca, 'general') ?? 0]);
+      }).sort((a, b) => b[b.length - 1] - a[a.length - 1]);
+      y = _drawHeatTable(doc, y, c3, r3, {rowH: 7.2});
+    });
+
+    _drawIntegralFooter(doc, 'Informe general de sedes', `${simName} · Todas las sedes`);
+    doc.save(`Informe_Sedes_${simName.replace(/[^a-z0-9]+/gi, '_')}.pdf`);
+    status.innerHTML = '<p style="color:var(--success);font-weight:600;">PDF descargado.</p>';
+  } catch (e) {
+    console.error(e);
+    status.innerHTML = `<p style="color:var(--danger);">Error: ${e.message}</p>`;
+  }
+}
+
 async function downloadIntegralPdf() {
   if (!unifiedResults || !unifiedResults.length) return;
   const gradeF = document.getElementById('r-grade-select')?.value || '';
@@ -3693,7 +4093,7 @@ async function downloadIntegralPdf() {
     // si ya se mira el grado completo, todo el simulacro.
     const base = unifiedResultsAll || unifiedResults;
     let ref = null, refLabel = '';
-    if (cursoF || _jornadaSel()) {
+    if (cursoF || _jornadaSel() || _sedeSel() !== null) {
       ref = base.filter(r => gradoDeCurso(r.curso) === grado); refLabel = `Todo el grado ${grado}°`;
     } else {
       ref = base.slice(); refLabel = 'Todo el simulacro';
@@ -4508,7 +4908,8 @@ async function generateUnifiedResults() {
     const data = await resp.json();
     if (data.success) {
       unifiedResultsAll = data.results || [];
-      _applyJornada();
+      _populateSedeFilter();
+    _applyJornada();
       _resultsCache[sim.nombre] = {
         results: unifiedResultsAll,
         ts:      Date.now(),
@@ -6565,7 +6966,7 @@ function _onSimulacroTipoChange() {
 function _renderGradosChecks(selected = []) {
   const cont = document.getElementById('simulacro-grados-checks');
   if (!cont) return;
-  cont.innerHTML = ['6','7','8','9','10','11'].map(g => {
+  cont.innerHTML = ['1','2','3','4','5','6','7','8','9','10','11'].map(g => {
     const checked = selected.includes(g) ? 'checked' : '';
     return `<label style="display:flex;align-items:center;gap:4px;cursor:pointer;
                           font-size:.85rem;background:rgba(255,255,255,.04);
@@ -6694,9 +7095,10 @@ function gradoDeCurso(curso) {
   if (!curso) return '';
   const c = _coursesCache.find(x => x.name === curso);
   if (c && c.grado) return String(c.grado);
-  // Fallback: derivar del nombre
-  if (/^\d{4}$/.test(curso)) return curso.slice(0,2);
-  if (/^\d{3}$/.test(curso)) return curso.slice(0,1);
+  // Fallback: derivar del nombre (sin el prefijo de sede: "CV-301" -> 3)
+  const base = curso.replace(/^[A-Za-z]{1,4}-/, '');
+  if (/^\d{4}$/.test(base)) return base.slice(0,2);
+  if (/^\d{3}$/.test(base)) return base.slice(0,1);
   return '';
 }
 

@@ -236,13 +236,44 @@ def _ensure_curso_column(worksheet, n_questions=125) -> int:
 
 
 # ── Gestión de cursos ─────────────────────────────────────────────────────
+# ── Sedes ──────────────────────────────────────────────────────────────────
+# Los cursos de las sedes llevan el código de la sede como prefijo
+# ("CV-301" = curso 301 de la sede CV). Así dos sedes pueden tener un "301"
+# sin mezclarse, y cada resultado sabe su sede sin columnas adicionales.
+# Los cursos sin prefijo son de la sede principal.
+SEDES_SHEET = 'Sedes'
+SEDE_PRINCIPAL = {'codigo': '', 'nombre': 'Sede principal'}
+_SEDE_PREFIX_RE = re.compile(r'^([A-Z]{1,4})-(.+)$')
+
+
+def sede_of_course(name: str) -> str:
+    """Código de sede de un curso ('' = sede principal)."""
+    m = _SEDE_PREFIX_RE.match((name or '').strip().upper())
+    return m.group(1) if m else ''
+
+
+def course_base_name(name: str) -> str:
+    """Nombre del curso sin el prefijo de sede ("CV-301" -> "301")."""
+    n = (name or '').strip()
+    m = _SEDE_PREFIX_RE.match(n.upper())
+    return n[len(m.group(1)) + 1:] if m else n
+
+
+def course_name_for_sede(codigo: str, name: str) -> str:
+    """Nombre completo del curso en una sede: "301" + CV -> "CV-301"."""
+    codigo = (codigo or '').strip().upper()
+    base = course_base_name(name)
+    return f'{codigo}-{base}' if codigo else base
+
+
 def _grade_from_course_name(name: str) -> str:
     """Deriva el grado de un nombre de curso numérico tipo '701', '1001'.
        701  -> '7'  (3 digitos: primer digito)
        1001 -> '10' (4 digitos: primeros 2)
        1101 -> '11'
+       CV-301 -> '3' (el prefijo de sede se ignora)
        Si no es numérico, retorna ''."""
-    n = (name or '').strip()
+    n = course_base_name(name)
     if not n.isdigit():
         return ''
     if len(n) == 4:
@@ -292,25 +323,31 @@ def list_courses() -> list:
             # Si no tiene grado guardado, intentar derivarlo del nombre
             if not grado:
                 grado = _grade_from_course_name(name)
-            result.append({'name': name, 'grado': grado})
-        # Ordenar por (grado numérico, nombre)
+            result.append({'name': name, 'grado': grado,
+                           'sede': sede_of_course(name)})
+        # Ordenar por (sede, grado numérico, nombre): principal primero
         def _key(c):
             g = c['grado']
             try:
                 gi = int(g)
             except Exception:
                 gi = 99
-            return (gi, c['name'])
+            return (c['sede'], gi, c['name'])
         result.sort(key=_key)
         return result
     except Exception:
         return []
 
 
-def add_course(name: str, grado: str = '') -> dict:
-    """Agrega un curso si no existe."""
+def add_course(name: str, grado: str = '', sede: str = '') -> dict:
+    """Agrega un curso si no existe. Con `sede` (código) se le antepone el
+    prefijo de la sede: "301" + CV -> "CV-301"."""
     name  = (name or '').strip()
     grado = (grado or '').strip()
+    if sede and name:
+        if sede.strip().upper() not in {s['codigo'] for s in list_sedes()}:
+            return {'success': False, 'error': f'La sede "{sede}" no existe.'}
+        name = course_name_for_sede(sede, name)
     if not name:
         return {'success': False, 'error': 'El nombre no puede estar vacío.'}
     if len(name) > 50:
@@ -325,6 +362,115 @@ def add_course(name: str, grado: str = '') -> dict:
         ws.append_row([name, grado], value_input_option='RAW')
         return {'success': True, 'name': name, 'grado': grado,
                 'courses': list_courses()}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def add_courses_bulk(sede: str, counts: dict) -> dict:
+    """Crea los cursos de una sede de una sola vez.
+    counts = {grado: número de grupos}, p.ej. {'1': 2, '2': 1} crea
+    CV-101, CV-102 y CV-201. Los que ya existen se omiten."""
+    codigo = (sede or '').strip().upper()
+    if codigo not in {s['codigo'] for s in list_sedes()}:
+        return {'success': False, 'error': f'La sede "{sede}" no existe.'}
+    existing = {c['name'] for c in list_courses()}
+    new_rows, skipped = [], []
+    for g, n in sorted(counts.items(), key=lambda kv: int(kv[0])):
+        try:
+            g_i, n_i = int(g), int(n)
+        except Exception:
+            continue
+        if not (1 <= g_i <= 11) or not (0 <= n_i <= 20):
+            return {'success': False,
+                    'error': f'Valores inválidos para el grado {g}.'}
+        for k in range(1, n_i + 1):
+            name = course_name_for_sede(codigo, f'{g_i}{k:02d}')
+            (skipped if name in existing else new_rows).append(
+                name if name in existing else [name, str(g_i)])
+    try:
+        if new_rows:
+            ws = _ensure_courses_sheet()
+            ws.append_rows(new_rows, value_input_option='RAW')
+        return {'success': True, 'created': [r[0] for r in new_rows],
+                'skipped': skipped, 'courses': list_courses()}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def _ensure_sedes_sheet():
+    """Crea/verifica la hoja 'Sedes' (Código | Nombre)."""
+    ss = _open_spreadsheet()
+    try:
+        return ss.worksheet(SEDES_SHEET)
+    except Exception:
+        ws = ss.add_worksheet(title=SEDES_SHEET, rows=50, cols=3)
+        ws.update('A1:B1', [['Codigo', 'Nombre']], value_input_option='RAW')
+        try:
+            ws.format('A1:B1', {
+                'backgroundColor': {'red': 0.39, 'green': 0.40, 'blue': 0.95},
+                'textFormat': {'bold': True,
+                               'foregroundColor': {'red': 1, 'green': 1, 'blue': 1}},
+                'horizontalAlignment': 'CENTER'})
+        except Exception:
+            pass
+        return ws
+
+
+def list_sedes() -> list:
+    """Sedes adicionales [{codigo, nombre}] (sin la principal), ordenadas
+    por nombre. Lectura cacheada: se consulta en cada curso creado."""
+    def _read():
+        rows = _ensure_sedes_sheet().get_all_values()[1:]
+        out, seen = [], set()
+        for r in rows:
+            cod = (r[0] if r else '').strip().upper()
+            nom = (r[1] if len(r) > 1 else '').strip()
+            if cod and nom and cod not in seen:
+                seen.add(cod)
+                out.append({'codigo': cod, 'nombre': nom})
+        return sorted(out, key=lambda s: s['nombre'])
+    return _cached_read('sedes:list', _read, ttl=300)
+
+
+def add_sede(nombre: str, codigo: str) -> dict:
+    nombre = ' '.join((nombre or '').split())
+    codigo = (codigo or '').strip().upper()
+    if len(nombre) < 3:
+        return {'success': False, 'error': 'Escribe el nombre de la sede.'}
+    if not re.fullmatch(r'[A-Z]{1,4}', codigo):
+        return {'success': False,
+                'error': 'El código debe tener de 1 a 4 letras (p.ej. CV).'}
+    sedes = list_sedes()
+    if any(s['codigo'] == codigo for s in sedes):
+        return {'success': False, 'error': f'Ya existe una sede con el código {codigo}.'}
+    if any(s['nombre'].lower() == nombre.lower() for s in sedes):
+        return {'success': False, 'error': f'La sede "{nombre}" ya existe.'}
+    try:
+        with _WRITE_LOCK:
+            _ensure_sedes_sheet().append_row([codigo, nombre],
+                                             value_input_option='RAW')
+        invalidate_read_cache('sedes:')
+        return {'success': True, 'sede': {'codigo': codigo, 'nombre': nombre},
+                'sedes': list_sedes()}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def delete_sede(codigo: str) -> dict:
+    """Elimina una sede SOLO si ya no tiene cursos."""
+    codigo = (codigo or '').strip().upper()
+    n = sum(1 for c in list_courses() if c.get('sede') == codigo)
+    if n:
+        return {'success': False,
+                'error': f'La sede tiene {n} curso(s). Elimínalos primero.'}
+    try:
+        ws = _ensure_sedes_sheet()
+        for i, c in enumerate(ws.col_values(1)):
+            if i and (c or '').strip().upper() == codigo:
+                ws.delete_rows(i + 1)
+                invalidate_read_cache('sedes:')
+                return {'success': True, 'sedes': list_sedes()}
+        return {'success': False, 'error': 'Sede no encontrada.'}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
@@ -2129,15 +2275,21 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
         scores = _score_student_with_distribution(
             answers_by_ses, kfor, dist, anuladas_by_session=anu_for)
 
-        mat  = _rh(scores['Matematica'])
-        lect = _rh(scores['Lectura Critica'])
-        soc  = _rh(scores['Sociales'])
-        nat  = _rh(scores['Naturales'])
-        ing  = _rh(scores['Ingles'])
+        # Áreas que evalúa esta prueba según su distribución. Un área que no
+        # está (p.ej. Inglés en primaria) queda vacía y no cuenta en el
+        # general, en vez de sumar un 0 que hunde el puntaje.
+        present = {e.get('materia') for e in (dist or [])} or set(MATERIAS)
+        area = {m: (_rh(scores[m]) if m in present else '') for m in MATERIAS}
+        mat, lect, soc = area['Matematica'], area['Lectura Critica'], area['Sociales']
+        nat, ing = area['Naturales'], area['Ingles']
         # Sistema ICFES Saber 11: pesos 3-3-3-3-1 (Mat, Lect, Soc, Nat = 3
         # cada una; Ing = 1). Suma de pesos = 13. Multiplicamos por 5
-        # para escalar a 0-500. Max general = 500.
-        general = _rh(5 * ((mat*3 + lect*3 + soc*3 + nat*3 + ing*1) / 13))
+        # para escalar a 0-500. Max general = 500. Con áreas ausentes se
+        # reparte el peso entre las presentes (sigue en escala 0-500).
+        w = {'Matematica': 3, 'Lectura Critica': 3, 'Sociales': 3,
+             'Naturales': 3, 'Ingles': 1}
+        w_tot = sum(w[m] for m in w if area[m] != '') or 13
+        general = _rh(5 * (sum(w[m] * area[m] for m in w if area[m] != '') / w_tot))
 
         entry = {
             'id':       sid,
@@ -2212,7 +2364,10 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
 
         # Fila de promedios
         n = len(results)
-        avg = {k: _rh(sum(r[k] for r in results) / n)
+        def _avg_num(k):
+            vals = [r[k] for r in results if r[k] != '']
+            return _rh(sum(vals) / len(vals)) if vals else ''
+        avg = {k: _avg_num(k)
                for k in ['mat', 'lect', 'soc', 'nat', 'ing', 'general']}
         avg_vals = ['', 'PROMEDIO', '', avg['mat'], avg['lect'], avg['soc'],
                     avg['nat'], avg['ing'], avg['general']]
