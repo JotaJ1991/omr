@@ -1126,25 +1126,20 @@
 
       <!-- Filtros (aparecen tras generar) -->
       <div id="r-filter-bar" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:end;">
-        <div id="r-sede-wrap" style="flex:1 1 100%;display:none;">
-          <label style="font-size:.78rem;color:var(--muted);">🏫 Sede</label>
+        <div style="flex:1 1 100%;">
+          <label style="font-size:.78rem;color:var(--muted);"
+                 title="Bachillerato mañana: cursos 01 a 05 (9° y 10°: 01 a 04) · Bachillerato tarde: el resto · y las sedes de primaria">🏫 Sede</label>
           <div style="display:flex;gap:8px;">
-            <select id="r-sede-select" onchange="onJornadaChange()" style="flex:1;"></select>
-            <button id="btn-r-sedes" type="button" onclick="downloadSedesPdf()"
-                    title="PDF que compara todas las sedes del simulacro"
-                    style="padding:8px 12px;font-size:.8rem;background:linear-gradient(135deg,#7c3aed,#4f46e5);
-                           color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;white-space:nowrap;">
+            <select id="r-jornada-select" onchange="onJornadaChange()" style="flex:1;">
+              <option value="">Todas</option>
+            </select>
+            <button id="btn-r-sedes" type="button" onclick="downloadSedesPdf()" style="display:none;flex:0 0 auto;width:auto;
+                           padding:8px 12px;font-size:.8rem;background:linear-gradient(135deg,#7c3aed,#4f46e5);
+                           color:white;border:none;border-radius:10px;font-weight:600;cursor:pointer;white-space:nowrap;"
+                    title="PDF que compara todas las sedes del simulacro">
               🏫 Informe de sedes
             </button>
           </div>
-        </div>
-        <div style="flex:1 1 100%;">
-          <label style="font-size:.78rem;color:var(--muted);" title="Mañana: cursos 01 a 05 (9° y 10°: 01 a 04) · Tarde: el resto">🌓 Jornada</label>
-          <select id="r-jornada-select" onchange="onJornadaChange()">
-            <option value="">Todas</option>
-            <option value="manana">☀️ Mañana</option>
-            <option value="tarde">🌙 Tarde</option>
-          </select>
         </div>
         <div style="flex:1;min-width:90px;">
           <label style="font-size:.78rem;color:var(--muted);">Grado</label>
@@ -2176,23 +2171,27 @@ async function addSedeCourses() {
 
 // ── Filtro de sede en Resultados ──
 function _sedeSel() {
-  const el = document.getElementById('r-sede-select');
-  if (!el || !el.value) return null;            // todas las sedes
-  return el.value === '__principal__' ? '' : el.value;
+  // Sede de primaria elegida en el filtro "Sede" (código) o null
+  const el = document.getElementById('r-jornada-select');
+  const v = el ? el.value : '';
+  return v.startsWith('sede:') ? v.slice(5) : null;
 }
+// Opciones del filtro "Sede" según los resultados cargados:
+// Bachillerato mañana / tarde (sede principal) y cada sede de primaria.
 function _populateSedeFilter() {
-  const wrap = document.getElementById('r-sede-wrap');
-  const sel = document.getElementById('r-sede-select');
+  const sel = document.getElementById('r-jornada-select');
   const btn = document.getElementById('btn-r-sedes');
-  if (!wrap || !sel) return;
-  const sedes = _sedesEnResultados(unifiedResultsAll || []);
+  if (!sel) return;
+  const all = unifiedResultsAll || [];
   const prev = sel.value;
-  wrap.style.display = sedes.length >= 2 ? '' : 'none';
-  if (btn) btn.style.display = sedes.length >= 2 ? '' : 'none';
-  sel.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s =>
-    `<option value="${s.codigo || '__principal__'}">${_escTxt(s.nombre)}</option>`).join('');
-  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-  if (sedes.length < 2) sel.value = '';
+  const opts = ['<option value="">Todas</option>'];
+  if (all.some(r => _jornadaDe(r.curso) === 'manana')) opts.push('<option value="manana">☀️ Bachillerato mañana</option>');
+  if (all.some(r => _jornadaDe(r.curso) === 'tarde'))  opts.push('<option value="tarde">🌙 Bachillerato tarde</option>');
+  const sedes = _sedesEnResultados(all).filter(s => s.codigo);
+  sedes.forEach(s => opts.push(`<option value="sede:${s.codigo}">🏫 ${_escTxt(s.nombre)}</option>`));
+  sel.innerHTML = opts.join('');
+  sel.value = [...sel.options].some(o => o.value === prev) ? prev : '';
+  if (btn) btn.style.display = _sedesEnResultados(all).length >= 2 ? '' : 'none';
 }
 
 // ══ SIMULACROS ════════════════════════════════════════════════════════════
@@ -3359,14 +3358,16 @@ function _jornadaDe(curso) {
   return '';
 }
 function _jornadaSel() {
+  // Jornada de bachillerato elegida en el filtro "Sede": 'manana' | 'tarde' | ''
   const el = document.getElementById('r-jornada-select');
-  return el ? el.value : '';
+  const v = el ? el.value : '';
+  return v === 'manana' || v === 'tarde' ? v : '';
 }
 function _jornadaTexto() {
   const j = _jornadaSel();
   const sd = _sedeSel();
-  const jt = j === 'manana' ? 'Jornada mañana' : j === 'tarde' ? 'Jornada tarde' : '';
-  return [sd !== null ? nombreSede(sd) : '', jt].filter(Boolean).join(' · ');
+  if (j) return j === 'manana' ? 'Bachillerato mañana' : 'Bachillerato tarde';
+  return sd !== null ? nombreSede(sd) : '';
 }
 // Aplica la jornada sobre los resultados completos: todas las vistas y
 // reportes (integral, cursos, materias, becarios, PDF) usan unifiedResults.
@@ -4147,7 +4148,7 @@ async function downloadIntegralPdf() {
       const t = view.filter(r => _jornadaDe(r.curso) === 'tarde');
       if (m.length && t.length) {
         const am = _avgK(m, 'general'), at = _avgK(t, 'general');
-        jornadasTxt = `Jornada mañana promedia ${am} puntos y jornada tarde ${at} (diferencia de ${Math.abs(am - at)}).`;
+        jornadasTxt = `Bachillerato mañana promedia ${am} puntos y bachillerato tarde ${at} (diferencia de ${Math.abs(am - at)}).`;
       }
     }
 
