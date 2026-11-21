@@ -854,6 +854,18 @@ def sipagre_results():
         return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 
+@app.route('/results_saved', methods=['GET'])
+def results_saved():
+    """Resultados ya generados de un simulacro (solo lectura)."""
+    from sheets_connector import read_saved_results
+    try:
+        return jsonify(read_saved_results(request.args.get('sheet', ''),
+                                          (request.args.get('tipo') or '').strip()))
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/msipagre_results', methods=['POST'])
 def msipagre_results():
     """Genera la hoja de Resultados M SIPAGRE (única jornada de 125 preguntas)."""

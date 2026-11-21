@@ -3507,9 +3507,10 @@ function onResultsSimChange() {
     _applyJornada();
     document.getElementById('r-status').innerHTML =
       `<p style="color:var(--muted);font-size:.82rem;">
-       💾 Mostrando datos en caché (${_formatAgo(cached.ts)}).
+       📄 Resultados${cached.updated ? ` actualizados el <b>${_escTxt(cached.updated)}</b>` : ''}
+       (cargados ${_formatAgo(cached.ts)}).
        <a href="#" onclick="generateUnifiedResults();return false;"
-          style="color:var(--primary-light);">Actualizar</a></p>`;
+          style="color:var(--primary-light);">🔄 Actualizar</a></p>`;
     document.getElementById('r-filter-bar').style.display = 'flex';
     document.getElementById('r-view-bar').style.display = 'flex';
     _populateUnifiedCourseFilter();
@@ -3523,7 +3524,44 @@ function onResultsSimChange() {
     btnGen.disabled = false;
     btnAll.disabled = true;
     document.getElementById('r-output').innerHTML = _EMPTY_RESULTS_NO_GEN;
+    _loadSavedResults(unifiedSimulacro);   // lo ya generado, sin recalcular
   }
+}
+
+// Muestra la hoja de resultados que ya está guardada (una sola lectura, sin
+// recalcular ni reescribir). Recalcular queda para el botón Actualizar.
+async function _loadSavedResults(sim) {
+  const status = document.getElementById('r-status');
+  status.innerHTML = '<p style="color:var(--muted);font-size:.82rem;">⏳ Cargando los resultados guardados…</p>';
+  let d = null;
+  try {
+    const q = new URLSearchParams({sheet: sim.results || '', tipo: sim.tipo || ''});
+    d = await (await fetch('/results_saved?' + q)).json();
+  } catch (e) { d = null; }
+  if (!unifiedSimulacro || unifiedSimulacro.nombre !== sim.nombre) return;   // cambió de simulacro
+  if (!d || !d.success || !d.exists || !(d.results || []).length) {
+    status.innerHTML = d && d.success
+      ? '<p style="color:var(--muted);font-size:.82rem;">Este simulacro aún no tiene resultados: pulsa ⚡ Generar.</p>'
+      : '<p style="color:var(--warning);font-size:.82rem;">No se pudieron leer los resultados guardados. Pulsa ⚡ Generar.</p>';
+    return;
+  }
+  unifiedResultsAll = d.results;
+  _resultsCache[sim.nombre] = {results: unifiedResultsAll, ts: Date.now(), updated: d.updated || ''};
+  _populateSedeFilter();
+  _applyJornada();
+  status.innerHTML = `<p style="color:var(--muted);font-size:.82rem;">
+    📄 Resultados guardados${d.updated ? ` · actualizados el <b>${_escTxt(d.updated)}</b>` : ''} ·
+    ${d.students} estudiante${d.students === 1 ? '' : 's'}. Si escanearon hojas nuevas o cambió la clave, pulsa
+    <a href="#" onclick="generateUnifiedResults();return false;" style="color:var(--primary-light);">🔄 Actualizar</a>.</p>`;
+  document.getElementById('r-filter-bar').style.display = 'flex';
+  document.getElementById('r-view-bar').style.display = 'flex';
+  _populateUnifiedCourseFilter();
+  _ensureDefaultGradeFilter();
+  setResultsView('integral');
+  const btnGen = document.getElementById('btn-r-gen');
+  btnGen.textContent = '🔄 Actualizar';
+  btnGen.disabled = false;
+  document.getElementById('btn-r-all').disabled = false;
 }
 
 // Cambia la vista (tabla / asignatura / becarios) y re-renderiza
@@ -4957,10 +4995,11 @@ async function generateUnifiedResults() {
       _resultsCache[sim.nombre] = {
         results: unifiedResultsAll,
         ts:      Date.now(),
+        updated: data.updated || '',
       };
       const verb = isUpdate ? 'Actualizado' : 'Listo';
       status.innerHTML = `<p style="color:var(--success);font-weight:600;">
-        ${verb}: ${data.students} estudiantes procesados.
+        ${verb}: ${data.students} estudiantes procesados${data.updated ? ` (${data.updated})` : ''}.
         <a href="${data.url}" target="_blank" style="color:var(--primary-light);">Abrir Sheets</a></p>`;
       document.getElementById('r-filter-bar').style.display = 'flex';
       document.getElementById('r-view-bar').style.display = 'flex';

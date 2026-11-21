@@ -22,7 +22,7 @@ import re
 import os
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -2328,13 +2328,16 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
             entry['type']  = 'M'
         results.append(entry)
 
-    # Crear/sobrescribir hoja de resultados
+    # Crear/sobrescribir hoja de resultados. NO se borra antes de escribir:
+    # se sobrescribe y al final se limpia lo que sobre, así el portal de
+    # estudiantes nunca encuentra la hoja vacía a mitad de la escritura.
     needed_rows = len(results) + 5  # header + datos + promedio + margen
     try:
         ws_res = spreadsheet.worksheet(results_sheet)
-        ws_res.clear()
         if ws_res.row_count < needed_rows:
             ws_res.resize(rows=needed_rows)
+        if ws_res.col_count < 20:
+            ws_res.resize(cols=20)
     except Exception:
         ws_res = spreadsheet.add_worksheet(
             title=results_sheet, rows=needed_rows, cols=20)
@@ -2358,9 +2361,17 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
             row += [r.get('quim', ''), r.get('fis', '')]
         rows.append(row)
 
+    last_row = 1
     if rows:
         end_row = len(rows) + 1
         ws_res.update(f'A2:{end_col}{end_row}', rows, value_input_option='RAW')
+        # Quitar el formato de promedio que pudo quedar de una versión anterior
+        try:
+            ws_res.format(f'A2:{end_col}{end_row}', {
+                'backgroundColor': {'red': 1, 'green': 1, 'blue': 1},
+                'textFormat': {'bold': False}})
+        except Exception:
+            pass
 
         # Fila de promedios
         n = len(results)
@@ -2383,6 +2394,7 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
                  if only10 else ''),
             ]
         avg_row = end_row + 1
+        last_row = avg_row
         ws_res.update(f'A{avg_row}:{end_col}{avg_row}', [avg_vals],
                       value_input_option='RAW')
         try:
@@ -2393,6 +2405,22 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
             })
         except Exception:
             pass
+
+    # Limpiar lo que quedó de una generación anterior (filas de más y
+    # columnas a la derecha) y anotar cuándo se generó (celda P1).
+    last_col = _col_letter(max(ws_res.col_count, 20) - 1)
+    next_col = _col_letter(len(header))
+    try:
+        ws_res.batch_clear([f'A{last_row + 1}:{last_col}{max(ws_res.row_count, last_row + 1)}',
+                            f'{next_col}1:{last_col}{last_row}'])
+    except Exception as e:
+        print(f'[resultados] no se pudo limpiar lo sobrante: {e}', flush=True)
+    actualizado = datetime.now(_TZ_CO).strftime('%d/%m/%Y %I:%M %p').replace('AM', 'a. m.').replace('PM', 'p. m.')
+    try:
+        ws_res.update(values=[[f'Actualizado: {actualizado}']], range_name=f'{RESULTS_STAMP_COL}1',
+                      value_input_option='RAW')
+    except Exception:
+        pass
 
     # Formato encabezado (histórico: siempre A1:I1, también en media)
     try:
@@ -2412,8 +2440,64 @@ def _generate_results_core(session_sheets, tipo, results_sheet,
         'success':  True,
         'students': len(results),
         'results':  results,
+        'updated':  actualizado,
         'url':      f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit',
     }
+
+
+# Hora de Colombia (sin horario de verano) para la marca de actualización
+_TZ_CO = timezone(timedelta(hours=-5))
+RESULTS_STAMP_COL = 'P'   # celda P1 de cada hoja de resultados: "Actualizado: …"
+
+
+def read_saved_results(results_sheet: str, tipo: str = '') -> dict:
+    """Lee una hoja de resultados YA generada (solo lectura, sin recalcular)
+    y la devuelve con el mismo formato que la generación. Así, al elegir un
+    simulacro, los resultados aparecen al instante y solo se recalcula
+    cuando hay escaneos nuevos (botón Actualizar)."""
+    results_sheet = (results_sheet or '').strip()
+    if not results_sheet.startswith('Resultados '):
+        return {'success': False, 'error': 'Hoja de resultados inválida.'}
+    try:
+        ws = _open_spreadsheet().worksheet(results_sheet)
+    except Exception:
+        return {'success': True, 'exists': False}
+    rows = ws.get_all_values()
+    if not rows or not rows[0] or (rows[0][0] or '').strip() != 'ID Estudiante':
+        return {'success': True, 'exists': False}
+    header = rows[0]
+    con_quimfis = len(header) > 10 and (header[9] or '').startswith('Quimica')
+    stamp_idx = ord(RESULTS_STAMP_COL) - ord('A')
+    stamp = (header[stamp_idx] if len(header) > stamp_idx else '') or ''
+    updated = stamp.replace('Actualizado:', '').strip() if stamp.startswith('Actualizado:') else ''
+
+    def _num(v):
+        v = (v or '').strip()
+        if not v:
+            return ''
+        try:
+            return _rh(float(v.replace(',', '.')))
+        except Exception:
+            return ''
+
+    courses = list_courses() if con_quimfis else []
+    results = []
+    for r in rows[1:]:
+        r = list(r) + [''] * 12
+        if (r[1] or '').strip() == 'PROMEDIO' or not ((r[0] or '').strip() or (r[1] or '').strip()):
+            continue
+        e = {'id': r[0].strip(), 'name': r[1].strip(), 'curso': r[2].strip(),
+             'mat': _num(r[3]), 'lect': _num(r[4]), 'soc': _num(r[5]),
+             'nat': _num(r[6]), 'ing': _num(r[7]), 'general': _num(r[8]) or 0}
+        if con_quimfis:
+            e['quim'] = _num(r[9]); e['fis'] = _num(r[10])
+            e['grado'] = _grade_of_curso(e['curso'], courses)
+        if tipo == 'media':
+            e['type'] = 'M'
+        results.append(e)
+    return {'success': True, 'exists': True, 'students': len(results), 'results': results,
+            'updated': updated,
+            'url': f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'}
 
 
 def generate_sipagre_results(sheet_1s: str, sheet_2s: str,
