@@ -202,6 +202,7 @@
     if (_logoDataUrl === null)        _logoDataUrl        = await _loadImageAsDataUrl('/static/logo_sm.png');
     if (_sipagreLogoDataUrl === null) _sipagreLogoDataUrl = await _loadImageAsDataUrl('/static/sipagre_logo_sm.png');
     if (_ietagroLogoDataUrl === null) _ietagroLogoDataUrl = await _loadImageAsDataUrl('/static/ietagro_logo_sm.png');
+    await _loadKidsFont();   // tipografía del reporte de primaria
     return _logoDataUrl;
   }
 
@@ -525,7 +526,285 @@
     doc.text(String(score), x + w/2, y + h - 2.2, {align: 'center'});
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // REPORTE INDIVIDUAL DE PRIMARIA — estética infantil
+  // Mismo contenido que el de bachillerato adaptado a primaria: datos del
+  // estudiante, puntaje general (0-500) con medalla y mensaje, explicación
+  // de los niveles ICFES y, por área evaluada, su puntaje, nivel (nombre,
+  // número y rango) y la mejor área. Tipografía Comic Neue (SIL OFL,
+  // /static/fonts) incrustada en el PDF; si no carga, se usa Helvetica.
+  // ═══════════════════════════════════════════════════════════════════════
+  let _kidsFont = null;   // {r, b} en base64 · false si no se pudo cargar
+  async function _fetchB64(url) {
+    const buf = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  async function _loadKidsFont() {
+    if (_kidsFont !== null) return;
+    try {
+      const [r, b] = await Promise.all([_fetchB64('/static/fonts/ComicNeue-Regular.ttf'),
+                                        _fetchB64('/static/fonts/ComicNeue-Bold.ttf')]);
+      _kidsFont = {r, b};
+      // La misma letra para los textos que se dibujan en canvas (arcoíris)
+      if (window.FontFace && document.fonts) {
+        const ff = new FontFace('Comic Neue KJ', 'url(data:font/ttf;base64,' + b + ')', {weight: 'bold'});
+        document.fonts.add(await ff.load());
+      }
+    } catch (e) { _kidsFont = false; }
+  }
+  function _kidsFontOn(doc) {
+    if (!_kidsFont) return 'helvetica';
+    if (!(doc.getFontList() || {}).ComicNeue) {
+      doc.addFileToVFS('ComicNeue-Regular.ttf', _kidsFont.r); doc.addFont('ComicNeue-Regular.ttf', 'ComicNeue', 'normal');
+      doc.addFileToVFS('ComicNeue-Bold.ttf', _kidsFont.b);    doc.addFont('ComicNeue-Bold.ttf', 'ComicNeue', 'bold');
+    }
+    return 'ComicNeue';
+  }
+
+  const KIDS = {
+    tinta: [30, 58, 95], suave: [100, 116, 139], papel: [255, 251, 240],
+    cielo1: [79, 195, 247], cielo2: [149, 117, 205], sol: [255, 217, 61],
+  };
+  const KIDS_AREAS = {
+    mat:  {nombre: 'Matemáticas', emoji: '🧮', color: [66, 133, 244], claro: [227, 238, 255]},
+    lect: {nombre: 'Lenguaje',    emoji: '📖', color: [255, 145, 60], claro: [255, 238, 222]},
+    nat:  {nombre: 'Naturales',   emoji: '🔬', color: [46, 184, 114], claro: [222, 246, 233]},
+    soc:  {nombre: 'Sociales',    emoji: '🌍', color: [156, 98, 205], claro: [240, 230, 250]},
+    ing:  {nombre: 'Inglés',      emoji: '💬', color: [236, 72, 140], claro: [253, 228, 239]},
+  };
+  const KIDS_NIVELES = [
+    {emoji: '🌱', color: [239, 83, 80],  claro: [253, 226, 226], frase: 'Estoy empezando: ¡a practicar!'},
+    {emoji: '🌿', color: [255, 167, 38], claro: [255, 239, 214], frase: 'Ya sé lo básico.'},
+    {emoji: '🌳', color: [102, 187, 106], claro: [226, 244, 227], frase: 'Sé lo esperado para mi grado.'},
+    {emoji: '🏆', color: [41, 121, 255], claro: [222, 234, 255], frase: '¡Voy más allá de lo esperado!'},
+  ];
+  function _kidsMedalla(g) {
+    if (g >= 400) return {e: '🏆', msg: '¡Increíble! Eres una estrella brillante.'};
+    if (g >= 300) return {e: '🥇', msg: '¡Muy bien! Tu esfuerzo se nota.'};
+    if (g >= 200) return {e: '🥈', msg: '¡Vas por buen camino! Sigue practicando.'};
+    return {e: '🌟', msg: 'Cada día aprendes más. ¡Tú puedes!'};
+  }
+  const _kEmoji = ch => _emojiDataUrl(ch, 120);
+
+  // Arcoíris con aguja: puntaje general 0-500
+  function _kidsArcoiris(valor, max) {
+    const W = 760, H = 530, c = _newCanvas(W, H);
+    const x = c.getContext('2d'), cx = W / 2, cy = 360, R = 300;
+    ['#ef5350', '#ffa726', '#ffd54f', '#66bb6a', '#42a5f5', '#7e57c2'].forEach((col, i) => {
+      x.beginPath(); x.lineWidth = 34; x.strokeStyle = col; x.lineCap = 'butt';
+      x.arc(cx, cy, R - i * 34, Math.PI, 2 * Math.PI); x.stroke();
+    });
+    const nube = (nx, ny, s) => {
+      x.fillStyle = '#fff';
+      [[0, 0, 1], [-0.9, 0.25, 0.75], [0.9, 0.25, 0.75], [0, 0.35, 0.8]]
+        .forEach(([dx, dy, r]) => { x.beginPath(); x.arc(nx + dx * s, ny + dy * s, r * s, 0, 7); x.fill(); });
+    };
+    nube(cx - R + 60, cy + 10, 46); nube(cx + R - 60, cy + 10, 46);
+    const t = Math.max(0, Math.min(1, valor / max)), a = Math.PI + t * Math.PI;
+    x.strokeStyle = '#1e3a5f'; x.lineWidth = 12; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + Math.cos(a) * (R - 150), cy + Math.sin(a) * (R - 150)); x.stroke();
+    x.fillStyle = '#1e3a5f'; x.beginPath(); x.arc(cx, cy, 20, 0, 7); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.arc(cx, cy, 8, 0, 7); x.fill();
+    x.fillStyle = '#1e3a5f'; x.textAlign = 'center';
+    x.font = 'bold 96px "Comic Neue KJ", "Comic Sans MS", sans-serif';
+    x.fillText(String(valor), cx, cy + 100);
+    x.font = 'bold 34px "Comic Neue KJ", "Comic Sans MS", sans-serif'; x.fillStyle = '#64748b';
+    x.fillText('de ' + max + ' puntos', cx, cy + 140);
+    x.font = 'bold 30px "Comic Neue KJ", "Comic Sans MS", sans-serif';
+    x.fillText('0', cx - R + 4, cy + 44); x.fillText(String(max), cx + R - 4, cy + 44);
+    return c;
+  }
+  function _kidsNube(doc, x, y, s) {
+    doc.setFillColor(255, 255, 255);
+    [[0, 0, 1], [-0.95, 0.3, 0.7], [0.95, 0.3, 0.72], [0.45, 0.45, 0.6], [-0.45, 0.45, 0.6]]
+      .forEach(([dx, dy, r]) => doc.circle(x + dx * s, y + dy * s, r * s, 'F'));
+  }
+  function _kidsEstrella(doc, x, y, r, color) {
+    const pts = [];
+    for (let k = 0; k < 10; k++) {
+      const rr = k % 2 ? r * 0.45 : r, a = -Math.PI / 2 + k * Math.PI / 5;
+      pts.push([x + rr * Math.cos(a), y + rr * Math.sin(a)]);
+    }
+    doc.setFillColor(...color);
+    doc.lines(pts.slice(1).map((p, i) => [p[0] - pts[i][0], p[1] - pts[i][1]]), pts[0][0], pts[0][1], [1, 1], 'F', true);
+  }
+  // Escalera de 4 escalones con ⭐ sobre el nivel alcanzado
+  function _kidsEscalera(doc, x, y, w, h, n) {
+    const sw = w / 4;
+    for (let k = 1; k <= 4; k++) {
+      const sh = h * (0.3 + 0.7 * k / 4);
+      doc.setFillColor(...(k <= n ? KIDS_NIVELES[k - 1].color : [226, 232, 240]));
+      doc.roundedRect(x + (k - 1) * sw + 0.4, y + h - sh, sw - 0.8, sh, 1, 1, 'F');
+    }
+    const sh = h * (0.3 + 0.7 * n / 4);
+    doc.addImage(_kEmoji('⭐'), 'PNG', x + (n - 1) * sw + sw / 2 - 2.8, y + h - sh - 5.9, 5.6, 5.6, undefined, 'FAST');
+  }
+
+  function _renderPrimariaKids(doc, student, addPage, simLabel) {
+    if (addPage) doc.addPage('letter', 'p');
+    const PW = 215.9, M = 10, W = PW - 2 * M, F = _kidsFontOn(doc);
+    const s = student;
+    const name = String(s.name || '').toUpperCase();
+    const grado = gradoDeCurso(s.curso);
+    const general = Number(s.general) || 0;
+    const areas = ['mat', 'lect', 'nat', 'soc', 'ing'].filter(k => _evaluada(s[k]));
+
+    doc.setFillColor(...KIDS.papel); doc.rect(0, 0, PW, 279.4, 'F');
+    [[18, 60, [255, 205, 210]], [200, 70, [200, 230, 201]], [12, 150, [255, 236, 179]], [205, 160, [187, 222, 251]],
+     [15, 245, [225, 190, 231]], [203, 250, [255, 205, 210]], [110, 268, [187, 222, 251]]]
+      .forEach(([cx, cy, col]) => { doc.setFillColor(...col); doc.circle(cx, cy, 1.6, 'F'); });
+
+    // ── ENCABEZADO: cielo con nubes ──
+    const hy = 8, hh = 38;
+    doc.saveGraphicsState();
+    doc.roundedRect(M, hy, W, hh, 6, 6, null); doc.clip(); doc.discardPath();
+    for (let i = 0; i < 60; i++) {
+      const t = i / 59, c = KIDS.cielo1.map((v, j) => Math.round(v + (KIDS.cielo2[j] - v) * t));
+      doc.setFillColor(...c); doc.rect(M + W * i / 60, hy, W / 60 + 0.3, hh, 'F');
+    }
+    _kidsNube(doc, M + 112, hy + hh - 3, 5); _kidsNube(doc, M + 125, hy + 7, 3.6); _kidsNube(doc, M + 8, hy + hh + 1, 4.2);
+    doc.restoreGraphicsState();
+    _kidsEstrella(doc, M + 60, hy + 7, 2.2, KIDS.sol); _kidsEstrella(doc, M + 150, hy + 30, 1.6, KIDS.sol);
+    _kidsEstrella(doc, M + 135, hy + 12, 1.2, [255, 255, 255]);
+    const logo = _headerLogoForSim(simLabel);
+    if (logo) { try { doc.addImage(logo, 'PNG', M + W - 42, hy - 1, 40, 40, undefined, 'FAST'); } catch (e) {} }
+    doc.setFont(F, 'bold'); doc.setFontSize(27);
+    doc.setTextColor(40, 60, 120); doc.text('¡Mis resultados!', M + 9.6, hy + 19.6);
+    doc.setTextColor(255, 255, 255); doc.text('¡Mis resultados!', M + 9, hy + 19);
+    doc.setFontSize(12); doc.text(`Simulacro ${simLabel || ''}`, M + 9.5, hy + 29);
+
+    // ── TARJETA DEL ESTUDIANTE ──
+    let y = hy + hh + 5;
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(...KIDS.cielo1); doc.setLineWidth(0.8);
+    doc.setLineDashPattern([2, 1.4], 0); doc.roundedRect(M, y, W, 25, 5, 5, 'FD'); doc.setLineDashPattern([], 0);
+    const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('') || '·';
+    doc.setFillColor(255, 167, 38); doc.circle(M + 14, y + 12.5, 9, 'F');
+    doc.setFillColor(255, 213, 79); doc.circle(M + 14, y + 12.5, 7.2, 'F');
+    doc.setFont(F, 'bold'); doc.setFontSize(13); doc.setTextColor(...KIDS.tinta);
+    doc.text(ini, M + 14, y + 14.6, {align: 'center'});
+    doc.setFontSize(8.5); doc.setTextColor(...KIDS.suave); doc.text('ESTE ES EL REPORTE DE', M + 27, y + 7);
+    let ns = 14.5; doc.setFontSize(ns); doc.setTextColor(...KIDS.tinta);
+    while (doc.getTextWidth(name) > W - 30 && ns > 9) { ns -= 0.5; doc.setFontSize(ns); }
+    doc.text(name, M + 27, y + 13.4);
+    const chips = [];
+    if (s.id) chips.push(['🪪', String(s.id), [227, 238, 255]]);
+    if (s.curso) chips.push(['🏫', 'Curso ' + s.curso, [255, 238, 222]]);
+    if (grado) chips.push(['🎒', `Grado ${grado}°`, [222, 246, 233]]);
+    let cx = M + 27; doc.setFontSize(9);
+    chips.forEach(([e, t, col]) => {
+      const w = doc.getTextWidth(t) + 11;
+      doc.setFillColor(...col); doc.roundedRect(cx, y + 16, w, 6.4, 3.2, 3.2, 'F');
+      try { doc.addImage(_kEmoji(e), 'PNG', cx + 1.6, y + 16.8, 4.6, 4.6, undefined, 'FAST'); } catch (er) {}
+      doc.setTextColor(...KIDS.tinta); doc.text(t, cx + 7.4, y + 20.6);
+      cx += w + 3;
+    });
+
+    // ── MI PUNTAJE GENERAL + ¿QUÉ SIGNIFICA MI NIVEL? ──
+    y += 31;
+    const md = _kidsMedalla(general);
+    const bw = 96, bh = areas.length <= 2 ? 74 : 64;
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(255, 213, 79); doc.setLineWidth(1.1);
+    doc.roundedRect(M, y, bw, bh, 6, 6, 'FD');
+    doc.setFont(F, 'bold'); doc.setFontSize(13); doc.setTextColor(...KIDS.tinta);
+    doc.text('Mi puntaje general', M + bw / 2, y + 8, {align: 'center'});
+    const gc = _kidsArcoiris(general, 500), gh = bh - 12, gw = Math.min(84, gh * gc.width / gc.height);
+    doc.addImage(gc.toDataURL('image/png'), 'PNG', M + (bw - gw) / 2, y + 10, gw, gh, undefined, 'FAST');
+    try { doc.addImage(_kEmoji(md.e), 'PNG', M + bw - 15, y + 2.5, 11, 11, undefined, 'FAST'); } catch (e) {}
+
+    const nx = M + bw + 4, nw = W - bw - 4;
+    doc.setFillColor(255, 255, 255); doc.setDrawColor(149, 117, 205); doc.roundedRect(nx, y, nw, bh, 6, 6, 'FD');
+    doc.setFontSize(12.5); doc.setTextColor(...KIDS.tinta);
+    doc.text('¿Qué significa mi nivel?', nx + nw / 2, y + 8, {align: 'center'});
+    doc.setFont(F, 'normal'); doc.setFontSize(7.6); doc.setTextColor(...KIDS.suave);
+    doc.text('Niveles de desempeño ICFES', nx + nw / 2, y + 12.4, {align: 'center'});
+    const rh = (bh - 17) / 4;
+    for (let k = 4; k >= 1; k--) {
+      const ry = y + 15 + (4 - k) * rh, L = KIDS_NIVELES[k - 1];
+      doc.setFillColor(...L.claro); doc.roundedRect(nx + 4, ry + 0.6, nw - 8, rh - 1.2, 3, 3, 'F');
+      try { doc.addImage(_kEmoji(L.emoji), 'PNG', nx + 6, ry + rh / 2 - 3.6, 7.2, 7.2, undefined, 'FAST'); } catch (e) {}
+      doc.setFont(F, 'bold'); doc.setFontSize(9.6); doc.setTextColor(...L.color.map(v => Math.max(0, v - 60)));
+      doc.text(`Nivel ${k} · ${NIVEL_NOMBRES[k - 1]}`, nx + 15.5, ry + rh / 2 - 0.4);
+      doc.setFont(F, 'normal'); doc.setFontSize(7.8); doc.setTextColor(...KIDS.tinta);
+      doc.text(L.frase, nx + 15.5, ry + rh / 2 + 3.6);
+    }
+    y += bh + 4;
+    doc.setFont(F, 'bold'); doc.setFontSize(11);
+    const mw = doc.getTextWidth(md.msg) + 22;
+    doc.setFillColor(225, 245, 238); doc.roundedRect(PW / 2 - mw / 2, y, mw, 9, 4.5, 4.5, 'F');
+    try { doc.addImage(_kEmoji('🎉'), 'PNG', PW / 2 - mw / 2 + 3, y + 1.6, 5.8, 5.8, undefined, 'FAST'); } catch (e) {}
+    doc.setTextColor(15, 110, 86); doc.text(md.msg, PW / 2 + 3, y + 6.2, {align: 'center'});
+
+    // ── MIS ÁREAS ──
+    y += 15;
+    doc.setFont(F, 'bold'); doc.setFontSize(15); doc.setTextColor(...KIDS.tinta);
+    try { doc.addImage(_kEmoji('🎒'), 'PNG', M, y - 5.6, 7, 7, undefined, 'FAST'); } catch (e) {}
+    doc.text('Mis áreas', M + 9, y);
+    y += 4;
+    let best = null;
+    areas.forEach(k => { if (best === null || Number(s[k]) > Number(s[best])) best = k; });
+    if (best !== null && Number(s[best]) <= 0) best = null;
+    const cw = (W - 5) / 2, ch = areas.length <= 2 ? 60 : 44;
+    areas.forEach((k, i) => {
+      const A = KIDS_AREAS[k], v = Number(s[k]) || 0, n = nivelIcfes(k, v) || 1, L = KIDS_NIVELES[n - 1];
+      const x0 = M + (i % 2) * (cw + 5), y0 = y + Math.floor(i / 2) * (ch + 4);
+      doc.setFillColor(255, 255, 255); doc.setDrawColor(...A.color); doc.setLineWidth(1);
+      doc.roundedRect(x0, y0, cw, ch, 5, 5, 'FD');
+      doc.setFillColor(...A.color); doc.roundedRect(x0, y0, cw, 11, 5, 5, 'F'); doc.rect(x0, y0 + 6, cw, 5, 'F');
+      try { doc.addImage(_kEmoji(A.emoji), 'PNG', x0 + 3, y0 + 1.6, 7.8, 7.8, undefined, 'FAST'); } catch (e) {}
+      doc.setFont(F, 'bold'); doc.setFontSize(12.5); doc.setTextColor(255, 255, 255);
+      doc.text(A.nombre, x0 + 12.5, y0 + 7.6);
+      if (k === best) {
+        doc.setFillColor(...KIDS.sol); const tw = 34;
+        doc.roundedRect(x0 + cw - tw - 3, y0 + 2.2, tw, 6.6, 3.3, 3.3, 'F');
+        try { doc.addImage(_kEmoji('👑'), 'PNG', x0 + cw - tw - 1.6, y0 + 2.8, 5.4, 5.4, undefined, 'FAST'); } catch (e) {}
+        doc.setFontSize(8); doc.setTextColor(120, 70, 0); doc.text('¡Mi mejor área!', x0 + cw - 3.6, y0 + 6.8, {align: 'right'});
+      }
+      const cy = y0 + 11 + (ch - 11) / 2 - (areas.length <= 2 ? 4 : 2);
+      doc.setFillColor(...A.claro); doc.circle(x0 + 17, cy, 11.5, 'F');
+      doc.setDrawColor(...A.color); doc.setLineWidth(1.2); doc.circle(x0 + 17, cy, 11.5, 'S');
+      doc.setFont(F, 'bold'); doc.setFontSize(19); doc.setTextColor(...KIDS.tinta);
+      doc.text(String(v), x0 + 17, cy + 2.6, {align: 'center'});
+      doc.setFontSize(6.6); doc.setTextColor(...KIDS.suave); doc.text('de 100', x0 + 17, cy + 6.6, {align: 'center'});
+      const tx = x0 + 33;
+      doc.setFillColor(...L.claro); doc.roundedRect(tx, cy - 10.5, cw - 36 - 19, 10, 3, 3, 'F');
+      try { doc.addImage(_kEmoji(L.emoji), 'PNG', tx + 1.6, cy - 9.4, 7.6, 7.6, undefined, 'FAST'); } catch (e) {}
+      doc.setFont(F, 'bold'); doc.setFontSize(11); doc.setTextColor(...L.color.map(c => Math.max(0, c - 70)));
+      doc.text(NIVEL_NOMBRES[n - 1], tx + 10.5, cy - 4.4);
+      doc.setFont(F, 'normal'); doc.setFontSize(7.2); doc.setTextColor(...KIDS.suave);
+      doc.text(`Nivel ${n} · ${rangoNivel(k, n)} puntos`, tx + 10.5, cy - 1.0);
+      // la escalera (y su ⭐) no debe montarse sobre la cinta del título
+      const ey = Math.max(cy - 13, y0 + 18);
+      _kidsEscalera(doc, x0 + cw - 20, ey, 17, cy + 0.5 - ey, n);
+      const by = cy + 4.5, bwid = cw - 36 - 3, fill = Math.max(4.2, bwid * Math.min(100, v) / 100);
+      doc.setFillColor(238, 242, 247); doc.roundedRect(tx, by, bwid, 4.2, 2.1, 2.1, 'F');
+      doc.setFillColor(...A.color); doc.roundedRect(tx, by, fill, 4.2, 2.1, 2.1, 'F');
+      doc.setFillColor(255, 255, 255); doc.circle(tx + fill - 2.1, by + 2.1, 0.9, 'F');
+      if (areas.length <= 2) {
+        doc.setFont(F, 'normal'); doc.setFontSize(8.4); doc.setTextColor(...KIDS.tinta);
+        doc.text(L.frase, x0 + cw / 2, y0 + ch - 5, {align: 'center'});
+      }
+    });
+    y += Math.ceil(areas.length / 2) * (ch + 4);
+
+    // ── CIERRE ──
+    if (y + 18 < 268) {
+      doc.setFillColor(255, 243, 224); doc.roundedRect(M, y + 1, W, 16, 6, 6, 'F');
+      ['📚', '✏️', '🌈', '⭐'].forEach((e, i) => {
+        try { doc.addImage(_kEmoji(e), 'PNG', M + 5 + i * 9, y + 5, 8, 8, undefined, 'FAST'); } catch (er) {}
+      });
+      doc.setFont(F, 'bold'); doc.setFontSize(12); doc.setTextColor(150, 80, 0);
+      doc.text('¡Sigue leyendo, jugando y aprendiendo todos los días!', M + 44, y + 10.6);
+    }
+    doc.setFont(F, 'normal'); doc.setFontSize(7.5); doc.setTextColor(150, 150, 150);
+    doc.text(`Generado automáticamente · Simulacro ${simLabel || ''}`, PW / 2, 272, {align: 'center'});
+    doc.setFont('helvetica', 'normal');
+  }
+
   function renderStudentPage(doc, student, pcts, addPage, simulacroLabel) {
+    // Primaria (1° a 5°): reporte con estética infantil
+    if (esPrimaria(student.curso)) return _renderPrimariaKids(doc, student, addPage, simulacroLabel);
     if (addPage) doc.addPage('letter','p');
     const pw = 215.9 - 20;
     const maxGeneral = 500;
