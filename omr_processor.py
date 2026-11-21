@@ -992,7 +992,14 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path,
         if not col.get('bubble_fx'): return 0
         return int(col['bubble_fx'][-1] * w) + radius + 4
 
-    for row_idx, y in enumerate(y_rows):
+    if y_rows and isinstance(y_rows[0], (list, tuple)):
+        # Filas propias de cada columna: una línea por fila dentro de la columna
+        for i, col in enumerate(profile['columns']):
+            x0, x1 = int(col['timing_fx'] * w), _x_fin_de_columna(col)
+            for y in _rows_of_column(y_rows, i)[:col_evaluated[i]]:
+                if y_top + margin <= y <= y_bottom - margin:
+                    cv2.line(debug, (x0, y), (x1, y), (0, 200, 200), 1)
+    for row_idx, y in enumerate(y_rows if y_rows and not isinstance(y_rows[0], (list, tuple)) else []):
         if row_idx >= max_rows_drawn:
             break
         # Encontrar la última columna que evalúa esta fila
@@ -1016,7 +1023,7 @@ def _save_debug(warped, binary, answers, y_rows, profile, original_path,
     # ── Textos informativos ───────────────────────────────────────────────────
     info_lines = [
         f"Perfil: {profile.get('id','?')}",
-        f"Filas detectadas: {len(y_rows)}",
+        f"Filas detectadas: {len(_rows_of_column(y_rows, 0))}",
         f"Preguntas evaluadas: {total_q} de {geom_total}",
         f"top_f={profile['answers_top_f']}  bot_f={profile['answers_bottom_f']}",
         f"fill_thr={profile['fill_threshold']}  contrast={profile['min_contrast']}",
