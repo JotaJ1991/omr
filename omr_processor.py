@@ -66,6 +66,15 @@ def find_peaks(x, height=None, distance=None):
 # de ~2400 px conserva detalle de sobra para fiduciales y QR sin gastar RAM.
 _MAX_PROCESS_DIM = 2400
 
+# Memoria máxima que se acepta para decodificar una foto (JPEG progresivo).
+_MAX_DECODE_MB = int(os.environ.get('OMR_MAX_DECODE_MB', '200'))
+import threading as _threading
+_DECODE_LOCK = _threading.Lock()
+
+
+class FotoDemasiadoGrande(ValueError):
+    pass
+
 
 def _read_gray_reduced(image_path: str, min_dim: int = 1800):
     """Lee la foto en GRISES y, si es grande, ya REDUCIDA desde el JPEG.
@@ -76,13 +85,31 @@ def _read_gray_reduced(image_path: str, min_dim: int = 1800):
     u 1/8 del tamaño: se elige el mayor factor que deje el lado mayor en al
     menos min_dim px (de sobra para el lienzo de 1275x1650 del lector).
     """
-    longest = 0
+    longest, w, h, fmt, prog = 0, 0, 0, '?', False
     try:
         from PIL import Image
-        with Image.open(image_path) as im:      # solo lee el encabezado
-            longest = max(im.size)
+        Image.MAX_IMAGE_PIXELS = None           # solo se lee el encabezado
+        with Image.open(image_path) as im:
+            w, h = im.size
+            longest = max(w, h)
+            fmt = im.format or '?'
+            prog = bool(im.info.get('progressive') or im.info.get('progression'))
     except Exception:
         pass
+    try:
+        kb = os.path.getsize(image_path) // 1024
+    except OSError:
+        kb = 0
+    # JPEG PROGRESIVO: libjpeg necesita los coeficientes de la foto completa
+    # aunque la decodifique reducida (~3 bytes por píxel: 48 MP = +144 MB).
+    # Uno normal (baseline) reducido usa muy poco a cualquier tamaño.
+    costo_mb = (w * h * 3) / 2**20 if prog else 0
+    print(f'[foto] {w}x{h} {fmt}{" PROGRESIVO" if prog else ""} {kb} KB'
+          + (f' (decodificar: ~{costo_mb:.0f} MB)' if prog else ''), flush=True)
+    if costo_mb > _MAX_DECODE_MB:
+        raise FotoDemasiadoGrande(
+            'La foto es demasiado grande para el servidor. Vuelve a tomarla '
+            'con la cámara en resolución normal (no 50 MP / 108 MP / 200 MP).')
     flag = cv2.IMREAD_GRAYSCALE
     for factor, f in ((8, cv2.IMREAD_REDUCED_GRAYSCALE_8),
                       (4, cv2.IMREAD_REDUCED_GRAYSCALE_4),
@@ -90,9 +117,12 @@ def _read_gray_reduced(image_path: str, min_dim: int = 1800):
         if longest and longest / factor >= min_dim:
             flag = f
             break
-    gray = cv2.imread(image_path, flag)
-    if gray is None and flag != cv2.IMREAD_GRAYSCALE:
-        gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    # Una sola decodificación a la vez: dos fotos progresivas grandes al mismo
+    # tiempo sumaban ~300 MB (pico observado en Render: 447 MB).
+    with _DECODE_LOCK:
+        gray = cv2.imread(image_path, flag)
+        if gray is None and flag != cv2.IMREAD_GRAYSCALE:
+            gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     return _downscale_for_processing(gray) if gray is not None else None
 
 
@@ -135,7 +165,10 @@ def process_exam_image(image_path: str,
 
     # En grises y ya reducida desde el JPEG: una foto de 48 MP nunca se abre
     # a resolución completa (evita el OutOfMemory de Render, 512 MB).
-    gray = _read_gray_reduced(image_path)
+    try:
+        gray = _read_gray_reduced(image_path)
+    except FotoDemasiadoGrande as e:
+        return {'success': False, 'retake': True, 'error': str(e)}
     if gray is None:
         return {'success': False, 'error': 'No se pudo abrir la imagen.'}
 

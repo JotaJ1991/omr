@@ -8112,18 +8112,42 @@ window.JMRPdf.setGradoResolver(gradoDeCurso);
 // JPEG 90 %): una foto de 12-48 MP pesa varios MB, tarda en subir y en el
 // servidor ocupa cientos de MB. Si el navegador no puede, se envía la original.
 async function _reducirFoto(file, maxDim = 2400) {
-  try {
-    if (!file || !/^image\//.test(file.type) || typeof createImageBitmap !== 'function') return file;
-    const bmp = await createImageBitmap(file, {imageOrientation: 'from-image'});
-    const s = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
-    if (s >= 1) { if (bmp.close) bmp.close(); return file; }
-    const c = document.createElement('canvas');
-    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-    if (bmp.close) bmp.close();
-    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
-    return blob ? new File([blob], 'foto.jpg', {type: 'image/jpeg'}) : file;
-  } catch (e) { return file; }
+  if (!file) return file;
+  // Varias formas de abrir la foto: algunos navegadores (iPhone) fallan con
+  // createImageBitmap y sus opciones; entonces se prueba sin opciones y,
+  // por último, con un <img> (que también respeta la orientación EXIF).
+  const abrir = [
+    () => createImageBitmap(file, {imageOrientation: 'from-image'}),
+    () => createImageBitmap(file),
+    () => new Promise((ok, mal) => {
+      const url = URL.createObjectURL(file), im = new Image();
+      im.onload = () => { URL.revokeObjectURL(url); ok(im); };
+      im.onerror = e => { URL.revokeObjectURL(url); mal(e); };
+      im.src = url;
+    }),
+  ];
+  for (const f of abrir) {
+    let img = null;
+    try {
+      if (typeof createImageBitmap !== 'function' && f !== abrir[2]) continue;
+      img = await f();
+      const w = img.width || img.naturalWidth, h = img.height || img.naturalHeight;
+      if (!w || !h) throw new Error('sin tamaño');
+      const s = Math.min(1, maxDim / Math.max(w, h));
+      // Pequeña y ya JPEG: se envía tal cual.
+      if (s >= 1 && file.type === 'image/jpeg') { if (img.close) img.close(); return file; }
+      const c = document.createElement('canvas');
+      c.width = Math.round(w * s); c.height = Math.round(h * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      if (img.close) img.close();
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+      c.width = c.height = 0;   // libera la memoria del lienzo (iPhone)
+      if (blob) return new File([blob], 'foto.jpg', {type: 'image/jpeg'});
+    } catch (e) {
+      if (img && img.close) img.close();
+    }
+  }
+  return file;   // ningún método funcionó: el servidor la reduce igual
 }
 
 // ══ DEBUG ══════════════════════════════════════════════════════════════════
