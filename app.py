@@ -1,6 +1,7 @@
 """
 OMR App  —  Calificador JMR  (multi-perfil)
 """
+import memoria            # primero: ajusta malloc antes de que existan hilos
 import os
 import re
 import json
@@ -11,7 +12,6 @@ import uuid
 import secrets
 from flask import Flask, request, jsonify, render_template, session, Response
 from werkzeug.utils import secure_filename
-from omr_processor import process_exam_image, _parse_qr_payload
 from exam_profiles import PROFILE_LIST, get_profile, DEFAULT_PROFILE_ID, profile_override
 from sheets_connector import (
     save_to_sheets, save_answer_key, get_answer_key, get_sheet_data,
@@ -33,6 +33,23 @@ from sheets_connector import (
     _open_spreadsheet,
 )
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
+
+
+# OpenCV/numpy se cargan al primer escaneo DENTRO del worker, no al importar
+# app.py: con 'gunicorn --preload' el proceso maestro también importa este
+# archivo y cargarlos allí dejaba una segunda copia en memoria (512 MB).
+def process_exam_image(*args, **kwargs):
+    from omr_processor import process_exam_image as _procesar
+    try:
+        return _procesar(*args, **kwargs)
+    finally:
+        memoria.liberar()
+        print('[mem] ' + memoria.reporte(), flush=True)
+
+
+def _parse_qr_payload(data):
+    from omr_processor import _parse_qr_payload as _parse
+    return _parse(data)
 
 app = Flask(__name__)
 # SECRET_KEY: SIEMPRE desde el entorno. Si falta, se genera una aleatoria por
@@ -1214,6 +1231,13 @@ def resultados_logout():
     session.pop('student_id', None)
     session.pop('student_info', None)
     return jsonify({'success': True})
+
+
+# Con 'gunicorn --preload' el worker nace por fork del maestro: congelar los
+# objetos ya creados evita que el recolector del worker los toque y duplique
+# esas páginas de memoria (copy-on-write).
+import gc as _gc
+_gc.freeze()
 
 
 if __name__ == '__main__':

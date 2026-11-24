@@ -8,8 +8,54 @@ Sin constantes fijas — 100 % configurable por tipo de examen.
 import cv2
 import numpy as np
 import os
-from scipy.signal import find_peaks
 from exam_profiles import get_profile, DEFAULT_PROFILE_ID
+
+# Un solo hilo de OpenCV: la instancia de Render tiene una fracción de CPU
+# (los hilos extra no aceleran) y cada hilo retiene sus propios búferes.
+cv2.setNumThreads(int(os.environ.get('OMR_CV_THREADS', '1')))
+
+
+def find_peaks(x, height=None, distance=None):
+    """Equivalente exacto de scipy.signal.find_peaks(x, height=, distance=).
+
+    scipy solo se usaba para esto y cargarlo ocupa ~70 MB de RAM. Mismo
+    algoritmo: máximos locales (en mesetas, el punto medio), filtro por
+    altura mínima y luego por distancia, priorizando los picos más altos.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    n = len(x)
+    peaks = []
+    i, i_max = 1, n - 1
+    while i < i_max:
+        if x[i - 1] < x[i]:
+            i_ahead = i + 1
+            while i_ahead < i_max and x[i_ahead] == x[i]:
+                i_ahead += 1
+            if x[i_ahead] < x[i]:
+                peaks.append((i + i_ahead - 1) // 2)
+                i = i_ahead
+        i += 1
+    peaks = np.array(peaks, dtype=np.intp)
+    if height is not None and len(peaks):
+        peaks = peaks[x[peaks] >= height]
+    if distance is not None and len(peaks) > 1:
+        d = int(np.ceil(distance))
+        keep = np.ones(len(peaks), dtype=bool)
+        order = np.argsort(x[peaks])
+        for idx in range(len(peaks) - 1, -1, -1):
+            j = order[idx]
+            if not keep[j]:
+                continue
+            k = j - 1
+            while k >= 0 and peaks[j] - peaks[k] < d:
+                keep[k] = False
+                k -= 1
+            k = j + 1
+            while k < len(peaks) and peaks[k] - peaks[j] < d:
+                keep[k] = False
+                k += 1
+        peaks = peaks[keep]
+    return peaks, {}
 
 
 # Dimensión máxima (lado mayor) a la que se reduce la imagen ANTES de
