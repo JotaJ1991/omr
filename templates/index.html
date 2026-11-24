@@ -7690,7 +7690,7 @@ async function processPhoto() {
   document.getElementById('btn-process').disabled = true;
 
   const fd = new FormData();
-  fd.append('image', imageFile);
+  fd.append('image', await _reducirFoto(imageFile));
   fd.append('profile_id', state.profileId);
   // Enviar el curso del estudiante para que el backend trunque las
   // respuestas a las preguntas del grado (no muestra ni guarda burbujas
@@ -8108,6 +8108,24 @@ const getJsPDF          = ()     => window.JMRPdf.getJsPDF();
 const _loadLogo         = ()     => window.JMRPdf._loadLogo();
 // El módulo resuelve grados con el catálogo de cursos del admin
 window.JMRPdf.setGradoResolver(gradoDeCurso);
+// Reduce la foto en el teléfono antes de enviarla (lado mayor ≤ 2400 px,
+// JPEG 90 %): una foto de 12-48 MP pesa varios MB, tarda en subir y en el
+// servidor ocupa cientos de MB. Si el navegador no puede, se envía la original.
+async function _reducirFoto(file, maxDim = 2400) {
+  try {
+    if (!file || !/^image\//.test(file.type) || typeof createImageBitmap !== 'function') return file;
+    const bmp = await createImageBitmap(file, {imageOrientation: 'from-image'});
+    const s = Math.min(1, maxDim / Math.max(bmp.width, bmp.height));
+    if (s >= 1) { if (bmp.close) bmp.close(); return file; }
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+    return blob ? new File([blob], 'foto.jpg', {type: 'image/jpeg'}) : file;
+  } catch (e) { return file; }
+}
+
 // ══ DEBUG ══════════════════════════════════════════════════════════════════
 async function debugImage(input) {
   const file = input.files[0]; if(!file) return;

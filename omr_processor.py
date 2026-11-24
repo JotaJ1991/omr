@@ -21,6 +21,35 @@ from exam_profiles import get_profile, DEFAULT_PROFILE_ID
 _MAX_PROCESS_DIM = 2400
 
 
+def _read_gray_reduced(image_path: str, min_dim: int = 1800):
+    """Lee la foto en GRISES y, si es grande, ya REDUCIDA desde el JPEG.
+
+    cv2.imread a resolución completa de una foto de 48 MP ocupa ~144 MB en
+    color (más copias intermedias) y con dos escaneos a la vez agotaba los
+    512 MB de Render. El JPEG se puede decodificar directamente a 1/2, 1/4
+    u 1/8 del tamaño: se elige el mayor factor que deje el lado mayor en al
+    menos min_dim px (de sobra para el lienzo de 1275x1650 del lector).
+    """
+    longest = 0
+    try:
+        from PIL import Image
+        with Image.open(image_path) as im:      # solo lee el encabezado
+            longest = max(im.size)
+    except Exception:
+        pass
+    flag = cv2.IMREAD_GRAYSCALE
+    for factor, f in ((8, cv2.IMREAD_REDUCED_GRAYSCALE_8),
+                      (4, cv2.IMREAD_REDUCED_GRAYSCALE_4),
+                      (2, cv2.IMREAD_REDUCED_GRAYSCALE_2)):
+        if longest and longest / factor >= min_dim:
+            flag = f
+            break
+    gray = cv2.imread(image_path, flag)
+    if gray is None and flag != cv2.IMREAD_GRAYSCALE:
+        gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    return _downscale_for_processing(gray) if gray is not None else None
+
+
 def _downscale_for_processing(img, max_dim: int = _MAX_PROCESS_DIM):
     """Reduce la imagen si su lado mayor excede max_dim (preserva proporción)."""
     if img is None:
@@ -58,16 +87,11 @@ def process_exam_image(image_path: str,
     """
     profile = get_profile(profile_id)
 
-    img = cv2.imread(image_path)
-    if img is None:
+    # En grises y ya reducida desde el JPEG: una foto de 48 MP nunca se abre
+    # a resolución completa (evita el OutOfMemory de Render, 512 MB).
+    gray = _read_gray_reduced(image_path)
+    if gray is None:
         return {'success': False, 'error': 'No se pudo abrir la imagen.'}
-
-    # Reducir resolución antes de procesar (evita OutOfMemory en 512 MB con
-    # fotos de 8-12 MP). El pipeline endereza a work_w×work_h de todos modos.
-    img = _downscale_for_processing(img)
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    del img  # liberar la copia BGR cuanto antes
 
     if profile.get('aruco'):
         # Hojas con marcadores de identidad en las esquinas: si no se ven al
