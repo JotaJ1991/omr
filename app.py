@@ -35,21 +35,21 @@ from sheets_connector import (
 # PDF generation moved to browser-side (jsPDF) — no server imports needed
 
 
-# OpenCV/numpy se cargan al primer escaneo DENTRO del worker, no al importar
-# app.py: con 'gunicorn --preload' el proceso maestro también importa este
-# archivo y cargarlos allí dejaba una segunda copia en memoria (512 MB).
-def process_exam_image(*args, **kwargs):
-    from omr_processor import process_exam_image as _procesar
+# El análisis de la foto (OpenCV) corre en un PROCESO APARTE con límite de
+# memoria (escaneo_aislado.py): si una foto lo dispara, solo falla esa foto y
+# el servidor sigue atendiendo. Este proceso nunca carga OpenCV.
+def process_exam_image(image_path, etiqueta='', **kwargs):
+    import escaneo_aislado
     try:
-        return _procesar(*args, **kwargs)
+        return escaneo_aislado.procesar(image_path, etiqueta=etiqueta, **kwargs)
     finally:
         memoria.liberar()
         print('[mem] ' + memoria.reporte(), flush=True)
 
 
-def _parse_qr_payload(data):
-    from omr_processor import _parse_qr_payload as _parse
-    return _parse(data)
+from qr_payload import parse_qr_payload as _parse_qr_payload  # noqa: E402
+
+
 
 app = Flask(__name__)
 # SECRET_KEY: SIEMPRE desde el entorno. Si falta, se genera una aleatoria por
@@ -330,7 +330,8 @@ def process():
                                      'vuelve a escanear.'}), 503
         try:
             result = process_exam_image(filepath, profile_id=pid, debug=True,
-                                        effective_total_q=effective_total_q)
+                                        effective_total_q=effective_total_q,
+                                        etiqueta=f'{curso_req}_{request.form.get("sesion", "")}')
         finally:
             _SCAN_SEMAPHORE.release()
 
@@ -1231,6 +1232,56 @@ def resultados_logout():
     session.pop('student_id', None)
     session.pop('student_info', None)
     return jsonify({'success': True})
+
+
+# ── Diagnóstico: fotos que hicieron fallar el análisis ─────────────────────
+# Protegido con una clave derivada de la llave privada de la cuenta de
+# servicio de Google (solo la tienen el servidor y el equipo del docente):
+# las fotos traen nombre y documento del estudiante.
+def _clave_diagnostico():
+    import hashlib
+    raw = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+    if not raw:
+        try:
+            with open(os.environ.get('GOOGLE_CREDENTIALS_FILE', 'credentials.json'),
+                      encoding='utf-8') as f:
+                raw = f.read()
+        except OSError:
+            return None
+    try:
+        llave = json.loads(raw).get('private_key', '')
+    except Exception:
+        return None
+    if not llave:
+        return None
+    return hashlib.sha256(('omr-diagnostico:' + llave).encode()).hexdigest()[:32]
+
+
+def _diag_autorizado():
+    clave = _clave_diagnostico()
+    return bool(clave) and secrets.compare_digest(
+        request.headers.get('X-Clave-Diagnostico', ''), clave)
+
+
+@app.route('/diagnostico/fallidas', methods=['GET'])
+def diagnostico_fallidas():
+    if not _diag_autorizado():
+        return jsonify({'error': 'no autorizado'}), 403
+    import escaneo_aislado
+    carpeta = escaneo_aislado.CARPETA_FALLIDAS
+    fotos = sorted(f for f in os.listdir(carpeta) if f.endswith('.jpg')) \
+        if os.path.isdir(carpeta) else []
+    return jsonify({'fotos': fotos})
+
+
+@app.route('/diagnostico/fallidas/<nombre>', methods=['GET'])
+def diagnostico_fallida(nombre):
+    if not _diag_autorizado():
+        return jsonify({'error': 'no autorizado'}), 403
+    import escaneo_aislado
+    from flask import send_from_directory
+    nombre = secure_filename(nombre)
+    return send_from_directory(os.path.abspath(escaneo_aislado.CARPETA_FALLIDAS), nombre)
 
 
 # Con 'gunicorn --preload' el worker nace por fork del maestro: congelar los

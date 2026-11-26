@@ -76,6 +76,11 @@ class FotoDemasiadoGrande(ValueError):
     pass
 
 
+# Etapa del análisis en curso: si el proceso de escaneo se pasa de memoria,
+# el vigilante de escaneo_aislado.py la deja en el log.
+ETAPA = 'libre'
+
+
 def _read_gray_reduced(image_path: str, min_dim: int = 1800):
     """Lee la foto en GRISES y, si es grande, ya REDUCIDA desde el JPEG.
 
@@ -161,8 +166,10 @@ def process_exam_image(image_path: str,
           - Grado 7°/8° (125 preguntas) sobre la misma hoja:
             effective_total_q=125 → las 126-140 se ignoran
     """
+    global ETAPA
     profile = get_profile(profile_id)
 
+    ETAPA = 'abrir foto'
     # En grises y ya reducida desde el JPEG: una foto de 48 MP nunca se abre
     # a resolución completa (evita el OutOfMemory de Render, 512 MB).
     try:
@@ -172,6 +179,7 @@ def process_exam_image(image_path: str,
     if gray is None:
         return {'success': False, 'error': 'No se pudo abrir la imagen.'}
 
+    ETAPA = 'enderezar'
     if profile.get('aruco'):
         # Hojas con marcadores de identidad en las esquinas: si no se ven al
         # menos 3, o la foto está borrosa, se pide repetirla — nunca se
@@ -193,7 +201,9 @@ def process_exam_image(image_path: str,
         warped, p_ok = _correct_perspective(gray, profile)
 
     # ── DETECCIÓN DEL QR (hojas personalizadas IETAGRO) ──
+    ETAPA = 'buscar QR'
     qr_info = _detect_student_qr(warped)
+    ETAPA = 'binarizar'
 
     # CLAHE opcional según el perfil
     if profile.get('clahe_clip', 0) > 0:
@@ -204,7 +214,9 @@ def process_exam_image(image_path: str,
     binary         = _binarize(warped,
                                profile['binarize_block'],
                                profile['binarize_c'])
+    ETAPA = 'ubicar filas'
     y_rows, n_rows = _detect_rows(binary, profile, warped)
+    ETAPA = 'leer burbujas'
     try:
         answers, confs = _read_answers(binary, warped, y_rows, profile)
     except ValueError as e:
@@ -225,6 +237,7 @@ def process_exam_image(image_path: str,
         effective_q = total_q_profile
 
     if debug:
+        ETAPA = 'imagen anotada'
         # Pasar el límite efectivo al debug para que solo dibuje hasta ahí
         _save_debug(warped, binary, answers, y_rows, profile, image_path,
                     effective_total_q=effective_q)
@@ -300,26 +313,7 @@ def _detect_student_qr(warped):
     return _parse_qr_payload(data) if data else None
 
 
-def _parse_qr_payload(data: str) -> dict:
-    """Parsea 'OMR|<sim>|<ses>|<id>|<curso>' → dict, o None si no es válido."""
-    if not data:
-        return None
-    parts = data.split('|')
-    if len(parts) < 5 or parts[0] != 'OMR':
-        return None
-    sim   = (parts[1] or '').strip()
-    ses   = (parts[2] or '').strip().upper()
-    sid   = (parts[3] or '').strip()
-    curso = (parts[4] or '').strip()
-    if not (sim and ses and sid):
-        return None
-    return {
-        'raw':       data,
-        'simulacro': sim,
-        'sesion':    ses,
-        'student_id': sid,
-        'curso':     curso,
-    }
+from qr_payload import parse_qr_payload as _parse_qr_payload  # noqa: E402
 
 
 # ===========================================================================
@@ -460,7 +454,10 @@ def _correct_perspective_aruco(gray, profile):
     warped = cv2.warpPerspective(gray, M, (W, H), flags=cv2.INTER_LINEAR,
                                  borderValue=255)
     if cfg.get('timing'):
+        global ETAPA
+        ETAPA = 'refinar con marcas de fila'
         warped = _refine_with_timing_marks(gray, M, warped, cfg['timing'], W, H, sx, sy)
+        ETAPA = 'enderezar'
 
     # Nitidez: pendiente de los bordes de los marcadores (negro/blanco puro)
     # relativa a su contraste. No depende de la luz ni de cuánto se marcó.
